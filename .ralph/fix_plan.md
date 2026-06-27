@@ -30,7 +30,7 @@
 - [x] Decade chart: fix era label for current year dynamically — loadDecade() now sets #dec-era3-r and #dec-era3-f th text to `2015–${ey}`
 
 ## Low Priority
-- [ ] Add CLAUDE.md with project architecture overview
+- [x] Add CLAUDE.md with project architecture overview — covers run command, all files, API endpoints table, prediction algorithm weights, beam search normalization, ML pipeline, frontend globals, data flow diagram
 - [x] Add .gitignore for *.pyc and *.pkl files
 - [x] Sidebar: show current draw date from /api/summary — sidebar footer now shows "งวดล่าสุด: DD/MM/YYYY" using latest.date; fires async on init so it never blocks page load
 
