@@ -1144,24 +1144,30 @@ def _beam_front3_v4(
 
     beams: list[tuple[list[int], float]] = [([], 0.0)]
 
+    # Normalize per-position so each position contributes equally regardless
+    # of how many signal types are available at that position.
+    w0 = pos_w                          # pos=0: positional only
+    w1 = pos_w + pair_w                 # pos=1: positional + bigram
+    w2 = pos_w + pair_w + trig_w       # pos=2: positional + bigram + trigram
+
     for pos in range(3):
         nxt: list[tuple[list[int], float]] = []
         lp = log_pos[pos]
         for prefix, ls in beams:
             if pos == 0:
                 for d in range(10):
-                    nxt.append((prefix + [d], ls + pos_w * lp[d]))
+                    nxt.append((prefix + [d], ls + (pos_w / w0) * lp[d]))
             elif pos == 1:
                 prev = prefix[-1]
                 for d in range(10):
-                    s = pos_w * lp[d] + pair_w * log_pair[0, prev, d]
+                    s = (pos_w * lp[d] + pair_w * log_pair[0, prev, d]) / w1
                     nxt.append((prefix + [d], ls + s))
             else:  # pos == 2: trigram P(d2 | d0, d1)
                 d0, d1 = prefix[0], prefix[1]
                 for d in range(10):
                     s = (pos_w    * lp[d] +
                          pair_w   * log_pair[1, d1, d] +
-                         trig_w   * log_trig[d0, d1, d])
+                         trig_w   * log_trig[d0, d1, d]) / w2
                     nxt.append((prefix + [d], ls + s))
         nxt.sort(key=lambda x: x[1], reverse=True)
         beams = nxt[:beam_width]
@@ -1725,11 +1731,16 @@ def prediction_confidence(df: pd.DataFrame, col: str, target_date: datetime) -> 
     n_m = int(mask_m.sum())
 
     if n_dm >= 20:
-        label, color, pct = "สูง", "#54a24b", min(90, 50 + n_dm)
+        label, color, pct, level = "สูง", "#54a24b", min(90, 50 + n_dm), "HIGH"
     elif n_dm >= 10:
-        label, color, pct = "ปานกลาง", "#f5e642", min(70, 30 + n_dm * 2)
+        label, color, pct, level = "ปานกลาง", "#f5e642", min(70, 30 + n_dm * 2), "MEDIUM"
     else:
-        label, color, pct = "ต่ำ", "#ff6b35", min(45, 10 + n_dm * 3)
+        label, color, pct, level = "ต่ำ", "#ff6b35", min(45, 10 + n_dm * 3), "LOW"
+
+    score = min(pct / 100.0, 1.0)  # normalized [0,1]
+    reason = (
+        f"งวดวันที่+เดือนนี้ {n_dm} งวด, วันที่นี้ {n_d} งวด, เดือนนี้ {n_m} งวด"
+    )
 
     return {
         "n_same_day_month": n_dm,
@@ -1738,6 +1749,9 @@ def prediction_confidence(df: pd.DataFrame, col: str, target_date: datetime) -> 
         "label": label,
         "color": color,
         "pct": pct,
+        "score": score,
+        "level": level,
+        "reason": reason,
     }
 
 
