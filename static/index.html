@@ -453,6 +453,7 @@ const LOTTERY_TYPES = {
 };
 const ALL_OPTS = Object.entries(LOTTERY_TYPES).map(([l,v])=>`<option value="${v}">${l}</option>`).join('');
 const NO_P1_OPTS = Object.entries(LOTTERY_TYPES).filter(([,v])=>v!=='prize1').map(([l,v])=>`<option value="${v}">${l}</option>`).join('');
+const TWO_DIGIT_OPTS = Object.entries(LOTTERY_TYPES).filter(([,v])=>v==='top2'||v==='bottom2').map(([l,v])=>`<option value="${v}">${l}</option>`).join('');
 
 // ─── Chart registry ───────────────────────────────────────────────────────────
 const _charts = {};
@@ -510,14 +511,14 @@ async function api(path){ const r = await fetch('/api/'+path); return r.json(); 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 async function init(){
   // Populate selects
-  [['freq-col','ALL'],['hc-col','ALL'],['hm-col','NO_P1'],['ov-col','ALL'],
+  [['freq-col','ALL'],['hc-col','ALL'],['hm-col','TWO_DIGIT'],['ov-col','ALL'],
    ['pred-col','ALL'],['dec-col','ALL'],['wl-col','ALL'],['ml-col','NO_P1'],
    ['pair-cola','NO_P1'],['pair-colb','NO_P1'],
    ['consec-col','NO_P1'],['net-cola','NO_P1'],['net-colb','NO_P1']
   ].forEach(([id,type])=>{
     const el = document.getElementById(id);
     if(!el) return;
-    el.innerHTML = type==='ALL' ? ALL_OPTS : NO_P1_OPTS;
+    el.innerHTML = type==='ALL' ? ALL_OPTS : type==='TWO_DIGIT' ? TWO_DIGIT_OPTS : NO_P1_OPTS;
   });
   document.getElementById('pair-colb').value='top2';
   document.getElementById('net-colb').value='top2';

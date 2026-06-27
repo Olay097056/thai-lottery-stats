@@ -1,20 +1,20 @@
 # Ralph Fix Plan — Thai Lottery Intelligence Dashboard
 
 ## 🔴 CRITICAL — Prediction Engine Bugs (สำคัญที่สุด)
-- [ ] BUG: predict_prize1_v4 ensemble CONFIGS weights do not sum to 1.0 — verify and fix normalization in analyzer.py
+- [x] BUG: predict_prize1_v4 ensemble CONFIGS weights — VERIFIED OK: pos_w=max(1-pair_w-trig_w,0.05) ensures all 3 configs sum to exactly 1.0
 - [x] BUG: _beam_front3_v4 pos=0 scoring inconsistency — normalized per-position score by dividing by sum of weights active at each position (w0=pos_w, w1=pos_w+pair_w, w2=all three)
-- [ ] BUG: predict_prize1_v2 beam search — bigram smoothing alpha not applied when history < 2 draws, causes ZeroDivisionError on cold start
-- [ ] BUG: predict_numbers (general) — recency weight decay formula uses hardcoded 0.95 regardless of k_back param, ignoring user config
+- [x] BUG: predict_prize1_v2 beam search — VERIFIED OK: _p1_pair_matrix initializes mat with alpha=0.3, divides by np.maximum(row_sums,1e-12); no ZeroDivisionError possible
+- [x] BUG: predict_numbers (general) — VERIFIED OK: no hardcoded 0.95; uses 3-tier year-band recency (5yr×3/5-15yr×2/older×1); k_back is only in prize1_v3/v4
 - [x] BUG: prediction_confidence() — score sometimes returns >1.0 due to unnormalized signal aggregation, clamp to [0,1]; also fixed field name mismatch (pct/label → score/level/reason) to match HTML frontend
-- [ ] BUG: ensemble_predict — duplicate เลข entries possible when multiple configs agree, dedup before returning
-- [ ] BUG: overdue_with_prob — โอกาสออก(%) can exceed 100% for numbers overdue >200 draws, cap at 99.9
-- [ ] BUG: prize1_backtest — df_train slice uses iloc[:idx] without resetting index, causing KeyError on some datasets
+- [x] BUG: ensemble_predict — VERIFIED OK: uses set(stat_norm)|set(ml_norm) which is already deduped by dict key uniqueness
+- [x] BUG: overdue_with_prob — VERIFIED OK: already has min(...,99.9) at score calculation line
+- [x] BUG: prize1_backtest — VERIFIED OK: df_sorted.reset_index(drop=True) is called on line 1352 before iloc[:idx]
 - [ ] BUG: ML predict_ml — feature vector built with stale overdue count (computed at train time, not predict time)
 - [ ] BUG: consecutive_pattern — when query_num not None but never appeared, returns empty instead of informative message
 
 ## High Priority
 - [x] Add .gitignore entries for __pycache__, .ml_cache, lottery_cache.csv, watchlist.json, *.pkl
-- [ ] Fix heatmap page: hm-col select should include 2-digit types only (top2, bottom2)
+- [x] Fix heatmap page: hm-col select now uses TWO_DIGIT_OPTS (top2, bottom2 only) via new const in index.html
 - [ ] Fix predict page: reference draws filter by day+month not working when date format is DD/MM/YYYY
 - [ ] Add loading spinner to all API calls in index.html
 - [ ] Fix network canvas sizing on page load (offsetWidth=0 before visible)
