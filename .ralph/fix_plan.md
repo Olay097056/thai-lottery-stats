@@ -18,8 +18,8 @@
 - [x] Fix predict page: reference draws filter — VERIFIED OK: code correctly splits YYYY-MM-DD and compares with DD/MM/YYYY history dates
 - [x] Add loading spinner to all API calls in index.html — global #api-spinner with in-flight counter, shows on first api() call and hides when all complete
 - [x] Fix network canvas sizing on page load — drawNetwork now defers via requestAnimationFrame if offsetWidth=0; network page added to onPageLoad for auto-load on navigation
-- [ ] Prediction UI: show which signals drove the top recommendation (top 3 reasons per number)
-- [ ] Prediction UI: add "ความเชื่อมั่นรวม" progress bar per candidate based on how many signals agree
+- [x] Prediction UI: show which signals drove the top recommendation — VERIFIED OK: เหตุผล column already rendered per row via predict_with_reasons()
+- [x] Prediction UI: add "ความเชื่อมั่นรวม" progress bar per candidate — counts 6 signals (day+month≥1, day≥5, month≥8, overdue≥20, total≥25, momentum>0) with color-coded bar
 - [x] Prize1 predict: validate front3+back3 — VERIFIED OK: len(cand)!=6 guard at line 1291 plus try/except for non-numeric chars already in place
 
 ## Medium Priority
