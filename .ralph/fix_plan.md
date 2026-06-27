@@ -23,7 +23,7 @@
 - [x] Prize1 predict: validate front3+back3 — VERIFIED OK: len(cand)!=6 guard at line 1291 plus try/except for non-numeric chars already in place
 
 ## Medium Priority
-- [ ] Add trend page: ค้นหาแนวโน้มรายปีของเลขที่สนใจ (/api/trend endpoint already exists)
+- [x] Add trend page: ค้นหาแนวโน้มรายปีของเลขที่สนใจ — nav item + page-trend HTML + loadTrend() with bar chart and year table, color-coded (green≥3, gold≥1, grey=0)
 - [ ] Add digit-freq page: วิเคราะห์หลักสำหรับทุกประเภท (/api/digit-freq endpoint exists)
 - [ ] Watchlist: show history of last 10 draws per number
 - [x] ML page: add col selector change → re-check status automatically (onchange="checkMLStatus()" on ml-col select)
