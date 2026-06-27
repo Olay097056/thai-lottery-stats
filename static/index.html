@@ -99,6 +99,11 @@ select:focus,input:focus{border-color:var(--gold-dim)}
 .toast{background:var(--surface);border:1px solid var(--border);padding:12px 18px;border-radius:var(--radius);font-size:.82rem;color:var(--text);animation:slideIn .3s ease;min-width:220px}
 .toast.success{border-color:var(--green);color:var(--green)}.toast.error{border-color:var(--red);color:var(--red)}
 @keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+#api-spinner{position:fixed;top:14px;right:14px;z-index:9998;display:none;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-size:.75rem;color:var(--text3);font-family:'IBM Plex Mono',monospace}
+#api-spinner.active{display:flex}
+.spinner-dot{width:6px;height:6px;background:var(--gold);border-radius:50%;animation:spinPulse 1s ease-in-out infinite}
+.spinner-dot:nth-child(2){animation-delay:.2s}.spinner-dot:nth-child(3){animation-delay:.4s}
+@keyframes spinPulse{0%,80%,100%{transform:scale(0);opacity:.3}40%{transform:scale(1);opacity:1}}
 </style>
 </head>
 <body>
@@ -443,6 +448,7 @@ select:focus,input:focus{border-color:var(--gold-dim)}
 </main>
 
 <div id="toast-container"></div>
+<div id="api-spinner"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
 <script>
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -506,7 +512,20 @@ function switchPairsTab(panelId, btn){
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
-async function api(path){ const r = await fetch('/api/'+path); return r.json(); }
+let _apiInFlight=0;
+async function api(path){
+  _apiInFlight++;
+  if(_apiInFlight===1) document.getElementById('api-spinner').classList.add('active');
+  try{
+    const r=await fetch('/api/'+path);
+    return await r.json();
+  }catch(e){
+    return {error:String(e)};
+  }finally{
+    _apiInFlight=Math.max(0,_apiInFlight-1);
+    if(_apiInFlight===0) document.getElementById('api-spinner').classList.remove('active');
+  }
+}
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 async function init(){
