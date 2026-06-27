@@ -343,10 +343,10 @@ select:focus,input:focus{border-color:var(--gold-dim)}
   <div class="card"><div class="card-title">ความถี่แยกตามช่วงปี</div><div style="height:320px"><canvas id="decade-chart"></canvas></div></div>
   <div class="grid-2" style="margin-top:16px">
     <div class="card"><div class="section-h">📈 ดาวรุ่ง</div>
-      <div class="tbl-wrap"><table><thead><tr><th>เลข</th><th>1994–2004</th><th>2005–2014</th><th>ล่าสุด</th></tr></thead><tbody id="rising-tbody"></tbody></table></div>
+      <div class="tbl-wrap"><table><thead><tr><th>เลข</th><th>1994–2004</th><th>2005–2014</th><th id="dec-era3-r">ล่าสุด</th></tr></thead><tbody id="rising-tbody"></tbody></table></div>
     </div>
     <div class="card"><div class="section-h">📉 ดาวร่วง</div>
-      <div class="tbl-wrap"><table><thead><tr><th>เลข</th><th>1994–2004</th><th>2005–2014</th><th>ล่าสุด</th></tr></thead><tbody id="falling-tbody"></tbody></table></div>
+      <div class="tbl-wrap"><table><thead><tr><th>เลข</th><th>1994–2004</th><th>2005–2014</th><th id="dec-era3-f">ล่าสุด</th></tr></thead><tbody id="falling-tbody"></tbody></table></div>
     </div>
   </div>
 </div>
@@ -371,7 +371,7 @@ select:focus,input:focus{border-color:var(--gold-dim)}
   <div class="page-title">ML Prediction</div>
   <div class="page-sub">GradientBoosting — features: month, weekday, overdue, momentum, lag-1</div>
   <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="ml-col"></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="ml-col" onchange="checkMLStatus()"></select></div>
     <div class="ctrl-group"><div class="ctrl-label">งวด</div><select id="ml-date"></select></div>
     <div id="ml-status-wrap"></div>
     <button class="btn btn-green" onclick="trainML()" id="ml-train-btn">🚀 Train Model</button>
@@ -856,6 +856,8 @@ async function loadDecade(){
     data:{labels,datasets:eras.map((era,i)=>({label:era,data:d.data.map(r=>r[era]||0),backgroundColor:['#4C78A8aa','#F58518aa','#c8a84baa'][i],borderColor:['#4C78A8','#F58518','#c8a84b'][i],borderWidth:1}))},
     options:chartOpts('ครั้ง',true)});
   const le=eras[2];
+  document.getElementById('dec-era3-r').textContent=le;
+  document.getElementById('dec-era3-f').textContent=le;
   const rising=d.data.filter(r=>(r[le]||0)>(r['1994–2004']||0)).slice(0,5);
   const falling=d.data.filter(r=>(r[le]||0)<(r['1994–2004']||0)).slice(0,5);
   function dRows(items){return items.map(r=>`<tr><td><b>${r['เลข']||''}</b></td><td>${r['1994–2004']||0}</td><td>${r['2005–2014']||0}</td><td><b style="color:var(--gold2)">${r[le]||0}</b></td></tr>`).join('');}

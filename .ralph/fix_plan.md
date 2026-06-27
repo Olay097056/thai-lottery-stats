@@ -9,7 +9,7 @@
 - [x] BUG: ensemble_predict — VERIFIED OK: uses set(stat_norm)|set(ml_norm) which is already deduped by dict key uniqueness
 - [x] BUG: overdue_with_prob — VERIFIED OK: already has min(...,99.9) at score calculation line
 - [x] BUG: prize1_backtest — VERIFIED OK: df_sorted.reset_index(drop=True) is called on line 1352 before iloc[:idx]
-- [ ] BUG: ML predict_ml — feature vector built with stale overdue count (computed at train time, not predict time)
+- [x] BUG: ML predict_ml — VERIFIED OK: overdue is recomputed fresh in predict_ml using current len(df_sorted), not cached; training uses per-draw index i correctly
 - [x] BUG: consecutive_pattern — frontend now shows Thai informative message when query_num not found instead of empty table
 
 ## High Priority
@@ -20,14 +20,14 @@
 - [x] Fix network canvas sizing on page load — drawNetwork now defers via requestAnimationFrame if offsetWidth=0; network page added to onPageLoad for auto-load on navigation
 - [ ] Prediction UI: show which signals drove the top recommendation (top 3 reasons per number)
 - [ ] Prediction UI: add "ความเชื่อมั่นรวม" progress bar per candidate based on how many signals agree
-- [ ] Prize1 predict: validate that front3 + back3 combination actually equals full 6-digit number before showing
+- [x] Prize1 predict: validate front3+back3 — VERIFIED OK: len(cand)!=6 guard at line 1291 plus try/except for non-numeric chars already in place
 
 ## Medium Priority
 - [ ] Add trend page: ค้นหาแนวโน้มรายปีของเลขที่สนใจ (/api/trend endpoint already exists)
 - [ ] Add digit-freq page: วิเคราะห์หลักสำหรับทุกประเภท (/api/digit-freq endpoint exists)
 - [ ] Watchlist: show history of last 10 draws per number
-- [ ] ML page: add col selector change → re-check status automatically
-- [ ] Decade chart: fix era label for current year dynamically
+- [x] ML page: add col selector change → re-check status automatically (onchange="checkMLStatus()" on ml-col select)
+- [x] Decade chart: fix era label for current year dynamically — loadDecade() now sets #dec-era3-r and #dec-era3-f th text to `2015–${ey}`
 
 ## Low Priority
 - [ ] Add CLAUDE.md with project architecture overview
