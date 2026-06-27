@@ -444,6 +444,20 @@ select:focus,input:focus{border-color:var(--gold-dim)}
   <div class="card" style="margin-top:16px">
     <div class="tbl-wrap"><table><thead><tr><th>ตำแหน่ง</th><th>เลข 0–9 (ความถี่)</th></tr></thead><tbody id="digit-tbody"></tbody></table></div>
   </div>
+
+  <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border2)">
+    <div class="page-title" style="font-size:1rem;margin-bottom:4px">ความถี่หลักทุกประเภทรางวัล</div>
+    <div class="page-sub" style="margin-bottom:12px">วิเคราะห์หลัก 0–9 ในแต่ละตำแหน่งสำหรับทุกประเภทรางวัล</div>
+    <div class="ctrl-row">
+      <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="df-col" onchange="loadDigitFreq()"></select></div>
+    </div>
+    <div class="card"><div class="card-title" id="df-chart-title">ความถี่หลักแยกตำแหน่ง</div><div style="height:300px"><canvas id="df-chart"></canvas></div></div>
+    <div class="card" style="margin-top:12px">
+      <div class="tbl-wrap" style="max-height:320px;overflow-y:auto">
+        <table><thead><tr><th>ตำแหน่ง</th><th>เลข</th><th>จำนวนครั้ง</th><th>สัดส่วน</th></tr></thead><tbody id="df-tbody"></tbody></table>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="page" id="page-trend">
@@ -519,7 +533,7 @@ function onPageLoad(p){
   else if(p==='watchlist') loadWatchlist();
   else if(p==='ml') checkMLStatus();
   else if(p==='network') loadNetwork();
-  else if(p==='digit') loadDigitAnalysis();
+  else if(p==='digit'){ loadDigitAnalysis(); loadDigitFreq(); }
   else if(p==='trend') {};
 }
 
@@ -553,7 +567,7 @@ async function init(){
    ['pred-col','ALL'],['dec-col','ALL'],['wl-col','ALL'],['ml-col','NO_P1'],
    ['pair-cola','NO_P1'],['pair-colb','NO_P1'],
    ['consec-col','NO_P1'],['net-cola','NO_P1'],['net-colb','NO_P1'],
-   ['trend-col','NO_P1']
+   ['trend-col','NO_P1'],['df-col','NO_P1']
   ].forEach(([id,type])=>{
     const el = document.getElementById(id);
     if(!el) return;
@@ -1104,6 +1118,33 @@ async function loadDigitAnalysis(){
     <td><b>pos ${pos}</b></td>
     <td>${[...rs].sort((a,b)=>(a['เลข']??0)-(b['เลข']??0)).map(r=>`<span style="margin-right:6px"><b style="color:var(--gold2)">${r['เลข']}</b>:<span style="color:var(--text3)">${r['จำนวนครั้ง']||0}</span></span>`).join('')}</td>
   </tr>`).join('');
+}
+
+// ─── Digit Frequency ──────────────────────────────────────────────────────────
+async function loadDigitFreq(){
+  const col=document.getElementById('df-col').value;
+  const d=await api(`digit-freq?col=${col}`);
+  const rows=d.data||[];
+  if(!rows.length){toast('ไม่มีข้อมูล','warn');return;}
+  const colName=Object.entries(LOTTERY_TYPES).find(([,v])=>v===col)?.[0]||col;
+  document.getElementById('df-chart-title').textContent=`ความถี่หลักแยกตำแหน่ง — ${colName}`;
+  const positions=[...new Set(rows.map(r=>r['ตำแหน่ง']))];
+  const digits=['0','1','2','3','4','5','6','7','8','9'];
+  const colors=['#c8a84b','#f05454','#3dd68c','#4d9de0','#a855f7','#f0a84b'];
+  mkChart('df-chart',{type:'bar',
+    data:{labels:digits,datasets:positions.map((pos,i)=>({
+      label:pos,
+      data:digits.map(dg=>{const r=rows.find(r=>r['ตำแหน่ง']===pos&&String(r['เลข'])===dg);return r?.['จำนวนครั้ง']||0;}),
+      backgroundColor:colors[i%colors.length]+'99',borderColor:colors[i%colors.length],borderWidth:1
+    }))},
+    options:chartOpts('ครั้ง',true)});
+  const total=rows.reduce((s,r)=>s+(r['จำนวนครั้ง']||0),0)/positions.length;
+  document.getElementById('df-tbody').innerHTML=rows.map(r=>{
+    const pct=total>0?((r['จำนวนครั้ง']||0)/total*100).toFixed(1):'0.0';
+    const dev=Number(pct)-10;
+    const devStr=dev>=0?`<span style="color:#54a24b">+${dev.toFixed(1)}%</span>`:`<span style="color:#ff6b35">${dev.toFixed(1)}%</span>`;
+    return `<tr><td>${r['ตำแหน่ง']}</td><td><b>${r['เลข']}</b></td><td>${r['จำนวนครั้ง']||0}</td><td>${pct}% ${devStr}</td></tr>`;
+  }).join('');
 }
 
 // ─── Trend ────────────────────────────────────────────────────────────────────
