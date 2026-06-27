@@ -809,13 +809,18 @@ async function loadConsec(){
   const url=q?`consecutive?col=${col}&query=${encodeURIComponent(q)}&top_n=15`:`consecutive?col=${col}&top_n=15`;
   const d=await api(url);
   document.getElementById('consec-title').textContent=q?`หลัง ${q} ออก → งวดถัดมา:`:'Top คู่ที่ออกติดต่อกัน';
-  document.getElementById('consec-tbody').innerHTML=(d.data||[]).map((r,i)=>`<tr>
-    <td>${i+1}</td>
-    <td>${r['เลขก่อน']||q||''}</td>
-    <td><b>${r['เลขตามมา']||r['คู่เลข (ก่อน→ตาม)']||r['เลข']||''}</b></td>
-    <td>${r['จำนวนครั้ง']||0}</td>
-    <td>${(r['เปอร์เซ็นต์']||0).toFixed(1)}%</td>
-  </tr>`).join('');
+  const rows=d.data||[];
+  if(q&&rows.length===0){
+    document.getElementById('consec-tbody').innerHTML=`<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:16px">ไม่พบ "${q}" ในประวัติข้อมูล — ยังไม่เคยออกในประเภทนี้</td></tr>`;
+  } else {
+    document.getElementById('consec-tbody').innerHTML=rows.map((r,i)=>`<tr>
+      <td>${i+1}</td>
+      <td>${r['เลขก่อน']||q||''}</td>
+      <td><b>${r['เลขตามมา']||r['คู่เลข (ก่อน→ตาม)']||r['เลข']||''}</b></td>
+      <td>${r['จำนวนครั้ง']||0}</td>
+      <td>${(r['เปอร์เซ็นต์']||0).toFixed(1)}%</td>
+    </tr>`).join('');
+  }
 }
 
 // ─── Decade ───────────────────────────────────────────────────────────────────

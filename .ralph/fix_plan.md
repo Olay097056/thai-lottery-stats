@@ -10,12 +10,12 @@
 - [x] BUG: overdue_with_prob — VERIFIED OK: already has min(...,99.9) at score calculation line
 - [x] BUG: prize1_backtest — VERIFIED OK: df_sorted.reset_index(drop=True) is called on line 1352 before iloc[:idx]
 - [ ] BUG: ML predict_ml — feature vector built with stale overdue count (computed at train time, not predict time)
-- [ ] BUG: consecutive_pattern — when query_num not None but never appeared, returns empty instead of informative message
+- [x] BUG: consecutive_pattern — frontend now shows Thai informative message when query_num not found instead of empty table
 
 ## High Priority
 - [x] Add .gitignore entries for __pycache__, .ml_cache, lottery_cache.csv, watchlist.json, *.pkl
 - [x] Fix heatmap page: hm-col select now uses TWO_DIGIT_OPTS (top2, bottom2 only) via new const in index.html
-- [ ] Fix predict page: reference draws filter by day+month not working when date format is DD/MM/YYYY
+- [x] Fix predict page: reference draws filter — VERIFIED OK: code correctly splits YYYY-MM-DD and compares with DD/MM/YYYY history dates
 - [ ] Add loading spinner to all API calls in index.html
 - [ ] Fix network canvas sizing on page load (offsetWidth=0 before visible)
 - [ ] Prediction UI: show which signals drove the top recommendation (top 3 reasons per number)
