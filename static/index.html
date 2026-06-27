@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thai Lottery Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#06060b;--surface:#0d0d15;--surface2:#12121e;--surface3:#1a1a2a;
+  --gold:#c8a84b;--gold2:#e8c96b;--gold-dim:#8a6f2e;
+  --text:#e8e8f0;--text2:#9090a8;--text3:#5a5a72;
+  --green:#3dd68c;--red:#f05454;--blue:#4d9de0;--purple:#a855f7;
+  --border:rgba(200,168,75,0.15);--border2:rgba(255,255,255,0.06);
+  --radius:10px;--sidebar:220px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Noto Sans Thai','Syne',sans-serif;display:flex;min-height:100vh;overflow-x:hidden}
+#sidebar{width:var(--sidebar);min-width:var(--sidebar);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;overflow-y:auto}
+.logo{padding:20px 16px 16px;border-bottom:1px solid var(--border2)}
+.logo-title{font-family:'Syne',sans-serif;font-weight:800;font-size:1.05rem;color:var(--gold)}
+.logo-sub{font-size:.7rem;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:3px}
+.nav{flex:1;padding:12px 0}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;font-size:.82rem;color:var(--text2);border-left:3px solid transparent;transition:all .2s;user-select:none}
+.nav-item:hover{color:var(--text);background:var(--surface2)}
+.nav-item.active{color:var(--gold);border-left-color:var(--gold);background:rgba(200,168,75,.08)}
+.nav-icon{width:18px;text-align:center;flex-shrink:0}
+.sidebar-footer{padding:12px 16px;border-top:1px solid var(--border2)}
+.refresh-btn{width:100%;padding:8px;background:var(--surface3);border:1px solid var(--border);color:var(--gold);border-radius:6px;font-size:.78rem;cursor:pointer;font-family:'Noto Sans Thai',sans-serif;transition:background .2s}
+.refresh-btn:hover{background:rgba(200,168,75,.15)}
+#main{margin-left:var(--sidebar);flex:1;min-height:100vh;overflow-y:auto}
+.page{display:none;padding:24px 28px;max-width:1400px}
+.page.active{display:block}
+.page-title{font-family:'Syne',sans-serif;font-weight:800;font-size:1.5rem;color:var(--gold);margin-bottom:4px}
+.page-sub{font-size:.8rem;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-bottom:20px}
+.card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:16px}
+.card-title{font-size:.7rem;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;font-family:'IBM Plex Mono',monospace}
+.stat-val{font-size:1.8rem;font-weight:700;color:var(--text);font-family:'IBM Plex Mono',monospace}
+.stat-sub{font-size:.72rem;color:var(--text2);margin-top:4px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.prize1-box{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:8px 0}
+.digit-box{width:52px;height:68px;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:700;border-radius:8px;font-family:'IBM Plex Mono',monospace;background:var(--surface3);border:1px solid var(--border);color:var(--gold2)}
+.tbl-wrap{overflow-x:auto;border-radius:var(--radius)}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+thead th{background:var(--surface2);padding:10px 12px;text-align:left;color:var(--text2);font-weight:600;white-space:nowrap;position:sticky;top:0}
+tbody tr{border-bottom:1px solid var(--border2)}
+tbody tr:hover{background:var(--surface2)}
+tbody td{padding:8px 12px;color:var(--text)}
+.rank-badge{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:.7rem;font-weight:700;background:var(--surface3);color:var(--text3)}
+.rank-1{background:rgba(200,168,75,.3);color:var(--gold)}.rank-2{background:rgba(150,150,180,.2);color:#aaa}.rank-3{background:rgba(150,100,60,.2);color:#c0836a}
+.num-badge{display:inline-flex;align-items:center;justify-content:center;border:1.5px solid var(--gold-dim);color:var(--gold2);border-radius:6px;padding:6px 10px;font-family:'IBM Plex Mono',monospace;font-size:.95rem;font-weight:600;margin:3px}
+.num-badge.hot{border-color:#f05454;color:#f07070}.num-badge.cold{border-color:#4d9de0;color:#7ab8e8}.num-badge.agree{border-color:#3dd68c;color:#3dd68c}
+.ctrl-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:flex-end}
+.ctrl-group{display:flex;flex-direction:column;gap:4px}
+.ctrl-label{font-size:.72rem;color:var(--text3);font-family:'IBM Plex Mono',monospace}
+select,input[type=text],input[type=number]{background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:6px;font-size:.82rem;outline:none;font-family:'Noto Sans Thai',sans-serif;min-width:130px}
+select:focus,input:focus{border-color:var(--gold-dim)}
+.btn{padding:9px 18px;border:none;border-radius:6px;cursor:pointer;font-size:.82rem;font-family:'Noto Sans Thai',sans-serif;transition:all .2s}
+.btn-primary{background:var(--gold);color:#0a0a0a;font-weight:700}.btn-primary:hover{background:var(--gold2)}
+.btn-secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2)}.btn-secondary:hover{background:var(--surface3);color:var(--text)}
+.btn-danger{background:rgba(240,84,84,.15);color:var(--red);border:1px solid rgba(240,84,84,.3)}.btn-danger:hover{background:rgba(240,84,84,.25)}
+.btn-green{background:rgba(61,214,140,.15);color:var(--green);border:1px solid rgba(61,214,140,.3)}.btn-green:hover{background:rgba(61,214,140,.25)}
+.conf-banner{border-radius:var(--radius);padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:16px;background:var(--surface);border:1px solid var(--border)}
+.conf-score{font-size:2.2rem;font-weight:700;font-family:'IBM Plex Mono',monospace}
+.conf-HIGH{color:var(--green)}.conf-MEDIUM{color:var(--gold)}.conf-LOW{color:var(--red)}
+.conf-info{flex:1}.conf-label{font-size:.75rem;color:var(--text3)}
+.progress-bar{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;background:var(--gold);border-radius:3px;transition:width .4s}
+.progress-fill.green{background:var(--green)}.progress-fill.red{background:var(--red)}.progress-fill.blue{background:var(--blue)}
+.hc-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border2)}
+.hc-num{font-family:'IBM Plex Mono',monospace;font-weight:600;min-width:50px}
+.hc-bar-wrap{flex:1;height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
+.hc-bar-fill{height:100%;border-radius:3px}
+.hot-fill{background:linear-gradient(90deg,#f05454,#ff8c42)}.cold-fill{background:linear-gradient(90deg,#4d9de0,#6ab4f0)}
+.hc-val{font-size:.72rem;color:var(--text3);min-width:40px;text-align:right;font-family:'IBM Plex Mono',monospace}
+.hm-cell{display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:.65rem;font-family:'IBM Plex Mono',monospace;aspect-ratio:1;cursor:default;transition:transform .15s}
+.hm-cell:hover{transform:scale(1.1);z-index:1;position:relative}
+.overdue-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border2)}
+.overdue-num{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:1.1rem;min-width:55px;color:var(--gold2)}
+.overdue-badge{font-size:.7rem;padding:2px 8px;border-radius:20px;font-family:'IBM Plex Mono',monospace}
+.ov-warn{background:rgba(240,84,84,.2);color:var(--red)}.ov-caution{background:rgba(200,168,75,.2);color:var(--gold)}.ov-ok{background:rgba(61,214,140,.15);color:var(--green)}
+.wl-item{display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface2);border-radius:8px;margin-bottom:8px}
+.wl-num{font-family:'IBM Plex Mono',monospace;font-size:1.2rem;font-weight:700;color:var(--gold2);min-width:55px}
+.wl-info{flex:1;font-size:.8rem;color:var(--text2)}.wl-alert{font-size:.75rem;padding:2px 8px;border-radius:20px}
+.alert-great{background:rgba(61,214,140,.2);color:var(--green)}.alert-warn{background:rgba(240,84,84,.2);color:var(--red)}.alert-caution{background:rgba(200,168,75,.2);color:var(--gold)}
+.ml-status-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;font-size:.78rem}
+.ml-ready{background:rgba(61,214,140,.15);color:var(--green);border:1px solid rgba(61,214,140,.3)}.ml-notready{background:rgba(240,84,84,.1);color:var(--red);border:1px solid rgba(240,84,84,.2)}
+.section-h{font-size:.95rem;font-weight:700;color:var(--text);margin:16px 0 10px;display:flex;align-items:center;gap:8px}
+.section-h::before{content:'';display:block;width:3px;height:1em;background:var(--gold);border-radius:2px}
+.tab-bar{display:flex;gap:0;border-bottom:1px solid var(--border2);margin-bottom:16px}
+.tab-btn{padding:8px 16px;font-size:.8rem;color:var(--text3);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;font-family:'Noto Sans Thai',sans-serif;transition:all .2s}
+.tab-btn.active{color:var(--gold);border-bottom-color:var(--gold)}.tab-btn:hover:not(.active){color:var(--text2)}
+.tab-panel{display:none}.tab-panel.active{display:block}
+#toast-container{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--surface);border:1px solid var(--border);padding:12px 18px;border-radius:var(--radius);font-size:.82rem;color:var(--text);animation:slideIn .3s ease;min-width:220px}
+.toast.success{border-color:var(--green);color:var(--green)}.toast.error{border-color:var(--red);color:var(--red)}
+@keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+</style>
+</head>
+<body>
+
+<nav id="sidebar">
+  <div class="logo">
+    <div class="logo-title">🎯 Lottery Intel</div>
+    <div class="logo-sub">Thai Stats Dashboard</div>
+  </div>
+  <div class="nav">
+    <div class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span>Dashboard</div>
+    <div class="nav-item" data-page="frequency"><span class="nav-icon">📋</span>ตารางความถี่</div>
+    <div class="nav-item" data-page="hotcold"><span class="nav-icon">🔥</span>ร้อน/เย็น</div>
+    <div class="nav-item" data-page="heatmap"><span class="nav-icon">🗺️</span>Heat Map</div>
+    <div class="nav-item" data-page="overdue"><span class="nav-icon">⏳</span>เลขค้าง</div>
+    <div class="nav-item" data-page="predict"><span class="nav-icon">🔮</span>ทำนาย</div>
+    <div class="nav-item" data-page="history"><span class="nav-icon">📅</span>ผลย้อนหลัง</div>
+    <div class="nav-item" data-page="pairs"><span class="nav-icon">🔗</span>เลขคู่ &amp; ลำดับ</div>
+    <div class="nav-item" data-page="decade"><span class="nav-icon">📈</span>เปรียบทศวรรษ</div>
+    <div class="nav-item" data-page="watchlist"><span class="nav-icon">🎫</span>ตั๋วเสี่ยง</div>
+    <div class="nav-item" data-page="ml"><span class="nav-icon">🤖</span>ML Prediction</div>
+    <div class="nav-item" data-page="network"><span class="nav-icon">🌐</span>เครือข่ายเลข</div>
+    <div class="nav-item" data-page="backtest"><span class="nav-icon">⚗️</span>Backtest</div>
+    <div class="nav-item" data-page="digit"><span class="nav-icon">🔢</span>วิเคราะห์หลัก</div>
+  </div>
+  <div class="sidebar-footer">
+    <button class="refresh-btn" onclick="refreshData()">↻ รีเฟรชข้อมูล</button>
+  </div>
+</nav>
+
+<main id="main">
+
+<!-- DASHBOARD -->
+<div class="page active" id="page-dashboard">
+  <div class="page-title">Dashboard</div>
+  <div class="page-sub">ภาพรวมข้อมูลหวยไทย</div>
+  <div class="grid-4">
+    <div class="card"><div class="card-title">งวดทั้งหมด</div><div class="stat-val" id="s-total">—</div></div>
+    <div class="card"><div class="card-title">งวดล่าสุด</div><div class="stat-val" id="s-date" style="font-size:1rem">—</div></div>
+    <div class="card"><div class="card-title">ข้อมูลตั้งแต่</div><div class="stat-val" id="s-from" style="font-size:1rem">—</div></div>
+    <div class="card"><div class="card-title">รางวัลที่ 1 ล่าสุด</div><div class="prize1-box" id="s-prize1"></div></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><div class="card-title">ผลงวดล่าสุด</div><div id="latest-draw-detail" style="font-size:.85rem;line-height:2"></div></div>
+    <div class="card"><div class="card-title">Top 10 เลข 3 ตัวบน ร้อนสุด (12 เดือน)</div><div id="hot-list"></div></div>
+  </div>
+  <div class="card"><div class="card-title">15 งวดล่าสุด</div>
+    <div class="tbl-wrap"><table id="recent-tbl">
+      <thead><tr><th>วันที่</th><th>รางวัลที่ 1</th><th>3 บน</th><th>2 บน</th><th>3 หน้า 1</th><th>3 หน้า 2</th><th>3 ล่าง 1</th><th>3 ล่าง 2</th><th>2 ล่าง</th></tr></thead>
+      <tbody id="recent-tbody"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- FREQUENCY -->
+<div class="page" id="page-frequency">
+  <div class="page-title">ตารางความถี่</div>
+  <div class="page-sub">จำนวนครั้งที่เลขออก + เลขที่ไม่เคยออก</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="freq-col" onchange="loadFreq()"></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">Top N</div><select id="freq-top" onchange="loadFreq()"><option value="30">30</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></div>
+  </div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">อันดับความถี่</div>
+      <div class="tbl-wrap" style="max-height:480px;overflow-y:auto">
+        <table><thead><tr><th>#</th><th>เลข</th><th>จำนวนครั้ง</th><th>อัตรา %</th><th>ความถี่</th></tr></thead>
+        <tbody id="freq-tbody"></tbody></table>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:16px"><div class="card-title">เลขที่ไม่เคยออกเลย</div><div id="never-list" style="line-height:1.8"></div></div>
+      <div class="card"><div class="card-title">Top 20 Bar Chart</div><div style="height:260px"><canvas id="freq-chart"></canvas></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- HOT/COLD -->
+<div class="page" id="page-hotcold">
+  <div class="page-title">ร้อน / เย็น</div>
+  <div class="page-sub">เลขที่ออกบ่อย vs น้อยในช่วงที่เลือก</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="hc-col" onchange="loadHotCold()"></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">ช่วงเดือน</div><select id="hc-months" onchange="loadHotCold()"><option value="6">6 เดือน</option><option value="12" selected>12 เดือน</option><option value="24">24 เดือน</option><option value="36">36 เดือน</option></select></div>
+  </div>
+  <div class="grid-2">
+    <div class="card"><div class="section-h">🔥 Hot — ออกบ่อยสุด</div><div id="hot-bars"></div></div>
+    <div class="card"><div class="section-h">❄️ Cold — ออกน้อยสุด</div><div id="cold-bars"></div></div>
+  </div>
+  <div class="card"><div class="card-title">Hot vs Cold Chart</div><div style="height:280px"><canvas id="hc-chart"></canvas></div></div>
+</div>
+
+<!-- HEATMAP -->
+<div class="page" id="page-heatmap">
+  <div class="page-title">Heat Map</div>
+  <div class="page-sub">ความถี่ 2 หลักแบบ matrix (หลักสิบ × หลักหน่วย)</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="hm-col" onchange="loadHeatmap()"></select></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Matrix (แถว=หลักสิบ, คอลัมน์=หลักหน่วย)</div>
+    <div style="overflow-x:auto"><div id="heatmap-grid"></div></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:.72rem;color:var(--text3)">
+      <span>น้อย</span>
+      <div style="width:120px;height:8px;border-radius:4px;background:linear-gradient(90deg,#06060b,#c8a84b,#e8c96b)"></div>
+      <span>มาก</span>
+    </div>
+  </div>
+</div>
+
+<!-- OVERDUE -->
+<div class="page" id="page-overdue">
+  <div class="page-title">เลขค้าง</div>
+  <div class="page-sub">เลขที่ไม่ออกมาหลายงวด + โอกาสออก</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="ov-col" onchange="loadOverdue()"></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">Top N</div><select id="ov-top" onchange="loadOverdue()"><option value="15">15</option><option value="20" selected>20</option><option value="30">30</option></select></div>
+  </div>
+  <div class="grid-2">
+    <div class="card" style="max-height:520px;overflow-y:auto"><div class="card-title">รายการเลขค้าง</div><div id="overdue-list"></div></div>
+    <div class="card"><div class="card-title">Bar Chart — ค้างกี่งวด</div><div style="height:420px"><canvas id="overdue-chart"></canvas></div></div>
+  </div>
+</div>
+
+<!-- PREDICT -->
+<div class="page" id="page-predict">
+  <div class="page-title">ทำนายงวดหน้า</div>
+  <div class="page-sub">สถิติหลายมิติ + Ensemble + Context</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="pred-col"></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">งวด</div><select id="pred-date"></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">Top N</div><select id="pred-topn"><option value="10">10</option><option value="15">15</option><option value="20" selected>20</option><option value="30">30</option></select></div>
+    <button class="btn btn-primary" onclick="loadPredict()">🔮 ทำนาย</button>
+  </div>
+  <div id="prize1-section" style="display:none;margin-bottom:16px">
+    <div style="background:var(--surface);padding:12px;border-radius:var(--radius);border:1px solid var(--border2)">
+      <div class="ctrl-row" style="margin-bottom:0">
+        <div class="ctrl-group"><div class="ctrl-label">Algorithm</div><select id="p1-algo"><option value="v4">v4 — Trigram+Ensemble (แนะนำ)</option><option value="v3">v3 — Hybrid</option><option value="v2">v2 — Beam+Bigram</option><option value="v1">v1 — Front3×Back3</option></select></div>
+        <div class="ctrl-group"><div class="ctrl-label">Beam Width</div><input type="number" id="p1-beam" value="200" min="50" max="500" style="width:80px"></div>
+        <div class="ctrl-group"><div class="ctrl-label">K Back</div><input type="number" id="p1-kback" value="50" min="10" max="100" style="width:70px"></div>
+      </div>
+    </div>
+  </div>
+  <div class="conf-banner" id="conf-banner" style="display:none">
+    <div><div class="conf-score" id="conf-score">—</div><div class="conf-label">Confidence Score</div></div>
+    <div class="conf-info"><div id="conf-level" style="font-size:.9rem;font-weight:700;margin-bottom:4px">—</div><div id="conf-reason" style="font-size:.8rem;color:var(--text2)">—</div></div>
+  </div>
+  <div class="section-h">🎯 Top แนะนำ</div>
+  <div id="pred-top-badges" style="margin-bottom:16px"></div>
+  <div class="grid-2">
+    <div class="card"><div class="card-title">อันดับทั้งหมด</div>
+      <div class="tbl-wrap" style="max-height:440px;overflow-y:auto">
+        <table><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th><th>เหตุผล</th></tr></thead><tbody id="pred-tbody"></tbody></table>
+      </div>
+    </div>
+    <div class="card"><div class="card-title">Top 15 Chart</div><div style="height:420px"><canvas id="pred-chart"></canvas></div></div>
+  </div>
+  <div id="ensemble-section" style="margin-top:16px;display:none">
+    <div class="section-h">🧬 Ensemble Prediction</div>
+    <div class="card">
+      <div id="ensemble-badges" style="margin-bottom:8px"></div>
+      <div class="tbl-wrap" style="max-height:300px;overflow-y:auto">
+        <table><thead><tr><th>#</th><th>เลข</th><th>Score</th></tr></thead><tbody id="ensemble-tbody"></tbody></table>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:16px">
+    <div class="section-h">📋 งวดเดียวกันในอดีต</div>
+    <div class="card">
+      <div class="tbl-wrap" style="max-height:300px;overflow-y:auto">
+        <table><thead><tr><th>วันที่</th><th>รางวัลที่ 1</th><th>3 บน</th><th>2 บน</th><th>3 ล่าง 1</th><th>3 ล่าง 2</th><th>2 ล่าง</th></tr></thead><tbody id="ref-tbody"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- HISTORY -->
+<div class="page" id="page-history">
+  <div class="page-title">ผลย้อนหลัง</div>
+  <div class="page-sub">ค้นหาและดูผลหวยย้อนหลัง</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><div class="ctrl-label">จำนวนงวด</div><select id="hist-n" onchange="loadHistory()"><option value="30">30</option><option value="50" selected>50</option><option value="100">100</option><option value="200">200</option></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">กรองเลข</div><input type="text" id="hist-search" placeholder="000..." oninput="filterHistory()" style="width:160px"></div>
+  </div>
+  <div class="card">
+    <div class="tbl-wrap" style="max-height:640px;overflow-y:auto">
+      <table><thead><tr><th>วันที่</th><th>รางวัลที่ 1</th><th>3 บน</th><th>2 บน</th><th>3 หน้า 1</th><th>3 หน้า 2</th><th>3 ล่าง 1</th><th>3 ล่าง 2</th><th>2 ล่าง</th></tr></thead><tbody id="hist-tbody"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- PAIRS -->
+<div class="page" id="page-pairs">
+  <div class="page-title">เลขคู่ &amp; ลำดับต่อเนื่อง</div>
+  <div class="page-sub">Cross-type correlation + Lag-1 pattern</div>
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchPairsTab('pairs-tab',this)">🔗 เลขคู่</button>
+    <button class="tab-btn" onclick="switchPairsTab('consec-tab',this)">⏭️ ลำดับต่อเนื่อง</button>
+  </div>
+  <div class="tab-panel active" id="pairs-tab">
+    <div class="ctrl-row">
+      <div class="ctrl-group"><div class="ctrl-label">ประเภท A</div><select id="pair-cola"></select></div>
+      <div class="ctrl-group"><div class="ctrl-label">ประเภท B</div><select id="pair-colb"></select></div>
+      <div class="ctrl-group"><div class="ctrl-label">เลข A ที่รู้</div><input type="text" id="pair-query" placeholder="000"></div>
+      <button class="btn btn-primary" onclick="loadPairs()">ค้นหา</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('pair-query').value='';loadPairsOverview()">Overview</button>
+    </div>
+    <div class="card"><div class="card-title" id="pairs-title">Overview</div>
+      <div class="tbl-wrap" style="max-height:420px;overflow-y:auto">
+        <table><thead><tr><th>เลข A</th><th>เลข B</th><th>ครั้ง</th><th>%</th></tr></thead><tbody id="pairs-tbody"></tbody></table>
+      </div>
+    </div>
+  </div>
+  <div class="tab-panel" id="consec-tab">
+    <div class="ctrl-row">
+      <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="consec-col"></select></div>
+      <div class="ctrl-group"><div class="ctrl-label">เลขงวดก่อน</div><input type="text" id="consec-query" placeholder="000"></div>
+      <button class="btn btn-primary" onclick="loadConsec()">ค้นหา</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('consec-query').value='';loadConsec()">Top pairs</button>
+    </div>
+    <div class="card"><div class="card-title" id="consec-title">Top คู่ที่ออกติดต่อกันบ่อยสุด</div>
+      <div class="tbl-wrap" style="max-height:420px;overflow-y:auto">
+        <table><thead><tr><th>#</th><th>เลขก่อน</th><th>เลขตามมา</th><th>ครั้ง</th><th>%</th></tr></thead><tbody id="consec-tbody"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DECADE -->
+<div class="page" id="page-decade">
+  <div class="page-title">เปรียบทศวรรษ</div>
+  <div class="page-sub">เลขยอดนิยมในแต่ละช่วงปี</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="dec-col" onchange="loadDecade()"></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">Top N</div><select id="dec-top" onchange="loadDecade()"><option value="10">10</option><option value="15" selected>15</option><option value="20">20</option></select></div>
+  </div>
+  <div class="card"><div class="card-title">ความถี่แยกตามช่วงปี</div><div style="height:320px"><canvas id="decade-chart"></canvas></div></div>
+  <div class="grid-2" style="margin-top:16px">
+    <div class="card"><div class="section-h">📈 ดาวรุ่ง</div>
+      <div class="tbl-wrap"><table><thead><tr><th>เลข</th><th>1994–2004</th><th>2005–2014</th><th>ล่าสุด</th></tr></thead><tbody id="rising-tbody"></tbody></table></div>
+    </div>
+    <div class="card"><div class="section-h">📉 ดาวร่วง</div>
+      <div class="tbl-wrap"><table><thead><tr><th>เลข</th><th>1994–2004</th><th>2005–2014</th><th>ล่าสุด</th></tr></thead><tbody id="falling-tbody"></tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<!-- WATCHLIST -->
+<div class="page" id="page-watchlist">
+  <div class="page-title">ตั๋วเสี่ยง</div>
+  <div class="page-sub">บันทึกเลขที่สนใจ ดูสถิติรวม</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="wl-col" onchange="loadWatchlist()"></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">เพิ่มเลข</div><input type="text" id="wl-input" placeholder="เช่น 053" maxlength="6"></div>
+    <button class="btn btn-primary" onclick="addToWatchlist()">➕ เพิ่ม</button>
+    <button class="btn btn-danger" onclick="clearWatchlist()">🗑️ ล้างทั้งหมด</button>
+  </div>
+  <div id="wl-list"></div>
+  <div id="wl-empty" class="card" style="text-align:center;color:var(--text3);padding:32px;display:none">เพิ่มเลขด้านบนเพื่อเริ่มวิเคราะห์</div>
+  <div class="card" id="wl-summary-card" style="display:none"><div class="card-title">สรุป</div><div class="grid-3" id="wl-metrics"></div></div>
+</div>
+
+<!-- ML -->
+<div class="page" id="page-ml">
+  <div class="page-title">ML Prediction</div>
+  <div class="page-sub">GradientBoosting — features: month, weekday, overdue, momentum, lag-1</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="ml-col"></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">งวด</div><select id="ml-date"></select></div>
+    <div id="ml-status-wrap"></div>
+    <button class="btn btn-green" onclick="trainML()" id="ml-train-btn">🚀 Train Model</button>
+    <button class="btn btn-primary" onclick="loadML()">🤖 Predict</button>
+  </div>
+  <div id="ml-not-ready" class="card" style="text-align:center;color:var(--text3);padding:24px;display:none">⚠️ Model ยังไม่ถูก train — กด Train ก่อน</div>
+  <div id="ml-results" style="display:none">
+    <div class="section-h">🤖 ML Top 5</div>
+    <div id="ml-badges" style="margin-bottom:16px"></div>
+    <div class="grid-2">
+      <div class="card"><div class="card-title">ML Ranking</div>
+        <div class="tbl-wrap" style="max-height:400px;overflow-y:auto">
+          <table><thead><tr><th>#</th><th>เลข</th><th>ML Score</th></tr></thead><tbody id="ml-tbody"></tbody></table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">ML vs สถิติ — เห็นตรงกัน</div>
+        <div id="ml-agree-wrap" style="margin-bottom:16px"></div>
+        <div class="card-title">Feature Importance</div>
+        <div style="height:260px"><canvas id="fi-chart"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- NETWORK -->
+<div class="page" id="page-network">
+  <div class="page-title">เครือข่ายเลข</div>
+  <div class="page-sub">เส้นเชื่อม = มักออกงวดเดียวกัน</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><div class="ctrl-label">ประเภท A</div><select id="net-cola"></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">ประเภท B</div><select id="net-colb"></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">ออกร่วมอย่างน้อย</div><input type="number" id="net-min" value="4" min="1" max="20" style="width:70px"></div>
+    <button class="btn btn-primary" onclick="loadNetwork()">สร้าง Network</button>
+  </div>
+  <div class="card">
+    <canvas id="network-canvas" style="width:100%;height:500px;display:block"></canvas>
+    <div style="font-size:.75rem;color:var(--text3);margin-top:8px;text-align:center">🟡 ประเภท A &nbsp; 🔵 ประเภท B &nbsp; เส้น = ออกร่วมกัน</div>
+  </div>
+</div>
+
+<!-- BACKTEST -->
+<div class="page" id="page-backtest">
+  <div class="page-title">Backtest รางวัลที่ 1</div>
+  <div class="page-sub">วัดความแม่น prediction ย้อนหลัง (out-of-sample)</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><div class="ctrl-label">Algorithm</div><select id="bt-algo"><option value="v4">v4 — Trigram+Ensemble</option><option value="v3">v3 — Hybrid</option><option value="v2">v2 — Beam+Bigram</option><option value="v1">v1 — Front3×Back3</option></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">งวดทดสอบ</div><input type="number" id="bt-n" value="50" min="10" max="200" style="width:80px"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Top N</div><input type="number" id="bt-topn" value="20" min="5" max="50" style="width:70px"></div>
+    <div style="display:flex;align-items:center;gap:6px;padding-top:20px"><input type="checkbox" id="bt-cmpv1" style="width:16px;height:16px"><label for="bt-cmpv1" style="font-size:.8rem;color:var(--text2)">เปรียบ v1</label></div>
+    <button class="btn btn-primary" onclick="loadBacktest()">▶ Run Backtest</button>
+  </div>
+  <div id="bt-loading" style="display:none;text-align:center;padding:40px;color:var(--text3)">กำลังรัน... (30–120 วินาที)</div>
+  <div id="bt-results" style="display:none">
+    <div class="grid-4" id="bt-metrics"></div>
+    <div class="card" style="margin-top:0"><div class="card-title">Lift Chart</div><div style="height:200px"><canvas id="bt-lift-chart"></canvas></div></div>
+  </div>
+</div>
+
+<!-- DIGIT ANALYSIS -->
+<div class="page" id="page-digit">
+  <div class="page-title">วิเคราะห์หลัก</div>
+  <div class="page-sub">ความถี่เลข 0–9 ในแต่ละตำแหน่งของรางวัลที่ 1</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><div class="ctrl-label">งวดเป้าหมาย</div><select id="dig-date"></select></div>
+    <button class="btn btn-primary" onclick="loadDigitAnalysis()">วิเคราะห์</button>
+  </div>
+  <div class="card"><div class="card-title">ความถี่แยกตำแหน่ง</div><div style="height:320px"><canvas id="digit-chart"></canvas></div></div>
+  <div class="card" style="margin-top:16px">
+    <div class="tbl-wrap"><table><thead><tr><th>ตำแหน่ง</th><th>เลข 0–9 (ความถี่)</th></tr></thead><tbody id="digit-tbody"></tbody></table></div>
+  </div>
+</div>
+
+</main>
+
+<div id="toast-container"></div>
+
+<script>
+// ─── Config ───────────────────────────────────────────────────────────────────
+const LOTTERY_TYPES = {
+  "รางวัลที่ 1":"prize1","3 ตัวบน":"top3","2 ตัวบน":"top2",
+  "3 ตัวหน้า 1":"front3_1","3 ตัวหน้า 2":"front3_2",
+  "3 ตัวล่าง 1":"back3_1","3 ตัวล่าง 2":"back3_2","2 ตัวล่าง":"bottom2"
+};
+const ALL_OPTS = Object.entries(LOTTERY_TYPES).map(([l,v])=>`<option value="${v}">${l}</option>`).join('');
+const NO_P1_OPTS = Object.entries(LOTTERY_TYPES).filter(([,v])=>v!=='prize1').map(([l,v])=>`<option value="${v}">${l}</option>`).join('');
+
+// ─── Chart registry ───────────────────────────────────────────────────────────
+const _charts = {};
+function mkChart(id, cfg){
+  if(_charts[id]){ _charts[id].destroy(); }
+  const el = document.getElementById(id);
+  if(!el) return;
+  _charts[id] = new Chart(el.getContext('2d'), cfg);
+  return _charts[id];
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg, type=''){
+  const el = Object.assign(document.createElement('div'), {className:'toast'+(type?' '+type:''), textContent:msg});
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(()=>el.remove(), 3500);
+}
+
+// ─── Nav ──────────────────────────────────────────────────────────────────────
+let currentPage = 'dashboard';
+document.querySelectorAll('.nav-item').forEach(item=>{
+  item.addEventListener('click',()=>{
+    const p = item.dataset.page;
+    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+    item.classList.add('active');
+    document.querySelectorAll('.page').forEach(pg=>pg.classList.remove('active'));
+    document.getElementById('page-'+p).classList.add('active');
+    if(p!==currentPage){ currentPage=p; onPageLoad(p); }
+  });
+});
+
+function onPageLoad(p){
+  if(p==='frequency') loadFreq();
+  else if(p==='hotcold') loadHotCold();
+  else if(p==='heatmap') loadHeatmap();
+  else if(p==='overdue') loadOverdue();
+  else if(p==='history') loadHistory();
+  else if(p==='pairs') loadPairsOverview();
+  else if(p==='decade') loadDecade();
+  else if(p==='watchlist') loadWatchlist();
+  else if(p==='ml') checkMLStatus();
+  else if(p==='digit') loadDigitAnalysis();
+}
+
+function switchPairsTab(panelId, btn){
+  document.querySelectorAll('#page-pairs .tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#page-pairs .tab-panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById(panelId).classList.add('active');
+}
+
+// ─── API ──────────────────────────────────────────────────────────────────────
+async function api(path){ const r = await fetch('/api/'+path); return r.json(); }
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+async function init(){
+  // Populate selects
+  [['freq-col','ALL'],['hc-col','ALL'],['hm-col','NO_P1'],['ov-col','ALL'],
+   ['pred-col','ALL'],['dec-col','ALL'],['wl-col','ALL'],['ml-col','NO_P1'],
+   ['pair-cola','NO_P1'],['pair-colb','NO_P1'],
+   ['consec-col','NO_P1'],['net-cola','NO_P1'],['net-colb','NO_P1']
+  ].forEach(([id,type])=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.innerHTML = type==='ALL' ? ALL_OPTS : NO_P1_OPTS;
+  });
+  document.getElementById('pair-colb').value='top2';
+  document.getElementById('net-colb').value='top2';
+  document.getElementById('freq-col').value='top3';
+  document.getElementById('hc-col').value='top3';
+  document.getElementById('ov-col').value='top3';
+
+  // Next draws
+  const nd = await api('next-draws');
+  const drawOpts = (nd.draws||[]).map(d=>`<option value="${d.date}">${d.label}</option>`).join('');
+  ['pred-date','ml-date','dig-date'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.innerHTML = drawOpts;
+  });
+
+  // pred-col change wires prize1 section
+  document.getElementById('pred-col').addEventListener('change',()=>{
+    document.getElementById('prize1-section').style.display = document.getElementById('pred-col').value==='prize1'?'block':'none';
+  });
+
+  await loadDashboard();
+}
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
+function fmtDate(s){
+  if(!s) return '—';
+  const [y,m,dd] = s.includes('-') ? s.split('-') : [s.slice(4),s.slice(2,4),s.slice(0,2)];
+  const M=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  return `${parseInt(dd)} ${M[parseInt(m)]} ${parseInt(y)+543}`;
+}
+
+async function loadDashboard(){
+  const d = await api('summary');
+  if(d.error){ toast(d.error,'error'); return; }
+  document.getElementById('s-total').textContent = (d.total_draws||0).toLocaleString();
+  document.getElementById('s-date').textContent = fmtDate(d.latest?.date);
+  document.getElementById('s-from').textContent = fmtDate(d.date_min);
+  const p1 = d.latest?.prize1||'';
+  document.getElementById('s-prize1').innerHTML = p1.split('').map(c=>`<div class="digit-box">${c}</div>`).join('');
+  const lt = d.latest||{};
+  document.getElementById('latest-draw-detail').innerHTML = `
+    <div><span style="color:var(--text3)">3 ตัวบน:</span> <b style="color:var(--gold2)">${lt.top3||'—'}</b></div>
+    <div><span style="color:var(--text3)">2 ตัวบน:</span> <b>${lt.top2||'—'}</b></div>
+    <div><span style="color:var(--text3)">3 ตัวหน้า:</span> <b>${lt.front3_1||'—'}</b> / <b>${lt.front3_2||'—'}</b></div>
+    <div><span style="color:var(--text3)">3 ตัวล่าง:</span> <b>${lt.back3_1||'—'}</b> / <b>${lt.back3_2||'—'}</b></div>
+    <div><span style="color:var(--text3)">2 ตัวล่าง:</span> <b>${lt.bottom2||'—'}</b></div>`;
+  const hot = d.hot_top3||[];
+  const maxHot = hot[0] ? (Object.values(hot[0]).find(v=>typeof v==='number'&&v>0)||1) : 1;
+  document.getElementById('hot-list').innerHTML = hot.slice(0,10).map(r=>{
+    const num = r['เลข']||'';
+    const cnt = r['ความถี่ล่าสุด']??r['จำนวนครั้ง']??0;
+    return `<div class="hc-row"><span class="hc-num">${num}</span><div class="hc-bar-wrap"><div class="hc-bar-fill hot-fill" style="width:${(cnt/maxHot*100).toFixed(0)}%"></div></div><span class="hc-val">${cnt}</span></div>`;
+  }).join('');
+  document.getElementById('recent-tbody').innerHTML = (d.recent_draws||[]).map(r=>`<tr>
+    <td>${r.date||''}</td><td><b style="font-family:'IBM Plex Mono',monospace">${r.prize1||''}</b></td>
+    <td>${r.top3||''}</td><td>${r.top2||''}</td><td>${r.front3_1||''}</td>
+    <td>${r.front3_2||''}</td><td>${r.back3_1||''}</td><td>${r.back3_2||''}</td><td>${r.bottom2||''}</td>
+  </tr>`).join('');
+}
+
+async function refreshData(){
+  toast('กำลังรีเฟรช...');
+  const r = await fetch('/api/refresh',{method:'POST'});
+  const d = await r.json();
+  toast(`อัปเดต ${d.rows} งวด`,'success');
+  loadDashboard();
+}
+
+// ─── Frequency ────────────────────────────────────────────────────────────────
+async function loadFreq(){
+  const col = document.getElementById('freq-col').value;
+  const top = document.getElementById('freq-top').value;
+  const d = await api(`freq-table?col=${col}&top_n=${top}`);
+  const rows = d.data||[];
+  const maxCnt = rows[0]?.['จำนวนครั้ง']||1;
+  document.getElementById('freq-tbody').innerHTML = rows.map((r,i)=>`<tr>
+    <td><span class="rank-badge ${i<3?'rank-'+(i+1):''}">${i+1}</span></td>
+    <td><b style="font-family:'IBM Plex Mono',monospace">${r['เลข']||''}</b></td>
+    <td>${r['จำนวนครั้ง']||0}</td>
+    <td>${(r['อัตรา (%)']||0).toFixed(2)}%</td>
+    <td><div class="progress-bar"><div class="progress-fill" style="width:${((r['จำนวนครั้ง']||0)/maxCnt*100).toFixed(0)}%"></div></div></td>
+  </tr>`).join('');
+  const never = d.never||[];
+  const neverEl = document.getElementById('never-list');
+  neverEl.innerHTML = never.length
+    ? `<div style="color:var(--text3);font-size:.78rem;margin-bottom:8px">ไม่เคยออก ${never.length} เลข:</div>`+never.map(n=>`<span class="num-badge" style="border-color:var(--text3);color:var(--text3)">${n}</span>`).join('')
+    : '<span style="color:var(--text3)">ทุกเลขเคยออกแล้ว</span>';
+  mkChart('freq-chart',{type:'bar',
+    data:{labels:rows.slice(0,20).map(r=>String(r['เลข']||'')),datasets:[{data:rows.slice(0,20).map(r=>r['จำนวนครั้ง']||0),backgroundColor:'rgba(200,168,75,0.7)',borderWidth:0}]},
+    options:chartOpts('ครั้ง')});
+}
+
+// ─── Hot/Cold ─────────────────────────────────────────────────────────────────
+async function loadHotCold(){
+  const col = document.getElementById('hc-col').value;
+  const months = document.getElementById('hc-months').value;
+  const d = await api(`hot-cold?col=${col}&months=${months}`);
+  const rows = d.data||[];
+  if(!rows.length){ toast('ไม่มีข้อมูล'); return; }
+  const keys = Object.keys(rows[0]);
+  const hotKey = keys.find(k=>k.includes('ล่าสุด')||k.includes('recent'))||keys.find(k=>k!=='เลข')||keys[1];
+  const cntKey = keys.find(k=>k.includes('จำนวน'))||hotKey;
+  const sorted = [...rows].sort((a,b)=>(b[hotKey]??0)-(a[hotKey]??0));
+  const hot10 = sorted.slice(0,10);
+  const cold10 = [...sorted].reverse().slice(0,10);
+  const maxH = hot10[0]?.[hotKey]||1;
+  const maxC = cold10.reduce((m,r)=>Math.max(m,r[hotKey]??0),0)||1;
+  function bars(items,key,max,cls){
+    return items.map(r=>{const v=r[key]??0;return`<div class="hc-row"><span class="hc-num">${r['เลข']||''}</span><div class="hc-bar-wrap"><div class="hc-bar-fill ${cls}" style="width:${(v/max*100).toFixed(0)}%"></div></div><span class="hc-val">${v}</span></div>`;}).join('');
+  }
+  document.getElementById('hot-bars').innerHTML = bars(hot10,hotKey,maxH,'hot-fill');
+  document.getElementById('cold-bars').innerHTML = bars(cold10,hotKey,maxC,'cold-fill');
+  const top20 = sorted.slice(0,20);
+  mkChart('hc-chart',{type:'bar',
+    data:{labels:top20.map(r=>String(r['เลข']||'')),datasets:[
+      {label:'ล่าสุด',data:top20.map(r=>r[hotKey]??0),backgroundColor:'rgba(240,84,84,0.7)'},
+      {label:'รวม',data:top20.map(r=>r[cntKey]??0),backgroundColor:'rgba(77,157,224,0.4)'}
+    ]},options:chartOpts('ครั้ง',true)});
+}
+
+// ─── Heatmap ──────────────────────────────────────────────────────────────────
+async function loadHeatmap(){
+  const col = document.getElementById('hm-col').value;
+  const d = await api(`heatmap?col=${col}`);
+  const rows = d.data||[];
+  const grid = Array.from({length:10},()=>Array(10).fill(0));
+  let maxV = 0;
+  rows.forEach(r=>{
+    const num = String(r['เลข']||'').padStart(2,'0');
+    const t=parseInt(num[0]), u=parseInt(num[1]);
+    if(t>=0&&t<10&&u>=0&&u<10){ grid[t][u]=r['จำนวนครั้ง']||0; if(grid[t][u]>maxV) maxV=grid[t][u]; }
+  });
+  let html=`<div style="display:grid;grid-template-columns:30px repeat(10,1fr);gap:2px;min-width:300px"><div></div>`;
+  for(let c=0;c<10;c++) html+=`<div style="text-align:center;font-size:.65rem;color:var(--text3);padding:2px">${c}</div>`;
+  for(let r=0;r<10;r++){
+    html+=`<div style="display:flex;align-items:center;font-size:.65rem;color:var(--text3)">${r}</div>`;
+    for(let c=0;c<10;c++){
+      const v=grid[r][c]; const pct=maxV>0?v/maxV:0;
+      html+=`<div class="hm-cell" style="background:rgba(200,168,75,${(0.05+pct*0.9).toFixed(2)});color:${pct>0.5?'#0a0a0a':'#9090a8'}" title="${r}${c}: ${v}ครั้ง">${v||''}</div>`;
+    }
+  }
+  html+='</div>';
+  document.getElementById('heatmap-grid').innerHTML = html;
+}
+
+// ─── Overdue ──────────────────────────────────────────────────────────────────
+async function loadOverdue(){
+  const col = document.getElementById('ov-col').value;
+  const top = document.getElementById('ov-top').value;
+  const d = await api(`overdue?col=${col}&top_n=${top}`);
+  const rows = d.data||[];
+  const maxOv = rows[0]?.['ค้างกี่งวด']||1;
+  document.getElementById('overdue-list').innerHTML = rows.map(r=>{
+    const ov=r['ค้างกี่งวด']||0;
+    let bc='ov-ok', bt=`ค้าง ${ov} งวด`;
+    if(ov>=50){bc='ov-warn';bt=`⚠️ ค้าง ${ov} งวด`;}
+    else if(ov>=20){bc='ov-caution';bt=`⏰ ค้าง ${ov} งวด`;}
+    return`<div class="overdue-item">
+      <span class="overdue-num">${r['เลข']||''}</span>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span class="overdue-badge ${bc}">${bt}</span>
+          <span style="font-size:.72rem;color:var(--text3)">โอกาส ${(r['โอกาสออก(%)']||0).toFixed(1)}%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill ${ov>=50?'red':ov>=20?'':'green'}" style="width:${(ov/maxOv*100).toFixed(0)}%"></div></div>
+        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">ล่าสุด: ${r['ออกล่าสุด']||'ไม่เคย'}</div>
+      </div></div>`;
+  }).join('');
+  mkChart('overdue-chart',{type:'bar',
+    data:{labels:rows.map(r=>String(r['เลข']||'')),datasets:[{label:'งวด',data:rows.map(r=>r['ค้างกี่งวด']||0),backgroundColor:rows.map(r=>(r['ค้างกี่งวด']||0)>=50?'rgba(240,84,84,0.7)':'rgba(200,168,75,0.6)'),borderWidth:0}]},
+    options:{...chartOpts('งวด'),indexAxis:'y'}});
+}
+
+// ─── Predict ──────────────────────────────────────────────────────────────────
+async function loadPredict(){
+  const col = document.getElementById('pred-col').value;
+  const date = document.getElementById('pred-date').value;
+  const topn = document.getElementById('pred-topn').value;
+  const isPrize1 = col==='prize1';
+
+  const conf = await api(`confidence?col=${col}&date=${date}`);
+  if(!conf.error){
+    document.getElementById('conf-banner').style.display='flex';
+    const lvl=conf.level||'MEDIUM';
+    const sc=document.getElementById('conf-score');
+    sc.textContent=(conf.score||0).toFixed(1); sc.className=`conf-score conf-${lvl}`;
+    const lv=document.getElementById('conf-level'); lv.textContent=`ระดับ: ${lvl}`; lv.className=`conf-${lvl}`;
+    document.getElementById('conf-reason').textContent=conf.reason||'';
+  }
+
+  let data=[], ensemble=[];
+  if(isPrize1){
+    const algo=document.getElementById('p1-algo').value;
+    const beam=document.getElementById('p1-beam').value;
+    const kb=document.getElementById('p1-kback').value;
+    const r=await api(`predict/prize1?algorithm=${algo}&top_n=${topn}&beam_width=${beam}&k_back=${kb}&date=${date}`);
+    data=r.predictions||[];
+  } else {
+    const r=await api(`predict-with-reasons?col=${col}&top_n=${topn}&date=${date}`);
+    data=r.data||[];
+    const er=await api(`ensemble?col=${col}&top_n=${topn}&date=${date}`);
+    ensemble=er.data||[];
+  }
+
+  document.getElementById('pred-top-badges').innerHTML=data.slice(0,5).map(r=>`<span class="num-badge">${r['เลข']||''}</span>`).join('');
+
+  const scoreKey=data[0]?Object.keys(data[0]).find(k=>k.includes('คะแนน')||k.includes('Score'))||'':'';
+  const maxScore=data[0]?.[scoreKey]||1;
+  document.getElementById('pred-tbody').innerHTML=data.map((r,i)=>`<tr>
+    <td><span class="rank-badge ${i<3?'rank-'+(i+1):''}">${i+1}</span></td>
+    <td><b style="font-family:'IBM Plex Mono',monospace">${r['เลข']||''}</b></td>
+    <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:80px"><div class="progress-fill" style="width:${((r[scoreKey]||0)/maxScore*100).toFixed(0)}%"></div></div><span style="font-size:.75rem;color:var(--text3)">${(r[scoreKey]||0).toFixed?.(4)}</span></div></td>
+    <td style="font-size:.72rem;color:var(--text2)">${r['เหตุผล']||''}</td>
+  </tr>`).join('');
+
+  mkChart('pred-chart',{type:'bar',
+    data:{labels:data.slice(0,15).map(r=>String(r['เลข']||'')),datasets:[{data:data.slice(0,15).map(r=>r[scoreKey]||0),backgroundColor:'rgba(200,168,75,0.7)',borderWidth:0}]},
+    options:chartOpts('คะแนน')});
+
+  const ensSection=document.getElementById('ensemble-section');
+  if(ensemble.length){
+    ensSection.style.display='block';
+    document.getElementById('ensemble-badges').innerHTML=ensemble.slice(0,5).map(r=>`<span class="num-badge agree">${r['เลข']||''}</span>`).join('');
+    const ek=Object.keys(ensemble[0]||{}).find(k=>k.includes('คะแนน')||k.includes('Score'))||'';
+    document.getElementById('ensemble-tbody').innerHTML=ensemble.map((r,i)=>`<tr><td>${i+1}</td><td><b>${r['เลข']||''}</b></td><td>${(r[ek]||0).toFixed?.(4)}</td></tr>`).join('');
+  } else ensSection.style.display='none';
+
+  // Ref draws (same day+month)
+  if(date){
+    const [,m,dd]=date.split('-');
+    const h=await api('history?n=500');
+    const refs=(h.data||[]).filter(r=>{
+      if(!r.date) return false;
+      const p=r.date.split('/');
+      return p[0]===dd&&p[1]===m;
+    }).slice(0,15);
+    document.getElementById('ref-tbody').innerHTML=refs.map(r=>`<tr>
+      <td>${r.date}</td><td>${r.prize1||''}</td><td>${r.top3||''}</td>
+      <td>${r.top2||''}</td><td>${r.back3_1||''}</td><td>${r.back3_2||''}</td><td>${r.bottom2||''}</td>
+    </tr>`).join('');
+  }
+}
+
+// ─── History ──────────────────────────────────────────────────────────────────
+let _histData=[];
+async function loadHistory(){
+  const n=document.getElementById('hist-n').value;
+  const d=await api(`history?n=${n}`);
+  _histData=d.data||[];
+  filterHistory();
+}
+function filterHistory(){
+  const q=document.getElementById('hist-search').value.trim().toLowerCase();
+  const rows=q?_histData.filter(r=>Object.values(r).some(v=>String(v).toLowerCase().includes(q))):_histData;
+  document.getElementById('hist-tbody').innerHTML=rows.map(r=>`<tr>
+    <td>${r.date||''}</td><td><b style="font-family:'IBM Plex Mono',monospace;color:var(--gold2)">${r.prize1||''}</b></td>
+    <td>${r.top3||''}</td><td>${r.top2||''}</td><td>${r.front3_1||''}</td>
+    <td>${r.front3_2||''}</td><td>${r.back3_1||''}</td><td>${r.back3_2||''}</td><td>${r.bottom2||''}</td>
+  </tr>`).join('');
+}
+
+// ─── Pairs ────────────────────────────────────────────────────────────────────
+async function loadPairsOverview(){
+  const cola=document.getElementById('pair-cola').value;
+  const colb=document.getElementById('pair-colb').value;
+  const d=await api(`pairs?col_a=${cola}&col_b=${colb}`);
+  document.getElementById('pairs-title').textContent=`Top 5 ${cola} → Top 3 ${colb}`;
+  const ck=`top3_${colb}`;
+  document.getElementById('pairs-tbody').innerHTML=(d.data||[]).map(r=>`<tr>
+    <td><b>${r[cola]||''}</b></td><td colspan="3">${r[ck]||'-'}</td>
+  </tr>`).join('');
+}
+async function loadPairs(){
+  const cola=document.getElementById('pair-cola').value;
+  const colb=document.getElementById('pair-colb').value;
+  const q=document.getElementById('pair-query').value.trim();
+  if(!q){ return loadPairsOverview(); }
+  const d=await api(`pairs?col_a=${cola}&col_b=${colb}&query=${q}&top_n=15`);
+  document.getElementById('pairs-title').textContent=`ถ้า ${cola}=${q} → ${colb} มักออก...`;
+  document.getElementById('pairs-tbody').innerHTML=(d.data||[]).map(r=>`<tr>
+    <td>${q}</td><td><b>${r['เลข']||''}</b></td>
+    <td>${r['จำนวนครั้ง']||0}</td><td>${(r['เปอร์เซ็นต์']||0).toFixed(1)}%</td>
+  </tr>`).join('');
+}
+async function loadConsec(){
+  const col=document.getElementById('consec-col').value;
+  const q=document.getElementById('consec-query').value.trim();
+  const url=q?`consecutive?col=${col}&query=${encodeURIComponent(q)}&top_n=15`:`consecutive?col=${col}&top_n=15`;
+  const d=await api(url);
+  document.getElementById('consec-title').textContent=q?`หลัง ${q} ออก → งวดถัดมา:`:'Top คู่ที่ออกติดต่อกัน';
+  document.getElementById('consec-tbody').innerHTML=(d.data||[]).map((r,i)=>`<tr>
+    <td>${i+1}</td>
+    <td>${r['เลขก่อน']||q||''}</td>
+    <td><b>${r['เลขตามมา']||r['คู่เลข (ก่อน→ตาม)']||r['เลข']||''}</b></td>
+    <td>${r['จำนวนครั้ง']||0}</td>
+    <td>${(r['เปอร์เซ็นต์']||0).toFixed(1)}%</td>
+  </tr>`).join('');
+}
+
+// ─── Decade ───────────────────────────────────────────────────────────────────
+async function loadDecade(){
+  const col=document.getElementById('dec-col').value;
+  const top=document.getElementById('dec-top').value;
+  const d=await api(`decade?col=${col}&top_n=${top}`);
+  if(!d.data.length) return;
+  const ey=d.end_year||2026;
+  const eras=['1994–2004','2005–2014',`2015–${ey}`];
+  const labels=d.data.map(r=>String(r['เลข']||''));
+  mkChart('decade-chart',{type:'bar',
+    data:{labels,datasets:eras.map((era,i)=>({label:era,data:d.data.map(r=>r[era]||0),backgroundColor:['#4C78A8aa','#F58518aa','#c8a84baa'][i],borderColor:['#4C78A8','#F58518','#c8a84b'][i],borderWidth:1}))},
+    options:chartOpts('ครั้ง',true)});
+  const le=eras[2];
+  const rising=d.data.filter(r=>(r[le]||0)>(r['1994–2004']||0)).slice(0,5);
+  const falling=d.data.filter(r=>(r[le]||0)<(r['1994–2004']||0)).slice(0,5);
+  function dRows(items){return items.map(r=>`<tr><td><b>${r['เลข']||''}</b></td><td>${r['1994–2004']||0}</td><td>${r['2005–2014']||0}</td><td><b style="color:var(--gold2)">${r[le]||0}</b></td></tr>`).join('');}
+  document.getElementById('rising-tbody').innerHTML=dRows(rising);
+  document.getElementById('falling-tbody').innerHTML=dRows(falling);
+}
+
+// ─── Watchlist ────────────────────────────────────────────────────────────────
+async function loadWatchlist(){
+  const col=document.getElementById('wl-col').value;
+  const d=await api(`watchlist?col=${col}`);
+  const listEl=document.getElementById('wl-list');
+  const emptyEl=document.getElementById('wl-empty');
+  const sumEl=document.getElementById('wl-summary-card');
+  if(!(d.numbers&&d.numbers.length)){listEl.innerHTML='';emptyEl.style.display='block';sumEl.style.display='none';return;}
+  emptyEl.style.display='none';sumEl.style.display='block';
+  listEl.innerHTML=(d.status||[]).map(r=>{
+    const ov=r['ค้างกี่งวด']||0;
+    let ah='';
+    if(ov===0) ah=`<span class="wl-alert alert-great">🎉 ออกงวดล่าสุด!</span>`;
+    else if(ov>=50) ah=`<span class="wl-alert alert-warn">⚠️ ค้าง ${ov} งวด</span>`;
+    else if(ov>=20) ah=`<span class="wl-alert alert-caution">⏰ ค้าง ${ov} งวด</span>`;
+    return`<div class="wl-item"><span class="wl-num">${r['เลข']||''}</span>
+      <div class="wl-info"><div>ออก ${r['ออกทั้งหมด']||0} ครั้ง (${(r['อัตรา (%)']||0).toFixed(2)}%) · ล่าสุด: ${r['ออกล่าสุด']||'ไม่เคย'}</div>${ah}</div>
+      <button class="btn btn-danger" style="padding:4px 10px;font-size:.72rem" onclick="removeWatchlist('${col}','${r['เลข']}')">✕</button>
+    </div>`;
+  }).join('');
+  const status=d.status||[];
+  if(status.length){
+    const avgR=(status.reduce((s,r)=>s+(r['อัตรา (%)']||0),0)/status.length).toFixed(2);
+    const mOv=status.reduce((a,b)=>(a['ค้างกี่งวด']||0)>(b['ค้างกี่งวด']||0)?a:b);
+    const mFr=status.reduce((a,b)=>(a['ออกทั้งหมด']||0)>(b['ออกทั้งหมด']||0)?a:b);
+    document.getElementById('wl-metrics').innerHTML=`
+      <div class="card"><div class="card-title">อัตราออกเฉลี่ย</div><div class="stat-val" style="font-size:1.4rem">${avgR}%</div></div>
+      <div class="card"><div class="card-title">ค้างนานสุด</div><div class="stat-val" style="font-size:1.1rem">${mOv['เลข']} (${mOv['ค้างกี่งวด']} งวด)</div></div>
+      <div class="card"><div class="card-title">ออกบ่อยสุด</div><div class="stat-val" style="font-size:1.1rem">${mFr['เลข']} (${mFr['ออกทั้งหมด']} ครั้ง)</div></div>`;
+  }
+}
+async function addToWatchlist(){
+  const col=document.getElementById('wl-col').value;
+  const num=document.getElementById('wl-input').value.trim();
+  if(!num){toast('ใส่เลขก่อน','error');return;}
+  await fetch('/api/watchlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({col,number:num})});
+  document.getElementById('wl-input').value='';
+  toast(`เพิ่ม ${num}`,'success'); loadWatchlist();
+}
+async function removeWatchlist(col,num){
+  await fetch(`/api/watchlist?col=${col}&number=${num}`,{method:'DELETE'});
+  toast(`ลบ ${num}`); loadWatchlist();
+}
+async function clearWatchlist(){
+  const col=document.getElementById('wl-col').value;
+  const d=await api(`watchlist?col=${col}`);
+  for(const n of d.numbers||[]) await fetch(`/api/watchlist?col=${col}&number=${n}`,{method:'DELETE'});
+  toast('ล้างแล้ว'); loadWatchlist();
+}
+
+// ─── ML ───────────────────────────────────────────────────────────────────────
+async function checkMLStatus(){
+  const col=document.getElementById('ml-col').value;
+  const d=await api(`ml-status?col=${col}`);
+  document.getElementById('ml-status-wrap').innerHTML=d.trained
+    ?`<span class="ml-status-badge ml-ready">✅ พร้อม</span>`
+    :`<span class="ml-status-badge ml-notready">⚠️ ยังไม่ train</span>`;
+  document.getElementById('ml-not-ready').style.display=d.trained?'none':'block';
+  document.getElementById('ml-results').style.display='none';
+  document.getElementById('ml-train-btn').textContent=d.trained?'🔄 Re-train':'🚀 Train Model';
+}
+async function trainML(){
+  const col=document.getElementById('ml-col').value;
+  const btn=document.getElementById('ml-train-btn');
+  btn.textContent='⏳ กำลัง train...'; btn.disabled=true; toast('เริ่ม train...');
+  const r=await fetch(`/api/ml-train?col=${col}`,{method:'POST'});
+  const d=await r.json();
+  btn.disabled=false;
+  if(d.error){toast('error: '+d.error,'error');btn.textContent='🚀 Train';return;}
+  toast('Train เสร็จ!','success'); checkMLStatus();
+}
+async function loadML(){
+  const col=document.getElementById('ml-col').value;
+  const date=document.getElementById('ml-date').value;
+  const d=await api(`ml-predict?col=${col}&top_n=20&date=${date}`);
+  if(d.error==='model_not_trained'){document.getElementById('ml-not-ready').style.display='block';return;}
+  if(d.error){toast('ML error: '+d.error,'error');return;}
+  document.getElementById('ml-not-ready').style.display='none';
+  document.getElementById('ml-results').style.display='block';
+  const rows=d.data||[];
+  document.getElementById('ml-badges').innerHTML=rows.slice(0,5).map(r=>`<span class="num-badge">${r['เลข']||''}</span>`).join('');
+  const sk=Object.keys(rows[0]||{}).find(k=>k.includes('Score')||k.includes('ML'))||'';
+  document.getElementById('ml-tbody').innerHTML=rows.map((r,i)=>`<tr><td>${i+1}</td><td><b style="font-family:'IBM Plex Mono',monospace">${r['เลข']||''}</b></td><td>${(r[sk]||0).toFixed?.(4)}</td></tr>`).join('');
+  const fi=d.feature_importance||[];
+  if(fi.length){
+    const fk=Object.keys(fi[0]).find(k=>k.includes('Importance'))||'Importance';
+    const nk=Object.keys(fi[0]).find(k=>k.includes('Feature'))||'Feature';
+    mkChart('fi-chart',{type:'bar',data:{labels:fi.slice(0,10).map(r=>r[nk]),datasets:[{data:fi.slice(0,10).map(r=>r[fk]||0),backgroundColor:'rgba(168,85,247,0.7)',borderWidth:0}]},options:{...chartOpts('Importance'),indexAxis:'y'}});
+  }
+  const sr=await api(`predict-with-reasons?col=${col}&top_n=20&date=${date}`);
+  const mlN=new Set(rows.map(r=>r['เลข'])), stN=new Set((sr.data||[]).map(r=>r['เลข']));
+  const common=[...mlN].filter(n=>stN.has(n));
+  document.getElementById('ml-agree-wrap').innerHTML=common.length
+    ?`<div style="font-size:.8rem;color:var(--text2);margin-bottom:6px">เห็นตรงกัน ${common.length} เลข:</div>`+common.map(n=>`<span class="num-badge agree">${n}</span>`).join('')
+    :'<span style="color:var(--text3);font-size:.8rem">ไม่มีเลขที่ตรงกัน</span>';
+}
+
+// ─── Network ──────────────────────────────────────────────────────────────────
+async function loadNetwork(){
+  const cola=document.getElementById('net-cola').value;
+  const colb=document.getElementById('net-colb').value;
+  const minW=document.getElementById('net-min').value;
+  const d=await api(`network?col_a=${cola}&col_b=${colb}&min_weight=${minW}`);
+  drawNetwork(d.nodes||[],d.edges||[]);
+}
+function drawNetwork(nodes,edges){
+  const canvas=document.getElementById('network-canvas');
+  const dpr=window.devicePixelRatio||1;
+  canvas.width=canvas.offsetWidth*dpr; canvas.height=canvas.offsetHeight*dpr;
+  const ctx=canvas.getContext('2d');
+  ctx.scale(dpr,dpr);
+  const W=canvas.offsetWidth,H=canvas.offsetHeight;
+  ctx.fillStyle='#12121e'; ctx.fillRect(0,0,W,H);
+  if(!nodes.length){ctx.fillStyle='#5a5a72';ctx.font='16px sans-serif';ctx.textAlign='center';ctx.fillText('ไม่มีข้อมูล — ลองลด min weight',W/2,H/2);return;}
+  const pos={};
+  nodes.forEach(n=>{pos[n.id||n]={x:W*0.1+Math.random()*(W*0.8),y:H*0.1+Math.random()*(H*0.8)};});
+  for(let i=0;i<200;i++){
+    nodes.forEach(a=>nodes.forEach(b=>{
+      if(a===b) return;
+      const pa=pos[a.id||a],pb=pos[b.id||b];
+      const dx=pa.x-pb.x,dy=pa.y-pb.y,dist=Math.sqrt(dx*dx+dy*dy)||1,f=2000/(dist*dist);
+      pa.x+=dx/dist*f; pa.y+=dy/dist*f;
+    }));
+    edges.forEach(e=>{
+      const pa=pos[e.source],pb=pos[e.target];
+      if(!pa||!pb) return;
+      const dx=pb.x-pa.x,dy=pb.y-pa.y,dist=Math.sqrt(dx*dx+dy*dy)||1,f=(dist-80)*0.05;
+      pa.x+=dx/dist*f; pa.y+=dy/dist*f; pb.x-=dx/dist*f; pb.y-=dy/dist*f;
+    });
+    nodes.forEach(n=>{const p=pos[n.id||n];p.x=Math.max(30,Math.min(W-30,p.x));p.y=Math.max(30,Math.min(H-30,p.y));});
+  }
+  const maxW=Math.max(...edges.map(e=>e.weight||1),1);
+  edges.forEach(e=>{
+    const pa=pos[e.source],pb=pos[e.target];
+    if(!pa||!pb) return;
+    ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y);
+    ctx.strokeStyle=`rgba(200,168,75,${0.1+(e.weight||1)/maxW*0.5})`;
+    ctx.lineWidth=1+(e.weight||1)/maxW*3; ctx.stroke();
+  });
+  nodes.forEach(n=>{
+    const p=pos[n.id||n],isA=n.type==='A';
+    ctx.beginPath(); ctx.arc(p.x,p.y,14,0,Math.PI*2);
+    ctx.fillStyle=isA?'rgba(200,168,75,0.85)':'rgba(77,157,224,0.85)'; ctx.fill();
+    ctx.fillStyle='#0a0a0a'; ctx.font='bold 10px IBM Plex Mono,monospace';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(String(n.id||n).slice(0,3),p.x,p.y);
+  });
+}
+
+// ─── Backtest ─────────────────────────────────────────────────────────────────
+async function loadBacktest(){
+  const algo=document.getElementById('bt-algo').value;
+  const n=document.getElementById('bt-n').value;
+  const topn=document.getElementById('bt-topn').value;
+  const cmpv1=document.getElementById('bt-cmpv1').checked;
+  document.getElementById('bt-loading').style.display='block';
+  document.getElementById('bt-results').style.display='none';
+  const d=await api(`backtest?n_draws=${n}&top_n=${topn}&algorithm=${algo}&compare_v1=${cmpv1}`);
+  document.getElementById('bt-loading').style.display='none';
+  if(d.error){toast('error: '+d.error,'error');return;}
+  document.getElementById('bt-results').style.display='block';
+  const fmt=v=>v!=null?(v*100).toFixed(1)+'%':'—';
+  document.getElementById('bt-metrics').innerHTML=`
+    <div class="card"><div class="card-title">Top-1 Hit Rate</div><div class="stat-val">${fmt(d.top1_rate)}</div><div class="stat-sub">${algo}</div></div>
+    <div class="card"><div class="card-title">Top-3 Hit Rate</div><div class="stat-val">${fmt(d.top3_rate)}</div></div>
+    <div class="card"><div class="card-title">Top-5 Hit Rate</div><div class="stat-val">${fmt(d.top5_rate)}</div></div>
+    <div class="card"><div class="card-title">งวดทดสอบ</div><div class="stat-val">${d.n_tested||n}</div><div class="stat-sub">${d.errors?'❌ '+d.errors+' error':''}</div></div>`;
+  const vd=[d.top1_rate,d.top3_rate,d.top5_rate].map(v=>(v||0)*100);
+  const v1d=[d.v1_top1_rate,d.v1_top3_rate,d.v1_top5_rate].map(v=>(v||0)*100);
+  mkChart('bt-lift-chart',{type:'bar',
+    data:{labels:['Top-1','Top-3','Top-5'],datasets:[
+      {label:algo,data:vd,backgroundColor:'rgba(200,168,75,0.7)',borderWidth:0},
+      ...(cmpv1&&d.v1_top1_rate!=null?[{label:'v1',data:v1d,backgroundColor:'rgba(77,157,224,0.5)',borderWidth:0}]:[])
+    ]},
+    options:{...chartOpts('%',true),scales:{y:{min:0,max:Math.max(...vd,...v1d,5)+5,ticks:{callback:v=>v+'%'}}}}});
+}
+
+// ─── Digit Analysis ───────────────────────────────────────────────────────────
+async function loadDigitAnalysis(){
+  const date=document.getElementById('dig-date').value;
+  const d=await api(`digit-analysis?date=${date}`);
+  const rows=d.data||[];
+  if(!rows.length){toast('ไม่มีข้อมูล');return;}
+  const positions=[...new Set(rows.map(r=>r['ตำแหน่ง']))].sort((a,b)=>a-b);
+  const digits=[0,1,2,3,4,5,6,7,8,9];
+  const colors=['#c8a84b','#f05454','#3dd68c','#4d9de0','#a855f7','#f0a84b'];
+  mkChart('digit-chart',{type:'bar',
+    data:{labels:digits.map(String),datasets:positions.map((pos,i)=>({
+      label:`ตำแหน่ง ${pos}`,
+      data:digits.map(d2=>{const r=rows.find(r=>r['ตำแหน่ง']===pos&&(r['เลข']===d2||String(r['เลข'])===String(d2)));return r?.['จำนวนครั้ง']||0;}),
+      backgroundColor:colors[i%colors.length]+'99',borderColor:colors[i%colors.length],borderWidth:1
+    }))},
+    options:chartOpts('ครั้ง',true)});
+  const grouped={};
+  rows.forEach(r=>{const p=r['ตำแหน่ง'];if(!grouped[p])grouped[p]=[];grouped[p].push(r);});
+  document.getElementById('digit-tbody').innerHTML=Object.entries(grouped).map(([pos,rs])=>`<tr>
+    <td><b>pos ${pos}</b></td>
+    <td>${[...rs].sort((a,b)=>(a['เลข']??0)-(b['เลข']??0)).map(r=>`<span style="margin-right:6px"><b style="color:var(--gold2)">${r['เลข']}</b>:<span style="color:var(--text3)">${r['จำนวนครั้ง']||0}</span></span>`).join('')}</td>
+  </tr>`).join('');
+}
+
+// ─── Chart defaults ───────────────────────────────────────────────────────────
+function chartOpts(yLabel='',legend=false){
+  return{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:legend,labels:{color:'#9090a8',font:{size:11}}},tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.y??ctx.parsed.x}`}}},scales:{x:{ticks:{color:'#9090a8',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'}},y:{ticks:{color:'#9090a8',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'},title:{display:!!yLabel,text:yLabel,color:'#5a5a72'}}}};
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
