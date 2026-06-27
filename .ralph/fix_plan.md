@@ -25,7 +25,7 @@
 ## Medium Priority
 - [x] Add trend page: ค้นหาแนวโน้มรายปีของเลขที่สนใจ — nav item + page-trend HTML + loadTrend() with bar chart and year table, color-coded (green≥3, gold≥1, grey=0)
 - [x] Add digit-freq page: วิเคราะห์หลักสำหรับทุกประเภท — added as second section on page-digit; df-col selector + loadDigitFreq() bar chart + table with deviation from 10% expected; auto-loads on digit page nav
-- [ ] Watchlist: show history of last 10 draws per number
+- [x] Watchlist: show history of last 10 draws per number — fetches /api/history?n=500 alongside watchlist, filters per-number, shows date pills inline under each watchlist item
 - [x] ML page: add col selector change → re-check status automatically (onchange="checkMLStatus()" on ml-col select)
 - [x] Decade chart: fix era label for current year dynamically — loadDecade() now sets #dec-era3-r and #dec-era3-f th text to `2015–${ey}`
 
