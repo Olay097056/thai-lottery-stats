@@ -501,6 +501,7 @@ function onPageLoad(p){
   else if(p==='decade') loadDecade();
   else if(p==='watchlist') loadWatchlist();
   else if(p==='ml') checkMLStatus();
+  else if(p==='network') loadNetwork();
   else if(p==='digit') loadDigitAnalysis();
 }
 
@@ -969,11 +970,16 @@ async function loadNetwork(){
 }
 function drawNetwork(nodes,edges){
   const canvas=document.getElementById('network-canvas');
+  // offsetWidth is 0 when the page isn't visible yet; fall back to parent or 800px
+  if(!canvas.offsetWidth){
+    requestAnimationFrame(()=>drawNetwork(nodes,edges));
+    return;
+  }
   const dpr=window.devicePixelRatio||1;
-  canvas.width=canvas.offsetWidth*dpr; canvas.height=canvas.offsetHeight*dpr;
+  const W=canvas.offsetWidth, H=canvas.offsetHeight||500;
+  canvas.width=W*dpr; canvas.height=H*dpr;
   const ctx=canvas.getContext('2d');
   ctx.scale(dpr,dpr);
-  const W=canvas.offsetWidth,H=canvas.offsetHeight;
   ctx.fillStyle='#12121e'; ctx.fillRect(0,0,W,H);
   if(!nodes.length){ctx.fillStyle='#5a5a72';ctx.font='16px sans-serif';ctx.textAlign='center';ctx.fillText('ไม่มีข้อมูล — ลองลด min weight',W/2,H/2);return;}
   const pos={};

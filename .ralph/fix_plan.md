@@ -17,7 +17,7 @@
 - [x] Fix heatmap page: hm-col select now uses TWO_DIGIT_OPTS (top2, bottom2 only) via new const in index.html
 - [x] Fix predict page: reference draws filter — VERIFIED OK: code correctly splits YYYY-MM-DD and compares with DD/MM/YYYY history dates
 - [x] Add loading spinner to all API calls in index.html — global #api-spinner with in-flight counter, shows on first api() call and hides when all complete
-- [ ] Fix network canvas sizing on page load (offsetWidth=0 before visible)
+- [x] Fix network canvas sizing on page load — drawNetwork now defers via requestAnimationFrame if offsetWidth=0; network page added to onPageLoad for auto-load on navigation
 - [ ] Prediction UI: show which signals drove the top recommendation (top 3 reasons per number)
 - [ ] Prediction UI: add "ความเชื่อมั่นรวม" progress bar per candidate based on how many signals agree
 - [ ] Prize1 predict: validate that front3 + back3 combination actually equals full 6-digit number before showing
