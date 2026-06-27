@@ -32,7 +32,7 @@
 ## Low Priority
 - [ ] Add CLAUDE.md with project architecture overview
 - [x] Add .gitignore for *.pyc and *.pkl files
-- [ ] Sidebar: show current draw date from /api/summary
+- [x] Sidebar: show current draw date from /api/summary — sidebar footer now shows "งวดล่าสุด: DD/MM/YYYY" using latest.date; fires async on init so it never blocks page load
 
 ## Completed
 - [x] Project enabled for Ralph
