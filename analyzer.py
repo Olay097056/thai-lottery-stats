@@ -843,7 +843,7 @@ def predict_prize1_ultimate(
     back_scores_norm: dict[str, float] = {}
     for num, stat_score in zip(_bk, _bv):
         hot_score = hot_back3_counts.get(num, 0) / hot_back3_max
-        back_scores_norm[num] = 0.85 * stat_score + 0.15 * hot_score
+        back_scores_norm[num] = 0.92 * stat_score + 0.08 * hot_score
     back_top = sorted(back_scores_norm, key=back_scores_norm.get, reverse=True)[:k_back]
 
     # ── Single optimized beam search (front3 positions 0-2) ──
