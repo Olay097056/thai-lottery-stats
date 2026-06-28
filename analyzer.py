@@ -605,6 +605,70 @@ def _p1_hot_digit_scores(valid: pd.Series, n_recent: int = 20, alpha: float = 0.
     return scores / scores.sum(axis=1, keepdims=True)
 
 
+def _p1_overdue_digit_scores(valid: pd.Series) -> np.ndarray:
+    """
+    Returns (3, 10) — geometric overdue probability for each digit at front3 positions.
+    For position p and digit d: P = 1 - (1 - base_freq)^n_since_last_appearance.
+    Captures "due" digits that haven't appeared recently at a given position.
+    """
+    arr = valid.values
+    lengths = np.array([len(v) for v in arr])
+    arr = arr[lengths == 6]
+    scores = np.ones((3, 10)) * 0.1  # default low overdue
+    if len(arr) == 0:
+        return scores / scores.sum(axis=1, keepdims=True)
+    try:
+        digits = np.array([[int(v[i]) for i in range(3)] for v in arr], dtype=np.int8)
+    except ValueError:
+        rows = []
+        for v in arr:
+            try:
+                rows.append([int(v[i]) for i in range(3)])
+            except ValueError:
+                pass
+        if not rows:
+            return scores / scores.sum(axis=1, keepdims=True)
+        digits = np.array(rows, dtype=np.int8)
+    n_total = len(digits)
+    for pos in range(3):
+        col = digits[:, pos]
+        for d in range(10):
+            base_freq = float(np.mean(col == d)) or 0.1
+            # find last occurrence index
+            occ = np.where(col == d)[0]
+            n_since = n_total - occ[-1] - 1 if len(occ) > 0 else n_total
+            scores[pos, d] = 1.0 - (1.0 - base_freq) ** n_since
+    return scores / np.maximum(scores.sum(axis=1, keepdims=True), 1e-12)
+
+
+def _p1_quadgram_seam(valid: pd.Series, alpha: float = 1.0) -> np.ndarray:
+    """
+    Returns (10,10,10,10) — P(d3 | d0, d1, d2) across the front3/back3 seam.
+    Uses Laplace smoothing alpha=1.0 (higher than trigram because 10^4 cells is sparse).
+    """
+    mat = np.full((10, 10, 10, 10), alpha)
+    arr = valid.values
+    lengths = np.array([len(v) for v in arr])
+    arr = arr[lengths == 6]
+    if len(arr) == 0:
+        return mat / mat.sum(axis=3, keepdims=True)
+    try:
+        digits = np.array([[int(v[i]) for i in range(6)] for v in arr], dtype=np.int8)
+    except ValueError:
+        rows = []
+        for v in arr:
+            try:
+                rows.append([int(v[i]) for i in range(6)])
+            except ValueError:
+                pass
+        if not rows:
+            return mat / mat.sum(axis=3, keepdims=True)
+        digits = np.array(rows, dtype=np.int8)
+    # d0,d1,d2 → d3: positions 0,1,2 → 3
+    np.add.at(mat, (digits[:, 0], digits[:, 1], digits[:, 2], digits[:, 3]), 1.0)
+    return mat / np.maximum(mat.sum(axis=3, keepdims=True), 1e-12)
+
+
 def _p1_trigram_matrix(valid: pd.Series, alpha: float = 0.5) -> np.ndarray:
     """
     shape (4, 10, 10, 10) — P(d_{i+2} | d_i, d_{i+1}), start positions 0-3.
@@ -743,10 +807,15 @@ def predict_prize1_ultimate(
         return pd.DataFrame()
 
     # ── Precompute all matrices (shared, computed once) ──
-    pos_scores_6  = _p1_pos_digit_scores(df_sorted, valid, target_date)  # (6,10)
-    pair_matrix_5 = _p1_pair_matrix(valid)                               # (5,10,10)
-    trigram_4     = _p1_trigram_matrix(valid)                            # (4,10,10,10)
-    hot_scores_3  = _p1_hot_digit_scores(valid, n_recent=20)             # (3,10) last-20 draws
+    pos_scores_6   = _p1_pos_digit_scores(df_sorted, valid, target_date)  # (6,10)
+    pair_matrix_5  = _p1_pair_matrix(valid)                               # (5,10,10)
+    trigram_4      = _p1_trigram_matrix(valid)                            # (4,10,10,10)
+    quadgram_seam  = _p1_quadgram_seam(valid)                             # (10,10,10,10)
+    hot_scores_3   = _p1_hot_digit_scores(valid, n_recent=20)             # (3,10) last-20 draws
+    overdue_3      = _p1_overdue_digit_scores(valid)                      # (3,10) geometric overdue
+    # Blend overdue into hot signal: 70% hot + 30% overdue → combined positional boost
+    hot_combined_3 = 0.70 * hot_scores_3 + 0.30 * overdue_3
+    hot_combined_3 = hot_combined_3 / np.maximum(hot_combined_3.sum(axis=1, keepdims=True), 1e-12)
     mean_ds, std_ds = _p1_digitsum_dist(valid, target_date, df_sorted)
     mean_ds, std_ds = float(mean_ds), float(std_ds)
 
@@ -766,7 +835,7 @@ def predict_prize1_ultimate(
         pos_scores_6[:3], pair_matrix_5[:2], trigram_4[0],
         beam_width=beam_width,
         pair_w=0.28, trig_w=0.32,
-        hot_scores=hot_scores_3, hot_w=0.15,
+        hot_scores=hot_combined_3, hot_w=0.15,
     )
 
     if not beams:
@@ -776,9 +845,10 @@ def predict_prize1_ultimate(
     f_max = beams[0][1]
     f_rng = f_max - f_min if f_max > f_min else 1.0
 
-    # ── Extended junction: bigram + trigram across front3/back3 seam ──
-    pair_junc = pair_matrix_5[2]   # (10,10) — P(d3|d2)
+    # ── Extended junction: bigram + trigram + quadgram across front3/back3 seam ──
+    pair_junc = pair_matrix_5[2]   # (10,10)    — P(d3|d2)
     trig_junc = trigram_4[1]       # (10,10,10) — P(d3|d1,d2)
+    # quadgram_seam                # (10,10,10,10) — P(d3|d0,d1,d2)
 
     # ── Lag penalty for last 2 draws ──
     last_draws = {
@@ -797,6 +867,7 @@ def predict_prize1_ultimate(
         f_str = "".join(map(str, front_digits))
         front_norm = (front_ls - f_min) / f_rng
         try:
+            d0_f = int(f_str[0])
             d1_f = int(f_str[1])
             d2_f = int(f_str[2])
         except (ValueError, IndexError):
@@ -814,8 +885,10 @@ def predict_prize1_ultimate(
 
             b_norm = back_scores_norm.get(b_str, 0.0)
 
-            # Extended junction: 60% bigram + 40% trigram
-            junction = 0.60 * float(pair_junc[d2_f, d3_b]) + 0.40 * float(trig_junc[d1_f, d2_f, d3_b])
+            # Junction: 40% bigram + 35% trigram + 25% quadgram (uses full front3 context)
+            junction = (0.40 * float(pair_junc[d2_f, d3_b]) +
+                        0.35 * float(trig_junc[d1_f, d2_f, d3_b]) +
+                        0.25 * float(quadgram_seam[d0_f, d1_f, d2_f, d3_b]))
 
             # Weighted score: back3 slightly dominant over front3
             raw = 0.40 * front_norm + 0.15 * junction + 0.45 * b_norm
