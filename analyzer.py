@@ -805,14 +805,16 @@ def prize1_backtest(
     df: pd.DataFrame,
     n_draws: int = 50,
     top_n: int = 20,
-    beam_width: int = 100,
-    k_back: int = 30,
+    beam_width: int = 500,
+    k_back: int = 100,
 ) -> dict:
     """
-    Out-of-sample backtest for predict_prize1_ultimate.
+    Out-of-sample backtest for predict_prize1_ultimate — decomposed metrics.
 
-    For each of last n_draws with valid prize1, uses ONLY data before that draw
-    (proper train/test split — no data leakage).
+    Reports front3 hit rate, back3 hit rate, and combined hit rate separately.
+    Decomposed metrics are more meaningful because:
+      - combined prize1 hit needs both halves right simultaneously (1/1M space)
+      - front3 or back3 alone have meaningful lift signal in ~100 draws
     """
     df_sorted = df.sort_values("date").reset_index(drop=True)
     prize1_raw = df_sorted["prize1"].astype(str)
@@ -821,33 +823,76 @@ def prize1_backtest(
     test_idx = valid_idx[-min(n_draws, len(valid_idx)):]
 
     n_tested = len(test_idx)
-    hits = 0
+    hits_combined = 0
+    hits_front3 = 0
+    hits_back3 = 0
     errors = 0
+    unique_front3_counts: list[int] = []
+    unique_back3_counts: list[int] = []
 
     for idx in test_idx:
         actual = prize1_raw.iloc[idx]
+        actual_front = actual[:3]
+        actual_back = actual[3:]
         df_train = df_sorted.iloc[:idx]
         td = df_sorted["date"].iloc[idx]
         try:
-            pred = predict_prize1_ultimate(df_train, td, top_n=top_n, beam_width=beam_width, k_back=k_back)
-            if not pred.empty and actual in pred["เลข"].values:
-                hits += 1
+            pred = predict_prize1_ultimate(
+                df_train, td, top_n=top_n, beam_width=beam_width, k_back=k_back
+            )
+            if pred.empty:
+                continue
+            uniq_f = pred["หน้า 3"].nunique()
+            uniq_b = pred["หลัง 3"].nunique()
+            unique_front3_counts.append(uniq_f)
+            unique_back3_counts.append(uniq_b)
+            if actual in pred["เลข"].values:
+                hits_combined += 1
+            if actual_front in pred["หน้า 3"].values:
+                hits_front3 += 1
+            if actual_back in pred["หลัง 3"].values:
+                hits_back3 += 1
         except Exception as exc:
             if errors == 0:
                 print("[backtest] first error at draw " + str(idx) + ": " + str(exc))
             errors += 1
 
-    random_pool_rate = top_n / 1_000_000
+    n = n_tested or 1
+    front3_rate = hits_front3 / n
+    back3_rate = hits_back3 / n
+    combined_rate = hits_combined / n
+
+    # Random baselines use avg unique candidates (tracked per draw)
+    avg_unique_front3 = sum(unique_front3_counts) / len(unique_front3_counts) if unique_front3_counts else top_n
+    avg_unique_back3  = sum(unique_back3_counts)  / len(unique_back3_counts)  if unique_back3_counts  else top_n
+    front3_random  = avg_unique_front3 / 1_000
+    back3_random   = avg_unique_back3  / 1_000
+    combined_random = top_n / 1_000_000
 
     return {
-        "n_tested":    n_tested,
-        "top_n":       top_n,
-        "hits":        hits,
-        "rate":        hits / n_tested if n_tested else 0.0,
-        "random_rate": random_pool_rate,
-        "lift":        (hits / n_tested / random_pool_rate) if n_tested else 0.0,
-        "algorithm":   "ultimate",
-        "errors":      errors,
+        "n_tested":            n_tested,
+        "top_n":               top_n,
+        "beam_width":          beam_width,
+        "k_back":              k_back,
+        # Combined 6-digit
+        "hits":                hits_combined,
+        "rate":                combined_rate,
+        "random_rate":         combined_random,
+        "lift":                combined_rate / combined_random if combined_random else 0.0,
+        # Front3 (pos 0-2) — unique front3 values in top_n predictions
+        "front3_hits":         hits_front3,
+        "front3_rate":         front3_rate,
+        "front3_random":       front3_random,
+        "front3_lift":         front3_rate / front3_random if front3_random else 0.0,
+        "avg_unique_front3":   round(avg_unique_front3, 1),
+        # Back3 (pos 3-5) — unique back3 values in top_n predictions
+        "back3_hits":          hits_back3,
+        "back3_rate":          back3_rate,
+        "back3_random":        back3_random,
+        "back3_lift":          back3_rate / back3_random if back3_random else 0.0,
+        "avg_unique_back3":    round(avg_unique_back3, 1),
+        "algorithm":           "ultimate",
+        "errors":              errors,
     }
 
 

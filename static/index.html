@@ -1101,20 +1101,38 @@ async function loadBacktest(){
   document.getElementById('bt-loading').style.display='none';
   if(d.error){toast('error: '+d.error,'error');return;}
   document.getElementById('bt-results').style.display='block';
-  const fmt=v=>v!=null?(v*100).toFixed(1)+'%':'—';
-  const liftFmt=v=>v!=null?v.toFixed(2)+'x':'—';
+  const pct=v=>v!=null?(v*100).toFixed(2)+'%':'—';
+  const lx=v=>v!=null?v.toFixed(2)+'x':'—';
+  const liftColor=v=>v>=2?'#3dd68c':v>=1.2?'#c8a84b':'#f05454';
   document.getElementById('bt-metrics').innerHTML=`
-    <div class="card"><div class="card-title">Hit Rate (Top-${topn})</div><div class="stat-val">${fmt(d.rate)}</div><div class="stat-sub">Ultimate Algorithm</div></div>
-    <div class="card"><div class="card-title">Lift vs Random</div><div class="stat-val">${liftFmt(d.lift)}</div><div class="stat-sub">สูงกว่าสุ่ม ${liftFmt(d.lift)}</div></div>
-    <div class="card"><div class="card-title">Random Rate</div><div class="stat-val">${fmt(d.random_rate)}</div><div class="stat-sub">Baseline</div></div>
-    <div class="card"><div class="card-title">งวดทดสอบ</div><div class="stat-val">${d.n_tested||n}</div><div class="stat-sub">${d.errors?'❌ '+d.errors+' error':''}</div></div>`;
-  const rate=(d.rate||0)*100;
-  const rand=(d.random_rate||0)*100;
+    <div class="card">
+      <div class="card-title">🎯 Front3 Hit Rate (Top-${topn})</div>
+      <div class="stat-val">${pct(d.front3_rate)}</div>
+      <div class="stat-sub" style="color:${liftColor(d.front3_lift||0)}">Lift ${lx(d.front3_lift)} vs สุ่ม ${pct(d.front3_random)}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🎯 Back3 Hit Rate (Top-${topn})</div>
+      <div class="stat-val">${pct(d.back3_rate)}</div>
+      <div class="stat-sub" style="color:${liftColor(d.back3_lift||0)}">Lift ${lx(d.back3_lift)} vs สุ่ม ${pct(d.back3_random)}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🏆 Prize1 Combined (Top-${topn})</div>
+      <div class="stat-val">${d.hits||0} hits</div>
+      <div class="stat-sub" style="color:${liftColor(d.lift||0)}">Lift ${lx(d.lift)} | ${pct(d.rate)} vs สุ่ม ${pct(d.random_rate)}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">📊 งวดทดสอบ</div>
+      <div class="stat-val">${d.n_tested||n}</div>
+      <div class="stat-sub">beam=${d.beam_width||500} k_back=${d.k_back||100} ${d.errors?'❌ '+d.errors+' err':''}</div>
+    </div>`;
   mkChart('bt-lift-chart',{type:'bar',
-    data:{labels:['Hit Rate','Random Rate'],datasets:[
-      {label:'Ultimate',data:[rate,rand],backgroundColor:['rgba(200,168,75,0.7)','rgba(120,120,120,0.4)'],borderWidth:0}
+    data:{labels:['Front3 Lift','Back3 Lift','Combined Lift','Random (1x)'],datasets:[
+      {label:'Lift vs Random',
+       data:[+(d.front3_lift||0).toFixed(3),+(d.back3_lift||0).toFixed(3),+(d.lift||0).toFixed(3),1],
+       backgroundColor:['rgba(61,214,140,0.7)','rgba(77,157,224,0.7)','rgba(200,168,75,0.7)','rgba(120,120,120,0.4)'],
+       borderWidth:0}
     ]},
-    options:{...chartOpts('%',true),scales:{y:{min:0,ticks:{callback:v=>v+'%'}}}}});
+    options:{...chartOpts('x',true),scales:{y:{min:0,ticks:{callback:v=>v+'x'}}}}});
 }
 
 // ─── Digit Analysis ───────────────────────────────────────────────────────────

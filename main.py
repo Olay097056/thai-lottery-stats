@@ -177,8 +177,8 @@ def api_hot_cold(
 def api_backtest(
     n_draws: int = Query(50, ge=10, le=200),
     top_n: int = Query(20, ge=5, le=50),
-    beam_width: int = Query(150, ge=50, le=300),
-    k_back: int = Query(50, ge=10, le=100),
+    beam_width: int = Query(500, ge=50, le=1000),
+    k_back: int = Query(100, ge=10, le=200),
 ):
     df = get_df()
     try:
