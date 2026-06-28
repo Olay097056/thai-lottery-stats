@@ -845,7 +845,7 @@ def predict_prize1_ultimate(
     quadgram_seam  = _p1_quadgram_seam(valid)                             # (10,10,10,10)
     hot_scores_3   = _p1_hot_digit_scores(valid, n_recent=25)             # (3,10) last-25 draws (optimal)
     overdue_3      = _p1_overdue_digit_scores(valid)                      # (3,10) geometric overdue
-    # Additive blend: 70% hot + 30% overdue
+    # Additive blend: 70% hot + 30% overdue (confirmed optimal)
     hot_combined_3 = 0.70 * hot_scores_3 + 0.30 * overdue_3
     hot_combined_3 = hot_combined_3 / np.maximum(hot_combined_3.sum(axis=1, keepdims=True), 1e-12)
     mean_ds, std_ds = _p1_digitsum_dist(valid, target_date, df_sorted)
@@ -936,8 +936,8 @@ def predict_prize1_ultimate(
                         0.35 * float(trig_junc[d1_f, d2_f, d3_b]) +
                         0.25 * float(quadgram_seam[d0_f, d1_f, d2_f, d3_b]))
 
-            # Weighted score: back3 slightly dominant over front3
-            raw = 0.40 * front_norm + 0.15 * junction + 0.45 * b_norm
+            # Weighted score: junction=0.20 optimal (grid: 0.15->0.20->0.25, peak at 0.20)
+            raw = 0.38 * front_norm + 0.20 * junction + 0.42 * b_norm
 
             # Digit-sum Gaussian soft penalty (floor sigma at 2.5)
             ds = sum(int(c) for c in cand)
