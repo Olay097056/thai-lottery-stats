@@ -819,15 +819,32 @@ def predict_prize1_ultimate(
     mean_ds, std_ds = _p1_digitsum_dist(valid, target_date, df_sorted)
     mean_ds, std_ds = float(mean_ds), float(std_ds)
 
-    # ── Back3: full 10-signal top3 predictor ──
+    # ── Back3: full 10-signal top3 predictor + hot/overdue boost ──
     back_pred = predict_numbers(df, "top3", target_date, top_n=None)
     if back_pred is None or back_pred.empty:
         return pd.DataFrame()
     back_max = float(back_pred["คะแนนรวม"].max()) or 1.0
     _bk = back_pred["เลข"].astype(str).str.zfill(3)
     _bv = back_pred["คะแนนรวม"].astype(float) / back_max
-    back_scores_norm: dict[str, float] = dict(zip(_bk, _bv))
-    back_top = list(back_scores_norm.keys())[:k_back]
+
+    # Build hot/overdue signal for back3 from recent top3 prize1 digits (pos 3-5)
+    hot_b3  = _p1_hot_digit_scores(valid, n_recent=20)[0]   # reuse pos0 won't work — need separate
+    # Compute explicitly from prize1 back3 (pos 3,4,5)
+    arr_b3 = valid.values
+    arr_b3 = arr_b3[np.array([len(v) for v in arr_b3]) == 6]
+    recent_b3 = arr_b3[-20:] if len(arr_b3) >= 20 else arr_b3
+    hot_back3_counts: dict[str, float] = {}
+    for v in recent_b3:
+        s = v[3:]
+        hot_back3_counts[s] = hot_back3_counts.get(s, 0) + 1
+    hot_back3_max = max(hot_back3_counts.values(), default=1)
+
+    # Blend: 85% statistical + 15% hot-back3 recency
+    back_scores_norm: dict[str, float] = {}
+    for num, stat_score in zip(_bk, _bv):
+        hot_score = hot_back3_counts.get(num, 0) / hot_back3_max
+        back_scores_norm[num] = 0.85 * stat_score + 0.15 * hot_score
+    back_top = sorted(back_scores_norm, key=back_scores_norm.get, reverse=True)[:k_back]
 
     # ── Single optimized beam search (front3 positions 0-2) ──
     # Weights: pos=0.25, pair=0.28, trig=0.32, hot=0.15 (all sum to 1.0)
