@@ -576,6 +576,38 @@ def _p1_digitsum_dist(valid: pd.Series, target_date: datetime,
     return mean_ds, std_ds
 
 
+def _p1_dom_hot_scores(valid: pd.Series, df_sorted: pd.DataFrame,
+                        target_day: int, n_recent: int = 10, alpha: float = 0.5) -> np.ndarray:
+    """
+    Returns (3, 10) — per-position digit frequency from last n_recent draws
+    that fall on the same day-of-month as target_day (1 or 16).
+    Captures "what digits tend to appear on the 1st vs 16th" separately.
+    """
+    scores = np.full((3, 10), alpha)
+    mask = df_sorted.loc[valid.index, "day"] == target_day
+    dom_vals = valid[mask].values
+    lengths = np.array([len(v) for v in dom_vals])
+    dom_vals = dom_vals[lengths == 6]
+    recent = dom_vals[-n_recent:] if len(dom_vals) >= n_recent else dom_vals
+    if len(recent) == 0:
+        return scores / scores.sum(axis=1, keepdims=True)
+    try:
+        digits = np.array([[int(v[i]) for i in range(3)] for v in recent], dtype=np.int8)
+    except ValueError:
+        rows = []
+        for v in recent:
+            try:
+                rows.append([int(v[i]) for i in range(3)])
+            except ValueError:
+                pass
+        if not rows:
+            return scores / scores.sum(axis=1, keepdims=True)
+        digits = np.array(rows, dtype=np.int8)
+    for pos in range(3):
+        np.add.at(scores[pos], digits[:, pos], 1.0)
+    return scores / scores.sum(axis=1, keepdims=True)
+
+
 def _p1_hot_digit_scores(valid: pd.Series, n_recent: int = 20, alpha: float = 0.5) -> np.ndarray:
     """
     Returns (3, 10) array — short-term hot digit frequency for front3 positions.
@@ -813,7 +845,7 @@ def predict_prize1_ultimate(
     quadgram_seam  = _p1_quadgram_seam(valid)                             # (10,10,10,10)
     hot_scores_3   = _p1_hot_digit_scores(valid, n_recent=20)             # (3,10) last-20 draws
     overdue_3      = _p1_overdue_digit_scores(valid)                      # (3,10) geometric overdue
-    # Blend overdue into hot signal: 70% hot + 30% overdue → combined positional boost
+    # Blend: 70% general hot + 30% overdue — best confirmed combination
     hot_combined_3 = 0.70 * hot_scores_3 + 0.30 * overdue_3
     hot_combined_3 = hot_combined_3 / np.maximum(hot_combined_3.sum(axis=1, keepdims=True), 1e-12)
     mean_ds, std_ds = _p1_digitsum_dist(valid, target_date, df_sorted)

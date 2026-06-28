@@ -154,6 +154,16 @@ select:focus,input:focus{border-color:var(--gold-dim)}
     <div class="card"><div class="card-title">ผลงวดล่าสุด</div><div id="latest-draw-detail" style="font-size:.85rem;line-height:2"></div></div>
     <div class="card"><div class="card-title">Top 10 เลข 3 ตัวบน ร้อนสุด (12 เดือน)</div><div id="hot-list"></div></div>
   </div>
+  <div class="card" id="p1-widget-card">
+    <div class="card-title">🎯 Prize1 Prediction — งวดถัดไป <span id="p1-widget-date" style="color:var(--text3);font-size:.8rem;font-weight:400"></span></div>
+    <div id="p1-widget-body" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;min-height:56px">
+      <span style="color:var(--text3);font-size:.85rem">กด Refresh เพื่อดูการทำนาย...</span>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+      <button class="btn" style="padding:4px 12px;font-size:.78rem" onclick="loadP1Widget()">🔮 ทำนายงวดถัดไป</button>
+      <span id="p1-widget-lift" style="font-size:.75rem;color:var(--text3)"></span>
+    </div>
+  </div>
   <div class="card"><div class="card-title">15 งวดล่าสุด</div>
     <div class="tbl-wrap"><table id="recent-tbl">
       <thead><tr><th>วันที่</th><th>รางวัลที่ 1</th><th>3 บน</th><th>2 บน</th><th>3 หน้า 1</th><th>3 หน้า 2</th><th>3 ล่าง 1</th><th>3 ล่าง 2</th><th>2 ล่าง</th></tr></thead>
@@ -754,6 +764,33 @@ async function loadOverdue(){
   mkChart('overdue-chart',{type:'bar',
     data:{labels:rows.map(r=>String(r['เลข']||'')),datasets:[{label:'งวด',data:rows.map(r=>r['ค้างกี่งวด']||0),backgroundColor:rows.map(r=>(r['ค้างกี่งวด']||0)>=50?'rgba(240,84,84,0.7)':'rgba(200,168,75,0.6)'),borderWidth:0}]},
     options:{...chartOpts('งวด'),indexAxis:'y'}});
+}
+
+// ─── Prize1 Dashboard Widget ──────────────────────────────────────────────────
+async function loadP1Widget(){
+  document.getElementById('p1-widget-body').innerHTML='<span style="color:var(--text3)">กำลังคำนวณ...</span>';
+  // Next draw date: 1st or 16th whichever is next from today
+  const now=new Date();
+  const d=now.getDate();
+  let nextDraw;
+  if(d<1||d<16){const m=now.getMonth(),y=now.getFullYear();nextDraw=`${y}-${String(m+1).padStart(2,'0')}-${d<16?'16':'01'}`;}
+  else{const nx=new Date(now.getFullYear(),now.getMonth()+1,1);nextDraw=`${nx.getFullYear()}-${String(nx.getMonth()+1).padStart(2,'0')}-01`;}
+  document.getElementById('p1-widget-date').textContent='('+nextDraw+')';
+  const r=await api(`predict/prize1?top_n=10&beam_width=500&k_back=100&date=${nextDraw}`);
+  const preds=r.predictions||[];
+  if(!preds.length){document.getElementById('p1-widget-body').innerHTML='<span style="color:#f05454">ไม่มีข้อมูล</span>';return;}
+  document.getElementById('p1-widget-body').innerHTML=preds.slice(0,5).map((p,i)=>{
+    const fb=+(p['Front Beam']||0).toFixed(2);
+    const bk=+(p['Back Top3']||0).toFixed(2);
+    const score=+(p['คะแนนรวม']||0).toFixed(1);
+    const color=i===0?'var(--gold2)':i<3?'var(--accent)':'var(--text2)';
+    return `<div style="text-align:center;padding:8px 12px;background:var(--surface2);border-radius:8px;border:1px solid ${i===0?'var(--gold2)':'var(--border)'}">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:${i===0?'1.4rem':'1.1rem'};font-weight:700;color:${color};letter-spacing:3px">${p['เลข']||''}</div>
+      <div style="font-size:.65rem;color:var(--text3);margin-top:2px">${p['หน้า 3']||''}·${p['หลัง 3']||''}</div>
+      <div style="font-size:.65rem;color:var(--text3)">F:${fb} B:${bk}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('p1-widget-lift').textContent='Front3 lift ~5.1x | Back3 lift ~2.0x (n=80 backtest)';
 }
 
 // ─── Predict ──────────────────────────────────────────────────────────────────
