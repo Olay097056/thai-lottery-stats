@@ -260,7 +260,7 @@ select:focus,input:focus{border-color:var(--gold-dim)}
   <div class="grid-2">
     <div class="card"><div class="card-title">อันดับทั้งหมด</div>
       <div class="tbl-wrap" style="max-height:440px;overflow-y:auto">
-        <table><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th><th>ความเชื่อมั่น</th><th>เหตุผล</th></tr></thead><tbody id="pred-tbody"></tbody></table>
+        <table id="pred-table"><thead id="pred-thead"><tr><th>#</th><th>เลข</th><th>คะแนน</th><th>ความเชื่อมั่น</th><th>เหตุผล</th></tr></thead><tbody id="pred-tbody"></tbody></table>
       </div>
     </div>
     <div class="card"><div class="card-title">Top 15 Chart</div><div style="height:420px"><canvas id="pred-chart"></canvas></div></div>
@@ -801,14 +801,35 @@ async function loadPredict(){
     return s;
   }
   const MAX_SIG=6;
+  const isPrize1 = col === 'prize1';
+  document.getElementById('pred-thead').innerHTML = isPrize1
+    ? '<tr><th>#</th><th>เลข</th><th>หน้า·หลัง</th><th>คะแนน</th><th>F · B · J</th><th>DS</th></tr>'
+    : '<tr><th>#</th><th>เลข</th><th>คะแนน</th><th>ความเชื่อมั่น</th><th>เหตุผล</th></tr>';
   document.getElementById('pred-tbody').innerHTML=data.map((r,i)=>{
     const sig=_sigCount(r);
     const sigPct=(sig/MAX_SIG*100).toFixed(0);
     const sigColor=sig>=4?'#54a24b':sig>=2?'#f5e642':'#ff6b35';
+    const scoreVal=(r[scoreKey]||0);
+    const barW=((scoreVal/maxScore)*100).toFixed(0);
+    if(isPrize1){
+      const fb=+(r['Front Beam']||0).toFixed(3);
+      const bk=+(r['Back Top3']||0).toFixed(3);
+      const jn=+(r['Junction']||0).toFixed(3);
+      const fbColor=fb>0.5?'#3dd68c':fb>0.3?'#c8a84b':'#f05454';
+      const bkColor=bk>0.5?'#3dd68c':bk>0.3?'#c8a84b':'#f05454';
+      return `<tr>
+      <td><span class="rank-badge ${i<3?'rank-'+(i+1):''}">${i+1}</span></td>
+      <td><b style="font-family:'IBM Plex Mono',monospace;font-size:1rem;letter-spacing:2px">${r['เลข']||''}</b></td>
+      <td style="font-size:.78rem;color:var(--text3)"><span style="color:var(--accent)">${r['หน้า 3']||''}</span> · <span style="color:#4d9de0">${r['หลัง 3']||''}</span></td>
+      <td><div style="display:flex;align-items:center;gap:4px"><div class="progress-bar" style="width:60px"><div class="progress-fill" style="width:${barW}%"></div></div><span style="font-size:.72rem;color:var(--text3)">${scoreVal.toFixed(1)}</span></div></td>
+      <td style="font-size:.72rem"><span style="color:${fbColor}">F:${fb}</span> <span style="color:${bkColor}">B:${bk}</span> <span style="color:var(--text3)">J:${jn}</span></td>
+      <td style="font-size:.72rem;color:var(--text3)">${r['Digit Sum']||''}</td>
+    </tr>`;
+    }
     return `<tr>
     <td><span class="rank-badge ${i<3?'rank-'+(i+1):''}">${i+1}</span></td>
     <td><b style="font-family:'IBM Plex Mono',monospace">${r['เลข']||''}</b></td>
-    <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:80px"><div class="progress-fill" style="width:${((r[scoreKey]||0)/maxScore*100).toFixed(0)}%"></div></div><span style="font-size:.75rem;color:var(--text3)">${(r[scoreKey]||0).toFixed?.(4)}</span></div></td>
+    <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:80px"><div class="progress-fill" style="width:${barW}%"></div></div><span style="font-size:.75rem;color:var(--text3)">${scoreVal.toFixed?.(4)}</span></div></td>
     <td><div style="display:flex;align-items:center;gap:5px"><div class="progress-bar" style="width:54px"><div class="progress-fill" style="width:${sigPct}%;background:${sigColor}"></div></div><span style="font-size:.72rem;color:${sigColor};font-weight:600">${sig}/${MAX_SIG}</span></div></td>
     <td style="font-size:.72rem;color:var(--text2)">${r['เหตุผล']||''}</td>
   </tr>`;}).join('');
