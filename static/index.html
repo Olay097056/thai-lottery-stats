@@ -265,7 +265,10 @@ select:focus,input:focus{border-color:var(--gold-dim)}
     <div><div class="conf-score" id="conf-score">—</div><div class="conf-label">Confidence Score</div></div>
     <div class="conf-info"><div id="conf-level" style="font-size:.9rem;font-weight:700;margin-bottom:4px">—</div><div id="conf-reason" style="font-size:.8rem;color:var(--text2)">—</div></div>
   </div>
-  <div class="section-h">🎯 Top แนะนำ</div>
+  <div class="section-h" style="display:flex;align-items:center;justify-content:space-between">
+    <span>🎯 Top แนะนำ</span>
+    <button class="btn" id="pred-export-btn" style="display:none;padding:4px 10px;font-size:.75rem" onclick="exportPredCSV()">⬇ CSV</button>
+  </div>
   <div id="pred-top-badges" style="margin-bottom:16px"></div>
   <div class="grid-2">
     <div class="card"><div class="card-title">อันดับทั้งหมด</div>
@@ -766,6 +769,24 @@ async function loadOverdue(){
     options:{...chartOpts('งวด'),indexAxis:'y'}});
 }
 
+// ─── Export Predictions CSV ───────────────────────────────────────────────────
+function exportPredCSV(){
+  const data=window._lastPredData||[];
+  if(!data.length)return;
+  const col=window._lastPredCol||'';
+  const date=window._lastPredDate||'';
+  const keys=Object.keys(data[0]);
+  const rows=[keys.join(','),...data.map(r=>keys.map(k=>{
+    const v=r[k]??'';
+    return typeof v==='string'&&v.includes(',')?`"${v}"`:v;
+  }).join(','))];
+  const blob=new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`predict_${col}_${date||'latest'}.csv`;
+  a.click();URL.revokeObjectURL(a.href);
+}
+
 // ─── Prize1 Dashboard Widget ──────────────────────────────────────────────────
 async function loadP1Widget(){
   document.getElementById('p1-widget-body').innerHTML='<span style="color:var(--text3)">กำลังคำนวณ...</span>';
@@ -824,6 +845,8 @@ async function loadPredict(){
   }
 
   document.getElementById('pred-top-badges').innerHTML=data.slice(0,5).map(r=>`<span class="num-badge">${r['เลข']||''}</span>`).join('');
+  window._lastPredData=data; window._lastPredCol=col; window._lastPredDate=date;
+  document.getElementById('pred-export-btn').style.display='inline-block';
 
   const scoreKey=data[0]?Object.keys(data[0]).find(k=>k.includes('คะแนน')||k.includes('Score'))||'':'';
   const maxScore=data[0]?.[scoreKey]||1;
