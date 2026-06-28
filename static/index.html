@@ -245,8 +245,8 @@ select:focus,input:focus{border-color:var(--gold-dim)}
   <div id="prize1-section" style="display:none;margin-bottom:16px">
     <div style="background:var(--surface);padding:12px;border-radius:var(--radius);border:1px solid var(--border2)">
       <div class="ctrl-row" style="margin-bottom:0">
-        <div class="ctrl-group"><div class="ctrl-label">Algorithm</div><select id="p1-algo"><option value="v4">v4 — Trigram+Ensemble (แนะนำ)</option><option value="v3">v3 — Hybrid</option><option value="v2">v2 — Beam+Bigram</option><option value="v1">v1 — Front3×Back3</option></select></div>
-        <div class="ctrl-group"><div class="ctrl-label">Beam Width</div><input type="number" id="p1-beam" value="200" min="50" max="500" style="width:80px"></div>
+        <div class="ctrl-group"><div class="ctrl-label">Algorithm</div><span style="font-size:.85rem;font-weight:600;color:var(--accent)">Ultimate (Trigram+Positional+Back3)</span></div>
+        <div class="ctrl-group"><div class="ctrl-label">Beam Width</div><input type="number" id="p1-beam" value="300" min="50" max="500" style="width:80px"></div>
         <div class="ctrl-group"><div class="ctrl-label">K Back</div><input type="number" id="p1-kback" value="50" min="10" max="100" style="width:70px"></div>
       </div>
     </div>
@@ -422,10 +422,9 @@ select:focus,input:focus{border-color:var(--gold-dim)}
   <div class="page-title">Backtest รางวัลที่ 1</div>
   <div class="page-sub">วัดความแม่น prediction ย้อนหลัง (out-of-sample)</div>
   <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">Algorithm</div><select id="bt-algo"><option value="v4">v4 — Trigram+Ensemble</option><option value="v3">v3 — Hybrid</option><option value="v2">v2 — Beam+Bigram</option><option value="v1">v1 — Front3×Back3</option></select></div>
+    <div class="ctrl-group"><div class="ctrl-label">Algorithm</div><span style="font-size:.85rem;font-weight:600;color:var(--accent)">Ultimate</span></div>
     <div class="ctrl-group"><div class="ctrl-label">งวดทดสอบ</div><input type="number" id="bt-n" value="50" min="10" max="200" style="width:80px"></div>
     <div class="ctrl-group"><div class="ctrl-label">Top N</div><input type="number" id="bt-topn" value="20" min="5" max="50" style="width:70px"></div>
-    <div style="display:flex;align-items:center;gap:6px;padding-top:20px"><input type="checkbox" id="bt-cmpv1" style="width:16px;height:16px"><label for="bt-cmpv1" style="font-size:.8rem;color:var(--text2)">เปรียบ v1</label></div>
     <button class="btn btn-primary" onclick="loadBacktest()">▶ Run Backtest</button>
   </div>
   <div id="bt-loading" style="display:none;text-align:center;padding:40px;color:var(--text3)">กำลังรัน... (30–120 วินาที)</div>
@@ -776,10 +775,9 @@ async function loadPredict(){
 
   let data=[], ensemble=[];
   if(isPrize1){
-    const algo=document.getElementById('p1-algo').value;
     const beam=document.getElementById('p1-beam').value;
     const kb=document.getElementById('p1-kback').value;
-    const r=await api(`predict/prize1?algorithm=${algo}&top_n=${topn}&beam_width=${beam}&k_back=${kb}&date=${date}`);
+    const r=await api(`predict/prize1?top_n=${topn}&beam_width=${beam}&k_back=${kb}&date=${date}`);
     data=r.predictions||[];
   } else {
     const r=await api(`predict-with-reasons?col=${col}&top_n=${topn}&date=${date}`);
@@ -1095,30 +1093,28 @@ function drawNetwork(nodes,edges){
 
 // ─── Backtest ─────────────────────────────────────────────────────────────────
 async function loadBacktest(){
-  const algo=document.getElementById('bt-algo').value;
   const n=document.getElementById('bt-n').value;
   const topn=document.getElementById('bt-topn').value;
-  const cmpv1=document.getElementById('bt-cmpv1').checked;
   document.getElementById('bt-loading').style.display='block';
   document.getElementById('bt-results').style.display='none';
-  const d=await api(`backtest?n_draws=${n}&top_n=${topn}&algorithm=${algo}&compare_v1=${cmpv1}`);
+  const d=await api(`backtest?n_draws=${n}&top_n=${topn}`);
   document.getElementById('bt-loading').style.display='none';
   if(d.error){toast('error: '+d.error,'error');return;}
   document.getElementById('bt-results').style.display='block';
   const fmt=v=>v!=null?(v*100).toFixed(1)+'%':'—';
+  const liftFmt=v=>v!=null?v.toFixed(2)+'x':'—';
   document.getElementById('bt-metrics').innerHTML=`
-    <div class="card"><div class="card-title">Top-1 Hit Rate</div><div class="stat-val">${fmt(d.top1_rate)}</div><div class="stat-sub">${algo}</div></div>
-    <div class="card"><div class="card-title">Top-3 Hit Rate</div><div class="stat-val">${fmt(d.top3_rate)}</div></div>
-    <div class="card"><div class="card-title">Top-5 Hit Rate</div><div class="stat-val">${fmt(d.top5_rate)}</div></div>
+    <div class="card"><div class="card-title">Hit Rate (Top-${topn})</div><div class="stat-val">${fmt(d.rate)}</div><div class="stat-sub">Ultimate Algorithm</div></div>
+    <div class="card"><div class="card-title">Lift vs Random</div><div class="stat-val">${liftFmt(d.lift)}</div><div class="stat-sub">สูงกว่าสุ่ม ${liftFmt(d.lift)}</div></div>
+    <div class="card"><div class="card-title">Random Rate</div><div class="stat-val">${fmt(d.random_rate)}</div><div class="stat-sub">Baseline</div></div>
     <div class="card"><div class="card-title">งวดทดสอบ</div><div class="stat-val">${d.n_tested||n}</div><div class="stat-sub">${d.errors?'❌ '+d.errors+' error':''}</div></div>`;
-  const vd=[d.top1_rate,d.top3_rate,d.top5_rate].map(v=>(v||0)*100);
-  const v1d=[d.v1_top1_rate,d.v1_top3_rate,d.v1_top5_rate].map(v=>(v||0)*100);
+  const rate=(d.rate||0)*100;
+  const rand=(d.random_rate||0)*100;
   mkChart('bt-lift-chart',{type:'bar',
-    data:{labels:['Top-1','Top-3','Top-5'],datasets:[
-      {label:algo,data:vd,backgroundColor:'rgba(200,168,75,0.7)',borderWidth:0},
-      ...(cmpv1&&d.v1_top1_rate!=null?[{label:'v1',data:v1d,backgroundColor:'rgba(77,157,224,0.5)',borderWidth:0}]:[])
+    data:{labels:['Hit Rate','Random Rate'],datasets:[
+      {label:'Ultimate',data:[rate,rand],backgroundColor:['rgba(200,168,75,0.7)','rgba(120,120,120,0.4)'],borderWidth:0}
     ]},
-    options:{...chartOpts('%',true),scales:{y:{min:0,max:Math.max(...vd,...v1d,5)+5,ticks:{callback:v=>v+'%'}}}}});
+    options:{...chartOpts('%',true),scales:{y:{min:0,ticks:{callback:v=>v+'%'}}}}});
 }
 
 // ─── Digit Analysis ───────────────────────────────────────────────────────────

@@ -17,7 +17,7 @@ from scraper import load_data, get_cache_info, incremental_update
 from analyzer import (
     predict_numbers, hot_cold_numbers,
     prize1_backtest, prize1_digit_analysis,
-    predict_prize1, predict_prize1_v2, predict_prize1_v3, predict_prize1_v4,
+    predict_prize1_ultimate,
     freq_table, heatmap_data, trend_data, never_appeared,
     digit_frequency, overdue_with_prob, next_thai_draw,
     predict_with_reasons, prediction_confidence, ensemble_predict,
@@ -131,24 +131,16 @@ def api_summary():
 
 @app.get("/api/predict/prize1")
 def api_predict_prize1(
-    algorithm: str = Query("v4"),
     top_n: int = Query(20, ge=5, le=50),
-    beam_width: int = Query(200, ge=50, le=500),
+    beam_width: int = Query(300, ge=50, le=500),
     k_back: int = Query(50, ge=10, le=100),
     date: str | None = Query(None),
 ):
     df = get_df()
     target = datetime.strptime(date, "%Y-%m-%d") if date else datetime.now()
     try:
-        if algorithm == "v4":
-            res = predict_prize1_v4(df, target, top_n=top_n, beam_width=beam_width, k_back=k_back, n_ensemble=3)
-        elif algorithm == "v3":
-            res = predict_prize1_v3(df, target, top_n=top_n, beam_width=beam_width, k_back=k_back)
-        elif algorithm == "v2":
-            res = predict_prize1_v2(df, target, top_n=top_n, beam_width=beam_width)
-        else:
-            res = predict_prize1(df, target, top_n=top_n)
-        return {"predictions": _safe_records(res), "algorithm": algorithm}
+        res = predict_prize1_ultimate(df, target, top_n=top_n, beam_width=beam_width, k_back=k_back)
+        return {"predictions": _safe_records(res), "algorithm": "ultimate"}
     except Exception as e:
         return {"error": str(e), "predictions": []}
 
@@ -185,16 +177,13 @@ def api_hot_cold(
 def api_backtest(
     n_draws: int = Query(50, ge=10, le=200),
     top_n: int = Query(20, ge=5, le=50),
-    algorithm: str = Query("v4"),
-    compare_v1: bool = Query(False),
-    beam_width: int = Query(100, ge=50, le=200),
-    k_back: int = Query(30, ge=10, le=50),
+    beam_width: int = Query(150, ge=50, le=300),
+    k_back: int = Query(50, ge=10, le=100),
 ):
     df = get_df()
     try:
         result = prize1_backtest(
             df, n_draws=n_draws, top_n=top_n,
-            algorithm=algorithm, compare_v1=compare_v1,
             beam_width=beam_width, k_back=k_back,
         )
         clean: dict = {}

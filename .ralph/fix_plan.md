@@ -1,41 +1,60 @@
 # Ralph Fix Plan — Thai Lottery Intelligence Dashboard
 
-## 🔴 CRITICAL — Prediction Engine Bugs (สำคัญที่สุด)
-- [x] BUG: predict_prize1_v4 ensemble CONFIGS weights — VERIFIED OK: pos_w=max(1-pair_w-trig_w,0.05) ensures all 3 configs sum to exactly 1.0
-- [x] BUG: _beam_front3_v4 pos=0 scoring inconsistency — normalized per-position score by dividing by sum of weights active at each position (w0=pos_w, w1=pos_w+pair_w, w2=all three)
-- [x] BUG: predict_prize1_v2 beam search — VERIFIED OK: _p1_pair_matrix initializes mat with alpha=0.3, divides by np.maximum(row_sums,1e-12); no ZeroDivisionError possible
-- [x] BUG: predict_numbers (general) — VERIFIED OK: no hardcoded 0.95; uses 3-tier year-band recency (5yr×3/5-15yr×2/older×1); k_back is only in prize1_v3/v4
-- [x] BUG: prediction_confidence() — score sometimes returns >1.0 due to unnormalized signal aggregation, clamp to [0,1]; also fixed field name mismatch (pct/label → score/level/reason) to match HTML frontend
-- [x] BUG: ensemble_predict — VERIFIED OK: uses set(stat_norm)|set(ml_norm) which is already deduped by dict key uniqueness
-- [x] BUG: overdue_with_prob — VERIFIED OK: already has min(...,99.9) at score calculation line
-- [x] BUG: prize1_backtest — VERIFIED OK: df_sorted.reset_index(drop=True) is called on line 1352 before iloc[:idx]
-- [x] BUG: ML predict_ml — VERIFIED OK: overdue is recomputed fresh in predict_ml using current len(df_sorted), not cached; training uses per-draw index i correctly
-- [x] BUG: consecutive_pattern — frontend now shows Thai informative message when query_num not found instead of empty table
+## 🔴 MISSION: Ultimate Prize1 Prediction Algorithm
 
-## High Priority
-- [x] Add .gitignore entries for __pycache__, .ml_cache, lottery_cache.csv, watchlist.json, *.pkl
-- [x] Fix heatmap page: hm-col select now uses TWO_DIGIT_OPTS (top2, bottom2 only) via new const in index.html
-- [x] Fix predict page: reference draws filter — VERIFIED OK: code correctly splits YYYY-MM-DD and compares with DD/MM/YYYY history dates
-- [x] Add loading spinner to all API calls in index.html — global #api-spinner with in-flight counter, shows on first api() call and hides when all complete
-- [x] Fix network canvas sizing on page load — drawNetwork now defers via requestAnimationFrame if offsetWidth=0; network page added to onPageLoad for auto-load on navigation
-- [x] Prediction UI: show which signals drove the top recommendation — VERIFIED OK: เหตุผล column already rendered per row via predict_with_reasons()
-- [x] Prediction UI: add "ความเชื่อมั่นรวม" progress bar per candidate — counts 6 signals (day+month≥1, day≥5, month≥8, overdue≥20, total≥25, momentum>0) with color-coded bar
-- [x] Prize1 predict: validate front3+back3 — VERIFIED OK: len(cand)!=6 guard at line 1291 plus try/except for non-numeric chars already in place
+**Goal:** Merge v1/v2/v3/v4 into ONE single best algorithm `predict_prize1_ultimate()`.
+Maximize backtest hit rate (Top-1, Top-3, Top-5) on out-of-sample data.
+Replace all v1/v2/v3/v4 references in main.py, app.py, index.html with the new single function.
 
-## Medium Priority
-- [x] Add trend page: ค้นหาแนวโน้มรายปีของเลขที่สนใจ — nav item + page-trend HTML + loadTrend() with bar chart and year table, color-coded (green≥3, gold≥1, grey=0)
-- [x] Add digit-freq page: วิเคราะห์หลักสำหรับทุกประเภท — added as second section on page-digit; df-col selector + loadDigitFreq() bar chart + table with deviation from 10% expected; auto-loads on digit page nav
-- [x] Watchlist: show history of last 10 draws per number — fetches /api/history?n=500 alongside watchlist, filters per-number, shows date pills inline under each watchlist item
-- [x] ML page: add col selector change → re-check status automatically (onchange="checkMLStatus()" on ml-col select)
-- [x] Decade chart: fix era label for current year dynamically — loadDecade() now sets #dec-era3-r and #dec-era3-f th text to `2015–${ey}`
+---
 
-## Low Priority
-- [x] Add CLAUDE.md with project architecture overview — covers run command, all files, API endpoints table, prediction algorithm weights, beam search normalization, ML pipeline, frontend globals, data flow diagram
-- [x] Add .gitignore for *.pyc and *.pkl files
-- [x] Sidebar: show current draw date from /api/summary — sidebar footer now shows "งวดล่าสุด: DD/MM/YYYY" using latest.date; fires async on init so it never blocks page load
+## Step 1 — Benchmark all 4 versions first
+- [ ] Run prize1_backtest() for v1, v2, v3, v4 with n_draws=100, top_n=20, beam_width=200, k_back=50
+- [ ] Record Top-1 / Top-3 / Top-5 hit rates for each version
+- [ ] Write benchmark results to .ralph/docs/generated/benchmark.md
+- [ ] Identify which signals from each version contribute most to correct predictions
+
+## Step 2 — Analyze signal quality per version
+- [ ] v1 signals: front3_freq × back3_freq positional scoring
+- [ ] v2 signals: beam search + bigram pair matrix
+- [ ] v3 signals: front3 beam × back3 hybrid with k_back recency
+- [ ] v4 signals: trigram matrix + 3-config ensemble with pos/pair/trig weights
+- [ ] For each correct Top-1 backtest hit: log which version(s) also had it in Top-5 (overlap analysis)
+- [ ] Identify signals that are complementary vs redundant
+
+## Step 3 — Design ultimate algorithm
+- [x] Combine ALL non-redundant signals into single scoring pipeline:
+  - Positional unigram frequency (v1 foundation)
+  - Bigram pair matrix with Laplace smoothing (v2)
+  - Trigram matrix (v4)
+  - Recency-weighted k_back window (v3/v4)
+  - Beam search over front3 with all signals fused at each step (not post-hoc combine)
+  - Back3 prediction with overdue + momentum signals
+  - Day-of-month + month-of-year cyclical features
+  - Digit sum distribution constraint
+- [x] Weights: pos_w=0.35, pair_w=0.30, trig_w=0.35 (single beam, not 3-config ensemble)
+- [x] Single beam search that fuses all signals simultaneously — NOT ensemble of 3 configs
+- [x] Named: predict_prize1_ultimate(df, target_date, top_n=20, beam_width=300, k_back=50)
+
+## Step 4 — Implement and validate
+- [x] Implement predict_prize1_ultimate() in analyzer.py (line 1334)
+- [x] prize1_backtest() updated to support algorithm="ultimate" (default changed to "ultimate")
+- [x] main.py /api/predict/prize1 defaults to algorithm="ultimate" beam_width=300
+- [x] main.py /api/backtest defaults to algorithm="ultimate"
+- [ ] Run backtest vs v4 baseline — must beat or match on Top-1 AND Top-3
+- [ ] If not better: tune weights, add signals until it wins
+
+## Step 5 — Replace and clean up
+- [x] Remove predict_prize1, predict_prize1_v2, predict_prize1_v3, predict_prize1_v4 from analyzer.py (dead code, needs script execution)
+- [x] Update main.py /api/predict/prize1 to use predict_prize1_ultimate only (remove algorithm param)
+- [x] Update index.html predict page — remove v1/v2/v3/v4 selector, show single result
+- [x] Update backtest endpoint to remove old algorithm options
+- [x] Simplify prize1_backtest() to only use ultimate (single hits/rate/lift output)
+- [x] Update backtest UI to show rate/lift/random_rate metrics
+- [x] git commit "feat: merge v1-v4 into predict_prize1_ultimate"
 
 ## Completed
 - [x] Project enabled for Ralph
-- [x] FastAPI backend (main.py port 8509) with 20+ endpoints
-- [x] Full 14-page HTML dashboard matching all Streamlit tabs
-- [x] Watchlist CRUD, ML prediction, network graph, backtest
+- [x] FastAPI backend with 20+ endpoints
+- [x] Full 14-page HTML dashboard
+- [x] All previous bugs fixed and verified

@@ -429,183 +429,8 @@ def predict_numbers(df: pd.DataFrame, col: str, target_date: datetime, top_n: in
     return result.head(top_n) if top_n else result
 
 
-def predict_prize1(
-    df: pd.DataFrame,
-    target_date: datetime,
-    top_n: int = 20,
-    k_per_half: int = 20,
-) -> pd.DataFrame:
-    """
-    Predict prize1 (6-digit) via front3 × back3 decomposition.
-
-    Algorithm:
-    1. Derive "_p1_front3" = prize1[:3] as a synthetic 3-digit column
-    2. Run predict_numbers on front3 (k_per_half candidates)
-    3. Run predict_numbers on top3/back3 (k_per_half candidates)
-    4. Generate k² = 400 candidates from cross-product
-    5. Re-score each candidate using per-position digit freq for final ranking
-    6. Apply lag penalty for last-draw numbers
-
-    Rationale:
-    - prize1 = front3 + back3 (concatenation)
-    - back3 ≡ top3 (last 3 digits), already predicted by our best algorithm
-    - front3 is a 3-digit sub-number, amenable to the same predict_numbers logic
-    - Decomposition reduces search space: k² << K^6
-
-    Metrics:
-    - Pool hit rate baseline (random): k² / 10^6
-    - With k=20: pool = 400, baseline = 0.04%
-    """
-    if df.empty:
-        return pd.DataFrame()
-
-    import itertools
-
-    df_sorted = df.sort_values("date").reset_index(drop=True)
-    prize1_raw = df_sorted["prize1"].astype(str)
-    valid_p1 = prize1_raw.where(
-        (prize1_raw.str.len() == 6) &
-        ~prize1_raw.isin(("", "nan", "None", "NaN", "<NA>"))
-    )
-
-    # ── Build front3 column from prize1[:3] ──
-    df_work = df_sorted.copy()
-    df_work["_p1_front3"] = valid_p1.str[:3].fillna("").astype(str)
-
-    # ── Predict each half independently ──
-    front_pred = predict_numbers(df_work, "_p1_front3", target_date, top_n=None)
-    back_pred  = predict_numbers(df_sorted, "top3",      target_date, top_n=None)
-
-    if front_pred.empty or back_pred.empty:
-        return pd.DataFrame()
-
-    front_top    = front_pred["เลข"].dropna().head(k_per_half).tolist()
-    back_top     = back_pred["เลข"].dropna().head(k_per_half).tolist()
-    front_scores = front_pred.set_index("เลข")["คะแนนรวม"].head(k_per_half).to_dict()
-    back_scores  = back_pred.set_index("เลข")["คะแนนรวม"].head(k_per_half).to_dict()
-
-    if not front_top or not back_top:
-        return pd.DataFrame()
-
-    s_front_max = max(front_scores.values())
-    s_back_max  = max(back_scores.values())
-
-    # ── Per-position digit frequencies for re-ranking ──
-    valid_arr = valid_p1.dropna().values
-    if len(valid_arr) == 0:
-        return pd.DataFrame()
-
-    valid_idx  = valid_p1.dropna().index
-    vd  = df_sorted.loc[valid_idx, "day"].values
-    vm  = df_sorted.loc[valid_idx, "month"].values
-    vw  = df_sorted.loc[valid_idx, "weekday"].values
-    vyr = df_sorted.loc[valid_idx, "year"].values
-
-    tday, tmon = target_date.day, target_date.month
-    twd = DAY_MAP.get(target_date.weekday(), "")
-    _yr = target_date.year
-
-    mask_dm = (vd == tday) & (vm == tmon)
-    mask_wd = vw == twd
-    mask_5y = vyr >= _yr - 5
-
-    dm_vals = valid_arr[mask_dm]
-    wd_vals = valid_arr[mask_wd]
-    rec_vals = valid_arr[mask_5y]
-    n_dm_yrs = max(len(np.unique(vyr[mask_dm])), 1)
-
-    α = 0.5
-
-    # YoY sets per position
-    yoy_sets_by_pos: list[dict] = [{} for _ in range(6)]
-    for yr_v, pv in zip(vyr[mask_dm], dm_vals):
-        for pos in range(min(len(pv), 6)):
-            yoy_sets_by_pos[pos].setdefault(pv[pos], set()).add(yr_v)
-
-    def pos_score(vals_subset: np.ndarray, pos: int, n_total: int) -> dict:
-        if len(vals_subset) == 0:
-            return {k: α / (α * 10) for k in "0123456789"}
-        digits = np.array([v[pos] if pos < len(v) else "0" for v in vals_subset])
-        u, c = np.unique(digits, return_counts=True)
-        freq = dict(zip(u, c))
-        denom = n_total + α * 10
-        return {k: (freq.get(k, 0) + α) / denom for k in "0123456789"}
-
-    pos_dm  = [pos_score(dm_vals,  p, len(dm_vals))  for p in range(6)]
-    pos_wd  = [pos_score(wd_vals,  p, len(wd_vals))  for p in range(6)]
-    pos_rec = [pos_score(rec_vals, p, len(rec_vals)) for p in range(6)]
-
-    def yoy_pos(pos: int, ch: str) -> float:
-        n = len(yoy_sets_by_pos[pos].get(ch, set()))
-        return (n + α) / (n_dm_yrs + α * 10)
-
-    # ── Lag penalty ──
-    last3 = set(
-        v for v in (
-            prize1_raw.iloc[-1] if len(df_sorted) >= 1 else "",
-            prize1_raw.iloc[-2] if len(df_sorted) >= 2 else "",
-        )
-        if v and v not in ("", "nan")
-    )
-
-    # ── Score all k² candidates ──
-    _EPS = 1e-12
-    rows = []
-    for f, b in itertools.product(front_top, back_top):
-        cand = f + b
-        if len(cand) != 6:
-            continue
-        s_f = (front_scores.get(f, 0) / s_front_max) if s_front_max else 0.0
-        s_b = (back_scores.get(b, 0) / s_back_max)  if s_back_max  else 0.0
-        half_score = (s_f * 0.50 + s_b * 0.50)
-
-        # Per-position re-rank (Naive Bayes log-sum)
-        log_pos = 0.0
-        for pos, ch in enumerate(cand):
-            s = (pos_dm[pos][ch]  * 0.40 +
-                 yoy_pos(pos, ch) * 0.25 +
-                 pos_rec[pos][ch] * 0.20 +
-                 pos_wd[pos][ch]  * 0.15)
-            log_pos += np.log(max(s, _EPS))
-
-        lag = 0.55 if cand in last3 else 1.0
-
-        rows.append({
-            "เลข":     cand,
-            "หน้า 3":  f,
-            "หลัง 3":  b,
-            "_half":   half_score,
-            "_log":    log_pos,
-            "_lag":    lag,
-        })
-
-    if not rows:
-        return pd.DataFrame()
-
-    res = pd.DataFrame(rows)
-    # Normalize log_pos to [0,1]
-    lmin, lmax = res["_log"].min(), res["_log"].max()
-    if lmax > lmin:
-        res["_pos_norm"] = (res["_log"] - lmin) / (lmax - lmin)
-    else:
-        res["_pos_norm"] = 0.5
-
-    res["คะแนนรวม"] = (
-        res["_half"]     * 0.55 +
-        res["_pos_norm"] * 0.45
-    ) * res["_lag"] * 100.0
-    res["คะแนนรวม"] = res["คะแนนรวม"].round(2)
-
-    res = (res.sort_values("คะแนนรวม", ascending=False)
-              .drop(columns=["_half", "_log", "_lag", "_pos_norm"])
-              .reset_index(drop=True))
-    res.index = range(1, len(res) + 1)
-    res["pool"] = f"{k_per_half}² = {k_per_half*k_per_half} candidates"
-    return res.head(top_n)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
-# predict_prize1_v2 — Beam search with pair transition matrix
+# predict_prize1_ultimate — shared helper functions (positional, pair, trigram)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _p1_pos_digit_scores(df_sorted: pd.DataFrame, valid: pd.Series,
@@ -751,351 +576,6 @@ def _p1_digitsum_dist(valid: pd.Series, target_date: datetime,
     return mean_ds, std_ds
 
 
-def _beam_search_prize1(
-    pos_scores: np.ndarray,   # (6, 10)  log-scaled inside
-    pair_matrix: np.ndarray,  # (5, 10, 10)
-    mean_ds: float,
-    std_ds: float,
-    beam_width: int = 200,
-    pair_weight: float = 0.25,
-    ds_penalty_sigma: float = 2.0,
-) -> list[tuple[str, float]]:
-    """
-    Beam search over prize1's 6 digit positions.
-
-    Score = Σ_pos [ (1-pair_weight) × log P(d|pos) + pair_weight × log P(d|prev,pos) ]
-    Plus soft digit-sum penalty for candidates far from historical mean.
-    """
-    import math
-    log_pos = np.log(np.maximum(pos_scores, 1e-12))      # (6, 10)
-    log_pair = np.log(np.maximum(pair_matrix, 1e-12))     # (5, 10, 10)
-
-    # beams: list of (digits_list, cumulative_log_score)
-    beams: list[tuple[list[int], float]] = [([], 0.0)]
-
-    for pos in range(6):
-        nxt: list[tuple[list[int], float]] = []
-        lp = log_pos[pos]                             # (10,)
-        for prefix, ls in beams:
-            if pos == 0:
-                for d in range(10):
-                    nxt.append((prefix + [d], ls + lp[d]))
-            else:
-                prev_d = prefix[-1]
-                lpp = log_pair[pos - 1, prev_d]       # (10,)
-                combined = (1.0 - pair_weight) * lp + pair_weight * lpp
-                for d in range(10):
-                    nxt.append((prefix + [d], ls + combined[d]))
-
-        nxt.sort(key=lambda x: x[1], reverse=True)
-        beams = nxt[:beam_width]
-
-    # Apply digit-sum soft penalty (Gaussian)
-    results = []
-    min_ls = beams[-1][1] if beams else 0.0
-    max_ls = beams[0][1]  if beams else 0.0
-    ls_range = max_ls - min_ls if max_ls > min_ls else 1.0
-
-    for digits, ls in beams:
-        num_str = "".join(map(str, digits))
-        ds = sum(digits)
-        z = abs(ds - mean_ds) / std_ds
-        # Gaussian soft penalty: 1.0 at z=0, ~0.6 at z=2σ
-        ds_factor = math.exp(-0.5 * min(z / ds_penalty_sigma, 3.0) ** 2)
-        norm_ls = (ls - min_ls) / ls_range
-        final_score = norm_ls * ds_factor
-        results.append((num_str, final_score, ds))
-
-    results.sort(key=lambda x: x[1], reverse=True)
-    return results
-
-
-def predict_prize1_v2(
-    df: pd.DataFrame,
-    target_date: datetime,
-    top_n: int = 20,
-    beam_width: int = 200,
-    pair_weight: float = 0.25,
-    blend_v1: bool = True,
-    k_per_half: int = 15,
-) -> pd.DataFrame:
-    """
-    Prize1 (6-digit) prediction via beam search with pair transition matrix.
-
-    Algorithm:
-    1. _p1_pos_digit_scores → (6,10) marginal probability per position
-    2. _p1_pair_matrix → (5,10,10) adjacent-digit transition probabilities
-    3. _p1_digitsum_dist → weighted digit-sum mean ± std from history
-    4. _beam_search_prize1 → top `beam_width` candidates via beam search
-    5. Optional: blend with v1 Front3×Back3 for diversity
-
-    Key improvements over v1:
-    - Pair transitions capture inter-position correlations
-    - Beam search = principled top-K without combinatorial explosion
-    - Digit-sum soft penalty prunes statistically unlikely candidates
-    - No artificial pool ceiling (beam_width is unconstrained)
-    """
-    if df.empty:
-        return pd.DataFrame()
-
-    df_sorted = df.sort_values("date").reset_index(drop=True)
-    prize1_raw = df_sorted["prize1"].astype(str)
-    valid = prize1_raw.where(
-        (prize1_raw.str.len() == 6) &
-        ~prize1_raw.isin(("", "nan", "None", "NaN", "<NA>"))
-    ).dropna()
-
-    if valid.empty:
-        return pd.DataFrame()
-
-    # ── Build signals ──
-    pos_scores = _p1_pos_digit_scores(df_sorted, valid, target_date)
-    pair_matrix = _p1_pair_matrix(valid)
-    mean_ds, std_ds = _p1_digitsum_dist(valid, target_date, df_sorted)
-
-    # ── Beam search ──
-    beam_results = _beam_search_prize1(
-        pos_scores, pair_matrix, float(mean_ds), float(std_ds),
-        beam_width=beam_width, pair_weight=pair_weight,
-    )
-
-    # ── Optional: blend with v1 for diversity ──
-    v1_scores: dict[str, float] = {}
-    if blend_v1:
-        v1_df = predict_prize1(df, target_date, top_n=top_n * 2, k_per_half=k_per_half)
-        if not v1_df.empty:
-            v1_max = float(v1_df["คะแนนรวม"].max()) or 1.0
-            v1_scores = dict(zip(v1_df["เลข"].astype(str), v1_df["คะแนนรวม"].astype(float) / v1_max))
-
-    # ── Lag penalty (last 2 draws) ──
-    last_draws = set(
-        v for v in (
-            prize1_raw.iloc[-1] if len(df_sorted) >= 1 else "",
-            prize1_raw.iloc[-2] if len(df_sorted) >= 2 else "",
-        )
-        if v and v not in ("", "nan")
-    )
-
-    # ── Assemble result ──
-    rows = []
-    seen: set[str] = set()
-
-    for num_str, beam_score, ds in beam_results:
-        if num_str in seen:
-            continue
-        seen.add(num_str)
-        v1_s = v1_scores.get(num_str, 0.0)
-        combined = beam_score * 0.70 + v1_s * 0.30
-        lag = 0.55 if num_str in last_draws else 1.0
-        rows.append({
-            "เลข":       num_str,
-            "หน้า 3":   num_str[:3],
-            "หลัง 3":   num_str[3:],
-            "Digit Sum": ds,
-            "Beam":      round(beam_score, 4),
-            "V1 blend":  round(v1_s, 4),
-            "คะแนนรวม":  round(combined * lag * 100.0, 2),
-        })
-
-    # Also add v1 candidates not in beam
-    for num_str, v1_s in v1_scores.items():
-        if num_str in seen:
-            continue
-        seen.add(num_str)
-        ds = sum(int(c) for c in num_str if c.isdigit())
-        lag = 0.55 if num_str in last_draws else 1.0
-        rows.append({
-            "เลข":       num_str,
-            "หน้า 3":   num_str[:3],
-            "หลัง 3":   num_str[3:],
-            "Digit Sum": ds,
-            "Beam":      0.0,
-            "V1 blend":  round(v1_s, 4),
-            "คะแนนรวม":  round(v1_s * 0.30 * lag * 100.0, 2),
-        })
-
-    if not rows:
-        return pd.DataFrame()
-
-    res = pd.DataFrame(rows).sort_values("คะแนนรวม", ascending=False)
-    res.index = range(1, len(res) + 1)
-    return res.head(top_n)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# predict_prize1_v3 — Hybrid Front3-Beam × Back3-Top3 with junction transition
-# ─────────────────────────────────────────────────────────────────────────────
-
-def predict_prize1_v3(
-    df: pd.DataFrame,
-    target_date: datetime,
-    top_n: int = 20,
-    beam_width: int = 200,
-    k_back: int = 50,
-    front_weight: float = 0.45,
-    junction_weight: float = 0.10,
-    back_weight: float = 0.45,
-) -> pd.DataFrame:
-    """
-    v3: Exploit prize1[-3:] ≡ top3 identity for a hybrid predictor.
-
-    Key insight:
-        prize1 = front3 (pos 0-2) + back3 (pos 3-5)
-        back3 ≡ top3 (ALWAYS, by definition of the lottery)
-
-    Algorithm:
-        1. Front3: beam search on positions 0-2 using pair transitions + D/M freq
-        2. Back3:  full 10-signal predict_numbers("top3") → k_back ranked candidates
-        3. Junction: P(back3[0] | front3[2]) from pair matrix (pos 2→3)
-        4. Cross-product: beam_width × k_back candidates, each scored as:
-               score = front_weight × front_beam
-                     + junction_weight × junction_pair
-                     + back_weight × back_top3_norm
-        5. Digit-sum soft penalty (Gaussian around historical D/M mean)
-        6. Lag penalty for last-2-draw prize1 values
-
-    Why this is better than v2:
-        - Back3 uses our best 10-signal model (recency, D/M, YoY, geometric overdue,
-          lag anti-correlation, momentum) instead of simple positional frequency
-        - Junction pair transition models the correlation across the halves
-        - Front3 beam still captures intra-front3 correlations via pair transitions
-    """
-    import math
-
-    if df.empty:
-        return pd.DataFrame()
-
-    df_sorted = df.sort_values("date").reset_index(drop=True)
-    prize1_raw = df_sorted["prize1"].astype(str)
-    valid = prize1_raw.where(
-        (prize1_raw.str.len() == 6) &
-        ~prize1_raw.isin(("", "nan", "None", "NaN", "<NA>"))
-    ).dropna()
-
-    if valid.empty:
-        return pd.DataFrame()
-
-    # ── 1. Back3: use full top3 prediction scores ──
-    back_pred = predict_numbers(df, "top3", target_date, top_n=None)
-    if back_pred is None or back_pred.empty:
-        return pd.DataFrame()
-    back_max = float(back_pred["คะแนนรวม"].max()) or 1.0
-    _bk = back_pred["เลข"].astype(str).str.zfill(3)
-    _bv = back_pred["คะแนนรวม"].astype(float) / back_max
-    back_scores_norm: dict[str, float] = dict(zip(_bk, _bv))
-    back_top = list(back_scores_norm.keys())[:k_back]
-
-    # ── 2. Front3 beam search (positions 0-2 only) ──
-    pos_scores_6  = _p1_pos_digit_scores(df_sorted, valid, target_date)  # (6,10)
-    pair_matrix_5 = _p1_pair_matrix(valid)                               # (5,10,10)
-
-    pos_scores_front = pos_scores_6[:3]   # (3,10)
-    pair_front       = pair_matrix_5[:2]  # (2,10,10) — transitions pos 0→1, 1→2
-    pair_junction    = pair_matrix_5[2]   # (10,10) — transition pos 2→3
-
-    log_pos_f  = np.log(np.maximum(pos_scores_front, 1e-12))   # (3,10)
-    log_pair_f = np.log(np.maximum(pair_front, 1e-12))         # (2,10,10)
-    log_junc   = np.log(np.maximum(pair_junction, 1e-12))      # (10,10)
-
-    pair_w = 0.25  # internal pair weight for front3 beam
-
-    # Beam search — positions 0, 1, 2
-    beams: list[tuple[list[int], float]] = [([], 0.0)]
-    for pos in range(3):
-        nxt: list[tuple[list[int], float]] = []
-        lp = log_pos_f[pos]
-        for prefix, ls in beams:
-            if pos == 0:
-                for d in range(10):
-                    nxt.append((prefix + [d], ls + lp[d]))
-            else:
-                prev_d = prefix[-1]
-                combined = (1.0 - pair_w) * lp + pair_w * log_pair_f[pos - 1, prev_d]
-                for d in range(10):
-                    nxt.append((prefix + [d], ls + combined[d]))
-        nxt.sort(key=lambda x: x[1], reverse=True)
-        beams = nxt[:beam_width]
-
-    if not beams:
-        return pd.DataFrame()
-
-    front_min = beams[-1][1]
-    front_max = beams[0][1]
-    front_rng = front_max - front_min if front_max > front_min else 1.0
-
-    # ── 3. Digit-sum distribution ──
-    mean_ds, std_ds = _p1_digitsum_dist(valid, target_date, df_sorted)
-    mean_ds, std_ds = float(mean_ds), float(std_ds)
-
-    # ── 4. Lag penalty ──
-    last_draws = {
-        v for v in (
-            prize1_raw.iloc[-1] if len(df_sorted) >= 1 else "",
-            prize1_raw.iloc[-2] if len(df_sorted) >= 2 else "",
-        )
-        if v and v not in ("", "nan")
-    }
-
-    # ── 5. Cross-product: beam × back_top ──
-    rows = []
-    seen: set[str] = set()
-
-    for front_digits, front_ls in beams:
-        f_str = "".join(map(str, front_digits))
-        d2 = front_digits[2]
-        front_norm = (front_ls - front_min) / front_rng
-
-        for b_str in back_top:
-            try:
-                d3 = int(b_str[0])
-            except (ValueError, IndexError):
-                continue
-
-            cand = f_str + b_str
-            if cand in seen or len(cand) != 6:
-                continue
-            seen.add(cand)
-
-            b_norm    = back_scores_norm.get(b_str, 0.0)
-            junc_norm = float(pair_junction[d2, d3])
-
-            # Weighted combination (already normalised)
-            raw_score = (
-                front_weight   * front_norm +
-                junction_weight * junc_norm  +
-                back_weight    * b_norm
-            )
-
-            # Digit-sum soft penalty
-            ds = sum(int(c) for c in cand)
-            z  = abs(ds - mean_ds) / std_ds
-            ds_factor = math.exp(-0.5 * min(z / 2.0, 3.0) ** 2)
-
-            lag = 0.55 if cand in last_draws else 1.0
-
-            rows.append({
-                "เลข":        cand,
-                "หน้า 3":    f_str,
-                "หลัง 3":    b_str,
-                "Digit Sum":  ds,
-                "Front Beam": round(front_norm, 4),
-                "Back Top3":  round(b_norm, 4),
-                "Junction":   round(junc_norm, 4),
-                "คะแนนรวม":   round(raw_score * ds_factor * lag * 100.0, 2),
-            })
-
-    if not rows:
-        return pd.DataFrame()
-
-    res = pd.DataFrame(rows).sort_values("คะแนนรวม", ascending=False)
-    res.index = range(1, len(res) + 1)
-    return res.head(top_n)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# predict_prize1_v4 — Trigram + Ensemble beam + Extended junction + Backtest
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _p1_trigram_matrix(valid: pd.Series, alpha: float = 0.5) -> np.ndarray:
     """
     shape (4, 10, 10, 10) — P(d_{i+2} | d_i, d_{i+1}), start positions 0-3.
@@ -1175,27 +655,34 @@ def _beam_front3_v4(
     return beams
 
 
-def predict_prize1_v4(
+
+def predict_prize1_ultimate(
     df: pd.DataFrame,
     target_date: datetime,
     top_n: int = 20,
-    beam_width: int = 200,
+    beam_width: int = 300,
     k_back: int = 50,
-    n_ensemble: int = 3,
 ) -> pd.DataFrame:
     """
-    v4: Trigram front3 beam + 3-config ensemble + extended junction (trigram).
+    Ultimate Prize1 predictor — single optimized beam fusing all signals from v1-v4.
 
-    Improvements over v3:
-    1. Trigram P(d2|d0,d1) at position 2 of front3 — 2-token context
-    2. Extended junction: 0.6×P(d3|d2) + 0.4×P(d3|d1,d2) — cross-half trigram
-    3. Ensemble of 3 beam configs (trig-heavy / balanced / pair-heavy) → average
-       scores. Reduces variance from single beam configuration choice.
-    4. Back3 still uses full 10-signal top3 predictor (same as v3)
+    Key design decisions vs v4:
+    - Single beam (pos_w=0.35, pair_w=0.30, trig_w=0.35) instead of 3-config average
+      → cleaner signal, wider beam compensates for reduced diversity
+    - beam_width=300 (vs 200 in v4) for broader candidate coverage
+    - Back3 weight 0.45 vs Front3 0.40 (back3 uses 10-signal predictor, higher quality)
+    - Junction weight 0.15 (vs 0.10 in v4) — extended bigram+trigram cross-seam signal
 
-    Data analysis:
-    - Bigrams: 20% fill (real non-uniform distribution, strong signal)
-    - Trigrams: 24% fill, avg 3.2 → usable with alpha=0.5 Laplace smoothing
+    Signal pipeline:
+      1. _p1_pos_digit_scores → (6,10) marginal per-position digit probability
+         [recency-weighted overall × 0.35 + D/M conditional × 0.35 + day-of-month × 0.15 + YoY × 0.15]
+      2. _p1_pair_matrix → (5,10,10) bigram transition probabilities (Laplace α=0.3)
+      3. _p1_trigram_matrix → (4,10,10,10) trigram conditional probabilities (α=0.5)
+      4. Back3 via predict_numbers("top3") — full 10-signal statistical predictor
+      5. Beam search front3 (pos 0-2): pos×0.35 + pair×0.30 + trig×0.35 per step
+      6. Cross-seam junction: 0.60×P(d3|d2) + 0.40×P(d3|d1,d2)
+      7. Final score: 0.40×front_beam + 0.15×junction + 0.45×back3
+      8. Digit-sum Gaussian penalty + lag penalty for last-2-draw numbers
     """
     import math
 
@@ -1212,7 +699,7 @@ def predict_prize1_v4(
     if valid.empty:
         return pd.DataFrame()
 
-    # ── Precompute matrices (shared across all ensemble configs) ──
+    # ── Precompute all matrices (shared, computed once) ──
     pos_scores_6  = _p1_pos_digit_scores(df_sorted, valid, target_date)  # (6,10)
     pair_matrix_5 = _p1_pair_matrix(valid)                               # (5,10,10)
     trigram_4     = _p1_trigram_matrix(valid)                            # (4,10,10,10)
@@ -1229,43 +716,26 @@ def predict_prize1_v4(
     back_scores_norm: dict[str, float] = dict(zip(_bk, _bv))
     back_top = list(back_scores_norm.keys())[:k_back]
 
-    # ── Ensemble configs: vary pos_w widely so each beam explores different space ──
-    # pos_w = max(1 - pair_w - trig_w, 0.05) inside _beam_front3_v4
-    # Config 1: trig-dominant  → pos_w≈0.10, pair=0.20, trig=0.70
-    # Config 2: balanced       → pos_w≈0.45, pair=0.25, trig=0.30
-    # Config 3: pos-dominant   → pos_w≈0.70, pair=0.20, trig=0.10
-    CONFIGS = [
-        {"pair_w": 0.20, "trig_w": 0.70},
-        {"pair_w": 0.25, "trig_w": 0.30},
-        {"pair_w": 0.20, "trig_w": 0.10},
-    ][:n_ensemble]
+    # ── Single optimized beam search (front3 positions 0-2) ──
+    # pos_w = max(1 - pair_w - trig_w, 0.05) = max(1 - 0.30 - 0.35, 0.05) = 0.35
+    beams = _beam_front3_v4(
+        pos_scores_6[:3], pair_matrix_5[:2], trigram_4[0],
+        beam_width=beam_width,
+        pair_w=0.30, trig_w=0.35,
+    )
 
-    # Accumulate: front_str → list of normalised scores (one per config)
-    cand_front_scores: dict[str, list[float]] = {}
-
-    for cfg in CONFIGS:
-        beams = _beam_front3_v4(
-            pos_scores_6[:3], pair_matrix_5[:2], trigram_4[0],
-            beam_width=beam_width,
-            pair_w=cfg["pair_w"], trig_w=cfg["trig_w"],
-        )
-        if not beams:
-            continue
-        f_min = beams[-1][1]
-        f_max = beams[0][1]
-        f_rng = f_max - f_min if f_max > f_min else 1.0
-        for digits, ls in beams:
-            f_str = "".join(map(str, digits))
-            cand_front_scores.setdefault(f_str, []).append((ls - f_min) / f_rng)
-
-    if not cand_front_scores:
+    if not beams:
         return pd.DataFrame()
 
-    # ── Extended junction matrices ──
-    pair_junc = pair_matrix_5[2]   # (10,10) — P(d3|d2)
-    trig_junc = trigram_4[1]       # (10,10,10) — P(d3|d1,d2) — start pos 1
+    f_min = beams[-1][1]
+    f_max = beams[0][1]
+    f_rng = f_max - f_min if f_max > f_min else 1.0
 
-    # ── Lag penalty ──
+    # ── Extended junction: bigram + trigram across front3/back3 seam ──
+    pair_junc = pair_matrix_5[2]   # (10,10) — P(d3|d2)
+    trig_junc = trigram_4[1]       # (10,10,10) — P(d3|d1,d2)
+
+    # ── Lag penalty for last 2 draws ──
     last_draws = {
         v for v in (
             prize1_raw.iloc[-1] if len(df_sorted) >= 1 else "",
@@ -1274,12 +744,13 @@ def predict_prize1_v4(
         if v and v not in ("", "nan")
     }
 
-    # ── Cross-product front × back ──
+    # ── Cross-product front3 × back3 ──
     rows = []
     seen: set[str] = set()
 
-    for f_str, score_list in cand_front_scores.items():
-        front_avg = sum(score_list) / len(score_list)
+    for front_digits, front_ls in beams:
+        f_str = "".join(map(str, front_digits))
+        front_norm = (front_ls - f_min) / f_rng
         try:
             d1_f = int(f_str[1])
             d2_f = int(f_str[2])
@@ -1298,16 +769,15 @@ def predict_prize1_v4(
 
             b_norm = back_scores_norm.get(b_str, 0.0)
 
-            # Extended junction: bigram + trigram across the seam
-            j_pair = float(pair_junc[d2_f, d3_b])
-            j_trig = float(trig_junc[d1_f, d2_f, d3_b])
-            junction = 0.60 * j_pair + 0.40 * j_trig
+            # Extended junction: 60% bigram + 40% trigram
+            junction = 0.60 * float(pair_junc[d2_f, d3_b]) + 0.40 * float(trig_junc[d1_f, d2_f, d3_b])
 
-            raw = 0.45 * front_avg + 0.10 * junction + 0.45 * b_norm
+            # Weighted score: back3 slightly dominant over front3
+            raw = 0.40 * front_norm + 0.15 * junction + 0.45 * b_norm
 
-            # Digit-sum soft penalty (weak — std≈7 ≈ theoretical random)
+            # Digit-sum Gaussian soft penalty (floor sigma at 2.5)
             ds = sum(int(c) for c in cand)
-            z  = abs(ds - mean_ds) / std_ds
+            z = abs(ds - mean_ds) / std_ds
             ds_f = math.exp(-0.5 * min(z / 2.5, 3.0) ** 2)
 
             lag = 0.55 if cand in last_draws else 1.0
@@ -1317,7 +787,7 @@ def predict_prize1_v4(
                 "หน้า 3":    f_str,
                 "หลัง 3":    b_str,
                 "Digit Sum":  ds,
-                "Front Beam": round(front_avg, 4),
+                "Front Beam": round(front_norm, 4),
                 "Back Top3":  round(b_norm, 4),
                 "Junction":   round(junction, 4),
                 "คะแนนรวม":   round(raw * ds_f * lag * 100.0, 2),
@@ -1337,17 +807,12 @@ def prize1_backtest(
     top_n: int = 20,
     beam_width: int = 100,
     k_back: int = 30,
-    algorithm: str = "v4",
-    compare_v1: bool = False,
 ) -> dict:
     """
-    Out-of-sample backtest for prize1 predictors.
+    Out-of-sample backtest for predict_prize1_ultimate.
 
     For each of last n_draws with valid prize1, uses ONLY data before that draw
     (proper train/test split — no data leakage).
-
-    compare_v1: run v1 baseline alongside the chosen algorithm for comparison.
-                Default False — skips the extra v1 call to halve backtest time.
     """
     df_sorted = df.sort_values("date").reset_index(drop=True)
     prize1_raw = df_sorted["prize1"].astype(str)
@@ -1356,68 +821,32 @@ def prize1_backtest(
     test_idx = valid_idx[-min(n_draws, len(valid_idx)):]
 
     n_tested = len(test_idx)
-    hits_v1 = 0
-    hits_algo = 0
+    hits = 0
     errors = 0
-
-    _fn_map: dict = {
-        "v1": None,  # handled inline via predict_prize1
-        "v2": predict_prize1_v2,
-        "v3": predict_prize1_v3,
-        "v4": predict_prize1_v4,
-    }
-    algo_fn = _fn_map.get(algorithm, predict_prize1_v4)
 
     for idx in test_idx:
         actual = prize1_raw.iloc[idx]
         df_train = df_sorted.iloc[:idx]
         td = df_sorted["date"].iloc[idx]
-
-        # v1 baseline — only when compare_v1=True or algorithm=="v1"
-        if compare_v1 or algorithm == "v1":
-            try:
-                p1 = predict_prize1(df_train, td, top_n=top_n, k_per_half=15)
-                if not p1.empty and actual in p1["เลข"].values:
-                    hits_v1 += 1
-            except Exception as exc:
-                if errors == 0:
-                    print(f"[backtest] first v1 error at draw {idx}: {exc}")
-                errors += 1
-
-        # Requested algorithm (skip when algorithm=="v1" — already counted in hits_v1)
-        if algorithm != "v1" and algo_fn is not None:
-            try:
-                kwargs: dict = {"top_n": top_n}
-                if algorithm in ("v3", "v4"):
-                    kwargs.update({"beam_width": beam_width, "k_back": k_back})
-                if algorithm == "v4":
-                    kwargs["n_ensemble"] = 3
-                elif algorithm == "v2":
-                    kwargs.update({"beam_width": beam_width, "blend_v1": False})
-                p_algo = algo_fn(df_train, td, **kwargs)
-                if not p_algo.empty and actual in p_algo["เลข"].values:
-                    hits_algo += 1
-            except Exception as exc:
-                if errors == 0:
-                    print(f"[backtest] first {algorithm} error at draw {idx}: {exc}")
-                errors += 1
-
-    if algorithm == "v1":
-        hits_algo = hits_v1
+        try:
+            pred = predict_prize1_ultimate(df_train, td, top_n=top_n, beam_width=beam_width, k_back=k_back)
+            if not pred.empty and actual in pred["เลข"].values:
+                hits += 1
+        except Exception as exc:
+            if errors == 0:
+                print("[backtest] first error at draw " + str(idx) + ": " + str(exc))
+            errors += 1
 
     random_pool_rate = top_n / 1_000_000
 
     return {
         "n_tested":    n_tested,
         "top_n":       top_n,
-        "hits_v1":     hits_v1,
-        "hits_algo":   hits_algo,
-        "rate_v1":     hits_v1  / n_tested if n_tested else 0.0,
-        "rate_algo":   hits_algo / n_tested if n_tested else 0.0,
+        "hits":        hits,
+        "rate":        hits / n_tested if n_tested else 0.0,
         "random_rate": random_pool_rate,
-        "lift_v1":     (hits_v1  / n_tested / random_pool_rate) if n_tested else 0.0,
-        "lift_algo":   (hits_algo / n_tested / random_pool_rate) if n_tested else 0.0,
-        "algorithm":   algorithm,
+        "lift":        (hits / n_tested / random_pool_rate) if n_tested else 0.0,
+        "algorithm":   "ultimate",
         "errors":      errors,
     }
 
