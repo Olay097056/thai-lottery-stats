@@ -576,6 +576,35 @@ def _p1_digitsum_dist(valid: pd.Series, target_date: datetime,
     return mean_ds, std_ds
 
 
+def _p1_hot_digit_scores(valid: pd.Series, n_recent: int = 20, alpha: float = 0.5) -> np.ndarray:
+    """
+    Returns (3, 10) array — short-term hot digit frequency for front3 positions.
+    Uses only the last n_recent prize1 draws to capture recent trends.
+    """
+    scores = np.full((3, 10), alpha)
+    arr = valid.values
+    lengths = np.array([len(v) for v in arr])
+    arr = arr[lengths == 6]
+    recent = arr[-n_recent:] if len(arr) >= n_recent else arr
+    if len(recent) == 0:
+        return scores / scores.sum(axis=1, keepdims=True)
+    try:
+        digits = np.array([[int(v[i]) for i in range(3)] for v in recent], dtype=np.int8)
+    except ValueError:
+        rows = []
+        for v in recent:
+            try:
+                rows.append([int(v[i]) for i in range(3)])
+            except ValueError:
+                pass
+        if not rows:
+            return scores / scores.sum(axis=1, keepdims=True)
+        digits = np.array(rows, dtype=np.int8)
+    for pos in range(3):
+        np.add.at(scores[pos], digits[:, pos], 1.0)
+    return scores / scores.sum(axis=1, keepdims=True)
+
+
 def _p1_trigram_matrix(valid: pd.Series, alpha: float = 0.5) -> np.ndarray:
     """
     shape (4, 10, 10, 10) — P(d_{i+2} | d_i, d_{i+1}), start positions 0-3.
@@ -612,43 +641,57 @@ def _beam_front3_v4(
     beam_width: int,
     pair_w: float,
     trig_w: float,
+    hot_scores: np.ndarray | None = None,  # (3, 10) short-term hot digit
+    hot_w: float = 0.0,
 ) -> list[tuple[list[int], float]]:
     """
     Beam search positions 0-2.
-    Position 2 uses trigram P(d2|d0,d1) in addition to bigram and positional.
+    pos=2: trigram P(d2|d0,d1) + bigram + positional + optional hot_scores.
+    hot_scores: last-20-draws per-position digit frequency; hot_w controls weight.
     """
-    pos_w = max(1.0 - pair_w - trig_w, 0.05)
-    log_pos  = np.log(np.maximum(pos_scores_3, 1e-12))   # (3,10)
-    log_pair = np.log(np.maximum(pair_2, 1e-12))          # (2,10,10)
-    log_trig = np.log(np.maximum(trigram_pos0, 1e-12))    # (10,10,10)
+    pos_w = max(1.0 - pair_w - trig_w - hot_w, 0.05)
+    log_pos  = np.log(np.maximum(pos_scores_3, 1e-12))    # (3,10)
+    log_pair = np.log(np.maximum(pair_2, 1e-12))           # (2,10,10)
+    log_trig = np.log(np.maximum(trigram_pos0, 1e-12))     # (10,10,10)
+    log_hot  = (np.log(np.maximum(hot_scores, 1e-12))
+                if hot_scores is not None and hot_w > 0
+                else None)                                  # (3,10) or None
 
     beams: list[tuple[list[int], float]] = [([], 0.0)]
 
     # Normalize per-position so each position contributes equally regardless
     # of how many signal types are available at that position.
-    w0 = pos_w                          # pos=0: positional only
-    w1 = pos_w + pair_w                 # pos=1: positional + bigram
-    w2 = pos_w + pair_w + trig_w       # pos=2: positional + bigram + trigram
+    w0 = pos_w + hot_w                          # pos=0: positional + hot
+    w1 = pos_w + pair_w + hot_w                 # pos=1: positional + bigram + hot
+    w2 = pos_w + pair_w + trig_w + hot_w        # pos=2: all signals
 
     for pos in range(3):
         nxt: list[tuple[list[int], float]] = []
         lp = log_pos[pos]
+        lh = log_hot[pos] if log_hot is not None else None
         for prefix, ls in beams:
             if pos == 0:
                 for d in range(10):
-                    nxt.append((prefix + [d], ls + (pos_w / w0) * lp[d]))
+                    s = pos_w * lp[d]
+                    if lh is not None:
+                        s += hot_w * lh[d]
+                    nxt.append((prefix + [d], ls + s / w0))
             elif pos == 1:
                 prev = prefix[-1]
                 for d in range(10):
-                    s = (pos_w * lp[d] + pair_w * log_pair[0, prev, d]) / w1
-                    nxt.append((prefix + [d], ls + s))
+                    s = pos_w * lp[d] + pair_w * log_pair[0, prev, d]
+                    if lh is not None:
+                        s += hot_w * lh[d]
+                    nxt.append((prefix + [d], ls + s / w1))
             else:  # pos == 2: trigram P(d2 | d0, d1)
                 d0, d1 = prefix[0], prefix[1]
                 for d in range(10):
-                    s = (pos_w    * lp[d] +
-                         pair_w   * log_pair[1, d1, d] +
-                         trig_w   * log_trig[d0, d1, d]) / w2
-                    nxt.append((prefix + [d], ls + s))
+                    s = (pos_w  * lp[d] +
+                         pair_w * log_pair[1, d1, d] +
+                         trig_w * log_trig[d0, d1, d])
+                    if lh is not None:
+                        s += hot_w * lh[d]
+                    nxt.append((prefix + [d], ls + s / w2))
         nxt.sort(key=lambda x: x[1], reverse=True)
         beams = nxt[:beam_width]
 
@@ -703,6 +746,7 @@ def predict_prize1_ultimate(
     pos_scores_6  = _p1_pos_digit_scores(df_sorted, valid, target_date)  # (6,10)
     pair_matrix_5 = _p1_pair_matrix(valid)                               # (5,10,10)
     trigram_4     = _p1_trigram_matrix(valid)                            # (4,10,10,10)
+    hot_scores_3  = _p1_hot_digit_scores(valid, n_recent=20)             # (3,10) last-20 draws
     mean_ds, std_ds = _p1_digitsum_dist(valid, target_date, df_sorted)
     mean_ds, std_ds = float(mean_ds), float(std_ds)
 
@@ -717,11 +761,12 @@ def predict_prize1_ultimate(
     back_top = list(back_scores_norm.keys())[:k_back]
 
     # ── Single optimized beam search (front3 positions 0-2) ──
-    # pos_w = max(1 - pair_w - trig_w, 0.05) = max(1 - 0.30 - 0.35, 0.05) = 0.35
+    # Weights: pos=0.25, pair=0.28, trig=0.32, hot=0.15 (all sum to 1.0)
     beams = _beam_front3_v4(
         pos_scores_6[:3], pair_matrix_5[:2], trigram_4[0],
         beam_width=beam_width,
-        pair_w=0.30, trig_w=0.35,
+        pair_w=0.28, trig_w=0.32,
+        hot_scores=hot_scores_3, hot_w=0.15,
     )
 
     if not beams:
