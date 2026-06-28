@@ -843,7 +843,7 @@ def predict_prize1_ultimate(
     pair_matrix_5  = _p1_pair_matrix(valid)                               # (5,10,10)
     trigram_4      = _p1_trigram_matrix(valid)                            # (4,10,10,10)
     quadgram_seam  = _p1_quadgram_seam(valid)                             # (10,10,10,10)
-    hot_scores_3   = _p1_hot_digit_scores(valid, n_recent=20)             # (3,10) last-20 draws
+    hot_scores_3   = _p1_hot_digit_scores(valid, n_recent=25)             # (3,10) last-25 draws (optimal)
     overdue_3      = _p1_overdue_digit_scores(valid)                      # (3,10) geometric overdue
     # Additive blend: 70% hot + 30% overdue
     hot_combined_3 = 0.70 * hot_scores_3 + 0.30 * overdue_3
