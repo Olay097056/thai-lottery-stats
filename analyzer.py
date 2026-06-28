@@ -845,7 +845,7 @@ def predict_prize1_ultimate(
     quadgram_seam  = _p1_quadgram_seam(valid)                             # (10,10,10,10)
     hot_scores_3   = _p1_hot_digit_scores(valid, n_recent=20)             # (3,10) last-20 draws
     overdue_3      = _p1_overdue_digit_scores(valid)                      # (3,10) geometric overdue
-    # Blend: 70% general hot + 30% overdue — best confirmed combination
+    # Additive blend: 70% hot + 30% overdue
     hot_combined_3 = 0.70 * hot_scores_3 + 0.30 * overdue_3
     hot_combined_3 = hot_combined_3 / np.maximum(hot_combined_3.sum(axis=1, keepdims=True), 1e-12)
     mean_ds, std_ds = _p1_digitsum_dist(valid, target_date, df_sorted)
@@ -884,7 +884,7 @@ def predict_prize1_ultimate(
         pos_scores_6[:3], pair_matrix_5[:2], trigram_4[0],
         beam_width=beam_width,
         pair_w=0.28, trig_w=0.32,
-        hot_scores=hot_combined_3, hot_w=0.15,
+        hot_scores=hot_combined_3, hot_w=0.20,
     )
 
     if not beams:
