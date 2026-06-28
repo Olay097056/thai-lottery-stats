@@ -147,7 +147,11 @@ select:focus,input:focus{border-color:var(--gold-dim)}
   <div class="grid-4">
     <div class="card"><div class="card-title">งวดทั้งหมด</div><div class="stat-val" id="s-total">—</div></div>
     <div class="card"><div class="card-title">งวดล่าสุด</div><div class="stat-val" id="s-date" style="font-size:1rem">—</div></div>
-    <div class="card"><div class="card-title">ข้อมูลตั้งแต่</div><div class="stat-val" id="s-from" style="font-size:1rem">—</div></div>
+    <div class="card" style="text-align:center">
+      <div class="card-title">⏰ นับถอยหลังงวดถัดไป</div>
+      <div id="countdown-val" style="font-family:'IBM Plex Mono',monospace;font-size:1.1rem;font-weight:700;color:var(--gold2);letter-spacing:1px">—</div>
+      <div id="countdown-date" style="font-size:.72rem;color:var(--text3);margin-top:2px"></div>
+    </div>
     <div class="card"><div class="card-title">รางวัลที่ 1 ล่าสุด</div><div class="prize1-box" id="s-prize1"></div></div>
   </div>
   <div class="grid-2">
@@ -632,7 +636,7 @@ async function loadDashboard(){
   if(d.error){ toast(d.error,'error'); return; }
   document.getElementById('s-total').textContent = (d.total_draws||0).toLocaleString();
   document.getElementById('s-date').textContent = fmtDate(d.latest?.date);
-  document.getElementById('s-from').textContent = fmtDate(d.date_min);
+  if(document.getElementById('s-from')) document.getElementById('s-from').textContent = fmtDate(d.date_min);
   const p1 = d.latest?.prize1||'';
   document.getElementById('s-prize1').innerHTML = p1.split('').map(c=>`<div class="digit-box">${c}</div>`).join('');
   const lt = d.latest||{};
@@ -768,6 +772,42 @@ async function loadOverdue(){
     data:{labels:rows.map(r=>String(r['เลข']||'')),datasets:[{label:'งวด',data:rows.map(r=>r['ค้างกี่งวด']||0),backgroundColor:rows.map(r=>(r['ค้างกี่งวด']||0)>=50?'rgba(240,84,84,0.7)':'rgba(200,168,75,0.6)'),borderWidth:0}]},
     options:{...chartOpts('งวด'),indexAxis:'y'}});
 }
+
+// ─── Lottery Countdown Timer ──────────────────────────────────────────────────
+function startCountdown(){
+  function getNextDraw(){
+    // Thai lottery: 1st and 16th of each month, draw at 14:30 Bangkok (UTC+7)
+    const now = new Date();
+    const bkk = new Date(now.getTime() + (7*60 - now.getTimezoneOffset()) * 60000);
+    const y=bkk.getUTCFullYear(), m=bkk.getUTCMonth(), d=bkk.getUTCDate();
+    const h=bkk.getUTCHours(), mn=bkk.getUTCMinutes();
+    const pastDraw = (day) => d > day || (d === day && (h > 14 || (h === 14 && mn >= 30)));
+    let nextDay, nextMon=m, nextYr=y;
+    if(!pastDraw(1) ) { nextDay=1; }
+    else if(!pastDraw(16)) { nextDay=16; }
+    else { nextDay=1; nextMon=m+1; if(nextMon>11){nextMon=0;nextYr=y+1;} }
+    // Next draw in UTC: Bangkok 14:30 = UTC 07:30
+    return new Date(Date.UTC(nextYr, nextMon, nextDay, 7, 30, 0));
+  }
+  function tick(){
+    const next=getNextDraw();
+    const now=new Date();
+    const diff=next-now;
+    if(diff<=0){document.getElementById('countdown-val').textContent='กำลังออกผล!';return;}
+    const days=Math.floor(diff/86400000);
+    const hrs=Math.floor((diff%86400000)/3600000);
+    const mins=Math.floor((diff%3600000)/60000);
+    const secs=Math.floor((diff%60000)/1000);
+    const pad=n=>String(n).padStart(2,'0');
+    document.getElementById('countdown-val').textContent=
+      days>0?`${days}วัน ${pad(hrs)}:${pad(mins)}:${pad(secs)}`:`${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
+    const dateEl=document.getElementById('countdown-date');
+    if(dateEl) dateEl.textContent=`งวด ${next.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'})}`;
+  }
+  tick();
+  setInterval(tick,1000);
+}
+startCountdown();
 
 // ─── Export Predictions CSV ───────────────────────────────────────────────────
 function exportPredCSV(){

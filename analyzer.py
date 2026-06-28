@@ -859,19 +859,16 @@ def predict_prize1_ultimate(
     _bk = back_pred["เลข"].astype(str).str.zfill(3)
     _bv = back_pred["คะแนนรวม"].astype(float) / back_max
 
-    # Build hot/overdue signal for back3 from recent top3 prize1 digits (pos 3-5)
-    hot_b3  = _p1_hot_digit_scores(valid, n_recent=20)[0]   # reuse pos0 won't work — need separate
-    # Compute explicitly from prize1 back3 (pos 3,4,5)
+    # Build hot signal for back3 from prize1 back3 history (pos 3-5)
     arr_b3 = valid.values
     arr_b3 = arr_b3[np.array([len(v) for v in arr_b3]) == 6]
-    recent_b3 = arr_b3[-20:] if len(arr_b3) >= 20 else arr_b3
+    recent_b3 = [v[3:] for v in arr_b3[-20:]] if len(arr_b3) >= 20 else [v[3:] for v in arr_b3]
     hot_back3_counts: dict[str, float] = {}
-    for v in recent_b3:
-        s = v[3:]
+    for s in recent_b3:
         hot_back3_counts[s] = hot_back3_counts.get(s, 0) + 1
     hot_back3_max = max(hot_back3_counts.values(), default=1)
 
-    # Blend: 85% statistical + 15% hot-back3 recency
+    # Blend: 92% statistical + 8% hot recency (overdue signal hurts back3 — statistical predictor already calibrated)
     back_scores_norm: dict[str, float] = {}
     for num, stat_score in zip(_bk, _bv):
         hot_score = hot_back3_counts.get(num, 0) / hot_back3_max
