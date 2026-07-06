@@ -1111,7 +1111,10 @@ function _codexDateParts(row, fallbackIso=''){
   return {day:1, month:1, year:2568};
 }
 
-function _codexPool(rows, col, width, targetIso, topN){
+const CODEX_DEFAULT_COEFFS={sameDay:14,sameMonth:4,count:1.4,f80:4,f24:5,overdue:0.18,lastNumDecay:0.7};
+
+function _codexPool(rows, col, width, targetIso, topN, coeffs){
+  const c=coeffs||CODEX_DEFAULT_COEFFS;
   const target=_codexDateParts(null,targetIso);
   const clean=(rows||[])
     .filter(r=>r && r[col] != null && String(r[col]).trim() !== '')
@@ -1138,13 +1141,13 @@ function _codexPool(rows, col, width, targetIso, topN){
       if(clean[i].date.month===target.month) sameMonth++;
     }
     let score =
-      sameDay*14 +
-      sameMonth*4 +
-      count*1.4 +
-      (f80[num]||0)*4 +
-      (f24[num]||0)*5 +
-      Math.min(overdue,160)*0.18;
-    if(num===lastNum) score*=0.7;
+      sameDay*c.sameDay +
+      sameMonth*c.sameMonth +
+      count*c.count +
+      (f80[num]||0)*c.f80 +
+      (f24[num]||0)*c.f24 +
+      Math.min(overdue,160)*c.overdue;
+    if(num===lastNum) score*=c.lastNumDecay;
     return {num,score};
   }).sort((a,b)=>b.score-a.score).slice(0,topN).map(x=>x.num);
 }
@@ -1172,18 +1175,18 @@ function _codexHistoryForTarget(targetIso){
   });
 }
 
-function _codexFormulas(rows, targetIso){
+function _codexFormulas(rows, targetIso, coeffs){
   const hist=(rows||[]).filter(Boolean);
-  const bottomSharp=_codexPool(hist,'bottom2',2,targetIso,10);
+  const bottomSharp=_codexPool(hist,'bottom2',2,targetIso,10,coeffs);
   const front3=_codexUnion([
-    _codexPool(hist,'front3_1',3,targetIso,3),
-    _codexPool(hist,'front3_2',3,targetIso,3),
+    _codexPool(hist,'front3_1',3,targetIso,3,coeffs),
+    _codexPool(hist,'front3_2',3,targetIso,3,coeffs),
   ],6);
   const back3=_codexUnion([
-    _codexPool(hist,'back3_1',3,targetIso,3),
-    _codexPool(hist,'back3_2',3,targetIso,3),
+    _codexPool(hist,'back3_1',3,targetIso,3,coeffs),
+    _codexPool(hist,'back3_2',3,targetIso,3,coeffs),
   ],6);
-  const prize1Last2=_codexPool(hist,'top2',2,targetIso,3);
+  const prize1Last2=_codexPool(hist,'top2',2,targetIso,3,coeffs);
   return {bottomSharp,front3,back3,prize1Last2};
 }
 

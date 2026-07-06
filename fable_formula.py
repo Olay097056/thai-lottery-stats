@@ -607,6 +607,40 @@ def _prep_walk_forward_inputs(rows: pd.DataFrame, w_cfg: dict) -> tuple[list, li
     return pools_by_i, dates_by_i, trans_sources
 
 
+def fable_rolling_windows(df: pd.DataFrame, n_draws: int = 200, top2: int = 10,
+                          top3: int = 15, window: int = DEFAULT_WINDOW,
+                          weights: dict | None = None, _prepared: tuple | None = None) -> dict:
+    """คำนวณ rolling W50/W100/W200 tail2/tail3 edge สำหรับ config หนึ่งชุด ด้วย
+    engine เดียวกับ fable_backtest (_walk_forward_eval + _rolling_report) — แยกออกมา
+    ให้เรียกใช้ได้ทั้งจาก fable_backtest (rolling window ปกติ) และ fable_grid_search
+    (top-5 rolling comparison) โดยไม่มี scoring logic สองชุด
+
+    `_prepared` (ใช้ภายในเท่านั้น): ถ้า caller (เช่น fable_backtest) เตรียม
+    rows/w_cfg/pools_by_i/dates_by_i/trans_sources ไว้แล้ว ส่งเข้ามาเป็น
+    (rows, w_cfg, pools_by_i, dates_by_i, trans_sources) เพื่อไม่ต้องเตรียมซ้ำ"""
+    if _prepared is not None:
+        rows, w_cfg, pools_by_i, dates_by_i, trans_sources = _prepared
+    else:
+        rows = _sanook_rows(df).reset_index(drop=True)
+        if len(rows) < 40:
+            return {"error": "ข้อมูลไม่พอสำหรับ backtest", "tested": 0, "rolling": {}}
+        w_cfg = _weights(weights)
+        pools_by_i, dates_by_i, trans_sources = _prep_walk_forward_inputs(rows, w_cfg)
+
+    n_test = min(n_draws, len(rows) - 20)
+    start = len(rows) - n_test
+
+    stats, per_draw, tested = _walk_forward_eval(
+        rows, pools_by_i, dates_by_i, trans_sources, w_cfg, window, top2, top3,
+        range(start, len(rows)),
+    )
+
+    out = {"tested": tested, "config": _config(top2=top2, top3=top3, window=window, weights=w_cfg)}
+    out.update(_summarize_walk_stats(stats, tested))
+    out["rolling"] = _rolling_report(per_draw)
+    return out
+
+
 def fable_backtest(df: pd.DataFrame, n_draws: int = 200, top2: int = 10,
                    top3: int = 15, window: int = DEFAULT_WINDOW,
                    weights: dict | None = None, gate: bool = False,
@@ -624,22 +658,18 @@ def fable_backtest(df: pd.DataFrame, n_draws: int = 200, top2: int = 10,
     rows = _sanook_rows(df).reset_index(drop=True)
     if len(rows) < 40:
         return {"error": "ข้อมูลไม่พอสำหรับ backtest"}
-
     n_test = min(n_draws, len(rows) - 20)
     start = len(rows) - n_test
     w_cfg = _weights(weights)
     pools_by_i, dates_by_i, trans_sources = _prep_walk_forward_inputs(rows, w_cfg)
 
-    stats, per_draw, tested = _walk_forward_eval(
-        rows, pools_by_i, dates_by_i, trans_sources, w_cfg, window, top2, top3,
-        range(start, len(rows)),
-    )
-
-    out = {"tested": tested, "config": _config(top2=top2, top3=top3, window=window, weights=w_cfg)}
-    out.update(_summarize_walk_stats(stats, tested))
-    rolling = _rolling_report(per_draw)
-    out["rolling"] = rolling
-    criteria = _rolling_criteria(rolling, tested)
+    out = fable_rolling_windows(df, n_draws=n_draws, top2=top2, top3=top3, window=window,
+                                weights=weights,
+                                _prepared=(rows, w_cfg, pools_by_i, dates_by_i, trans_sources))
+    if "error" in out:
+        return out
+    tested = out["tested"]
+    criteria = _rolling_criteria(out["rolling"], tested)
 
     if gate:
         older_end = start
