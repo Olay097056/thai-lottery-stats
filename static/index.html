@@ -7,104 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<style>
-:root{
-  --bg:#06060b;--surface:#0d0d15;--surface2:#12121e;--surface3:#1a1a2a;
-  --gold:#c8a84b;--gold2:#e8c96b;--gold-dim:#8a6f2e;
-  --text:#e8e8f0;--text2:#9090a8;--text3:#5a5a72;
-  --green:#3dd68c;--red:#f05454;--blue:#4d9de0;--purple:#a855f7;
-  --border:rgba(200,168,75,0.15);--border2:rgba(255,255,255,0.06);
-  --radius:10px;--sidebar:220px;
-}
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--text);font-family:'Noto Sans Thai','Syne',sans-serif;display:flex;min-height:100vh;overflow-x:hidden}
-#sidebar{width:var(--sidebar);min-width:var(--sidebar);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;overflow-y:auto}
-.logo{padding:20px 16px 16px;border-bottom:1px solid var(--border2)}
-.logo-title{font-family:'Syne',sans-serif;font-weight:800;font-size:1.05rem;color:var(--gold)}
-.logo-sub{font-size:.7rem;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-top:3px}
-.nav{flex:1;padding:12px 0}
-.nav-item{display:flex;align-items:center;gap:10px;padding:10px 16px;cursor:pointer;font-size:.82rem;color:var(--text2);border-left:3px solid transparent;transition:all .2s;user-select:none}
-.nav-item:hover{color:var(--text);background:var(--surface2)}
-.nav-item.active{color:var(--gold);border-left-color:var(--gold);background:rgba(200,168,75,.08)}
-.nav-icon{width:18px;text-align:center;flex-shrink:0}
-.sidebar-footer{padding:12px 16px;border-top:1px solid var(--border2)}
-.refresh-btn{width:100%;padding:8px;background:var(--surface3);border:1px solid var(--border);color:var(--gold);border-radius:6px;font-size:.78rem;cursor:pointer;font-family:'Noto Sans Thai',sans-serif;transition:background .2s}
-.refresh-btn:hover{background:rgba(200,168,75,.15)}
-#main{margin-left:var(--sidebar);flex:1;min-height:100vh;overflow-y:auto}
-.page{display:none;padding:24px 28px;max-width:1400px}
-.page.active{display:block}
-.page-title{font-family:'Syne',sans-serif;font-weight:800;font-size:1.5rem;color:var(--gold);margin-bottom:4px}
-.page-sub{font-size:.8rem;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-bottom:20px}
-.card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:16px}
-.card-title{font-size:.7rem;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;font-family:'IBM Plex Mono',monospace}
-.stat-val{font-size:1.8rem;font-weight:700;color:var(--text);font-family:'IBM Plex Mono',monospace}
-.stat-sub{font-size:.72rem;color:var(--text2);margin-top:4px}
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
-.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
-.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
-.prize1-box{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:8px 0}
-.digit-box{width:52px;height:68px;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:700;border-radius:8px;font-family:'IBM Plex Mono',monospace;background:var(--surface3);border:1px solid var(--border);color:var(--gold2)}
-.tbl-wrap{overflow-x:auto;border-radius:var(--radius)}
-table{width:100%;border-collapse:collapse;font-size:.82rem}
-thead th{background:var(--surface2);padding:10px 12px;text-align:left;color:var(--text2);font-weight:600;white-space:nowrap;position:sticky;top:0}
-tbody tr{border-bottom:1px solid var(--border2)}
-tbody tr:hover{background:var(--surface2)}
-tbody td{padding:8px 12px;color:var(--text)}
-.rank-badge{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:.7rem;font-weight:700;background:var(--surface3);color:var(--text3)}
-.rank-1{background:rgba(200,168,75,.3);color:var(--gold)}.rank-2{background:rgba(150,150,180,.2);color:#aaa}.rank-3{background:rgba(150,100,60,.2);color:#c0836a}
-.num-badge{display:inline-flex;align-items:center;justify-content:center;border:1.5px solid var(--gold-dim);color:var(--gold2);border-radius:6px;padding:6px 10px;font-family:'IBM Plex Mono',monospace;font-size:.95rem;font-weight:600;margin:3px}
-.num-badge.hot{border-color:#f05454;color:#f07070}.num-badge.cold{border-color:#4d9de0;color:#7ab8e8}.num-badge.agree{border-color:#3dd68c;color:#3dd68c}
-.ctrl-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:flex-end}
-.ctrl-group{display:flex;flex-direction:column;gap:4px}
-.ctrl-label{font-size:.72rem;color:var(--text3);font-family:'IBM Plex Mono',monospace}
-select,input[type=text],input[type=number]{background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:6px;font-size:.82rem;outline:none;font-family:'Noto Sans Thai',sans-serif;min-width:130px}
-select:focus,input:focus{border-color:var(--gold-dim)}
-.btn{padding:9px 18px;border:none;border-radius:6px;cursor:pointer;font-size:.82rem;font-family:'Noto Sans Thai',sans-serif;transition:all .2s}
-.btn-primary{background:var(--gold);color:#0a0a0a;font-weight:700}.btn-primary:hover{background:var(--gold2)}
-.btn-secondary{background:var(--surface2);color:var(--text2);border:1px solid var(--border2)}.btn-secondary:hover{background:var(--surface3);color:var(--text)}
-.btn-danger{background:rgba(240,84,84,.15);color:var(--red);border:1px solid rgba(240,84,84,.3)}.btn-danger:hover{background:rgba(240,84,84,.25)}
-.btn-green{background:rgba(61,214,140,.15);color:var(--green);border:1px solid rgba(61,214,140,.3)}.btn-green:hover{background:rgba(61,214,140,.25)}
-.conf-banner{border-radius:var(--radius);padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:16px;background:var(--surface);border:1px solid var(--border)}
-.conf-score{font-size:2.2rem;font-weight:700;font-family:'IBM Plex Mono',monospace}
-.conf-HIGH{color:var(--green)}.conf-MEDIUM{color:var(--gold)}.conf-LOW{color:var(--red)}
-.conf-info{flex:1}.conf-label{font-size:.75rem;color:var(--text3)}
-.progress-bar{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
-.progress-fill{height:100%;background:var(--gold);border-radius:3px;transition:width .4s}
-.progress-fill.green{background:var(--green)}.progress-fill.red{background:var(--red)}.progress-fill.blue{background:var(--blue)}
-.hc-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border2)}
-.hc-num{font-family:'IBM Plex Mono',monospace;font-weight:600;min-width:50px}
-.hc-bar-wrap{flex:1;height:6px;background:var(--surface3);border-radius:3px;overflow:hidden}
-.hc-bar-fill{height:100%;border-radius:3px}
-.hot-fill{background:linear-gradient(90deg,#f05454,#ff8c42)}.cold-fill{background:linear-gradient(90deg,#4d9de0,#6ab4f0)}
-.hc-val{font-size:.72rem;color:var(--text3);min-width:40px;text-align:right;font-family:'IBM Plex Mono',monospace}
-.hm-cell{display:flex;align-items:center;justify-content:center;border-radius:4px;font-size:.65rem;font-family:'IBM Plex Mono',monospace;aspect-ratio:1;cursor:default;transition:transform .15s}
-.hm-cell:hover{transform:scale(1.1);z-index:1;position:relative}
-.overdue-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border2)}
-.overdue-num{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:1.1rem;min-width:55px;color:var(--gold2)}
-.overdue-badge{font-size:.7rem;padding:2px 8px;border-radius:20px;font-family:'IBM Plex Mono',monospace}
-.ov-warn{background:rgba(240,84,84,.2);color:var(--red)}.ov-caution{background:rgba(200,168,75,.2);color:var(--gold)}.ov-ok{background:rgba(61,214,140,.15);color:var(--green)}
-.wl-item{display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface2);border-radius:8px;margin-bottom:8px}
-.wl-num{font-family:'IBM Plex Mono',monospace;font-size:1.2rem;font-weight:700;color:var(--gold2);min-width:55px}
-.wl-info{flex:1;font-size:.8rem;color:var(--text2)}.wl-alert{font-size:.75rem;padding:2px 8px;border-radius:20px}
-.alert-great{background:rgba(61,214,140,.2);color:var(--green)}.alert-warn{background:rgba(240,84,84,.2);color:var(--red)}.alert-caution{background:rgba(200,168,75,.2);color:var(--gold)}
-.ml-status-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;font-size:.78rem}
-.ml-ready{background:rgba(61,214,140,.15);color:var(--green);border:1px solid rgba(61,214,140,.3)}.ml-notready{background:rgba(240,84,84,.1);color:var(--red);border:1px solid rgba(240,84,84,.2)}
-.section-h{font-size:.95rem;font-weight:700;color:var(--text);margin:16px 0 10px;display:flex;align-items:center;gap:8px}
-.section-h::before{content:'';display:block;width:3px;height:1em;background:var(--gold);border-radius:2px}
-.tab-bar{display:flex;gap:0;border-bottom:1px solid var(--border2);margin-bottom:16px}
-.tab-btn{padding:8px 16px;font-size:.8rem;color:var(--text3);border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;font-family:'Noto Sans Thai',sans-serif;transition:all .2s}
-.tab-btn.active{color:var(--gold);border-bottom-color:var(--gold)}.tab-btn:hover:not(.active){color:var(--text2)}
-.tab-panel{display:none}.tab-panel.active{display:block}
-#toast-container{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
-.toast{background:var(--surface);border:1px solid var(--border);padding:12px 18px;border-radius:var(--radius);font-size:.82rem;color:var(--text);animation:slideIn .3s ease;min-width:220px}
-.toast.success{border-color:var(--green);color:var(--green)}.toast.error{border-color:var(--red);color:var(--red)}
-@keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
-#api-spinner{position:fixed;top:14px;right:14px;z-index:9998;display:none;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:6px 14px;font-size:.75rem;color:var(--text3);font-family:'IBM Plex Mono',monospace}
-#api-spinner.active{display:flex}
-.spinner-dot{width:6px;height:6px;background:var(--gold);border-radius:50%;animation:spinPulse 1s ease-in-out infinite}
-.spinner-dot:nth-child(2){animation-delay:.2s}.spinner-dot:nth-child(3){animation-delay:.4s}
-@keyframes spinPulse{0%,80%,100%{transform:scale(0);opacity:.3}40%{transform:scale(1);opacity:1}}
-</style>
+<link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
 
@@ -113,22 +16,12 @@ select:focus,input:focus{border-color:var(--gold-dim)}
     <div class="logo-title">🎯 Lottery Intel</div>
     <div class="logo-sub">Thai Stats Dashboard</div>
   </div>
-  <div class="nav">
-    <div class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span>Dashboard</div>
-    <div class="nav-item" data-page="frequency"><span class="nav-icon">📋</span>ตารางความถี่</div>
-    <div class="nav-item" data-page="hotcold"><span class="nav-icon">🔥</span>ร้อน/เย็น</div>
-    <div class="nav-item" data-page="heatmap"><span class="nav-icon">🗺️</span>Heat Map</div>
-    <div class="nav-item" data-page="overdue"><span class="nav-icon">⏳</span>เลขค้าง</div>
-    <div class="nav-item" data-page="predict"><span class="nav-icon">🔮</span>ทำนาย</div>
-    <div class="nav-item" data-page="history"><span class="nav-icon">📅</span>ผลย้อนหลัง</div>
-    <div class="nav-item" data-page="pairs"><span class="nav-icon">🔗</span>เลขคู่ &amp; ลำดับ</div>
-    <div class="nav-item" data-page="decade"><span class="nav-icon">📈</span>เปรียบทศวรรษ</div>
-    <div class="nav-item" data-page="watchlist"><span class="nav-icon">🎫</span>ตั๋วเสี่ยง</div>
-    <div class="nav-item" data-page="ml"><span class="nav-icon">🤖</span>ML Prediction</div>
-    <div class="nav-item" data-page="network"><span class="nav-icon">🌐</span>เครือข่ายเลข</div>
-    <div class="nav-item" data-page="backtest"><span class="nav-icon">⚗️</span>Backtest</div>
-    <div class="nav-item" data-page="digit"><span class="nav-icon">🔢</span>วิเคราะห์หลัก</div>
-    <div class="nav-item" data-page="trend"><span class="nav-icon">📉</span>แนวโน้มรายปี</div>
+  <div class="nav" role="navigation" aria-label="เมนูหลัก">
+    <div class="nav-item active" role="button" tabindex="0" data-page="dashboard" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('dashboard')}"><span class="nav-icon">📊</span>Dashboard</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="frequency" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('frequency')}"><span class="nav-icon">📋</span>ตารางความถี่</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="predict" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('predict')}"><span class="nav-icon">🔮</span>ทำนาย / สูตร</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="history" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('history')}"><span class="nav-icon">📅</span>ผลย้อนหลัง</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="backtest" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('backtest')}"><span class="nav-icon">⚗️</span>Backtest</div>
   </div>
   <div class="sidebar-footer">
     <div id="sidebar-draw-date" style="font-size:.72rem;color:var(--text3);margin-bottom:8px;text-align:center;display:none">
@@ -142,33 +35,89 @@ select:focus,input:focus{border-color:var(--gold-dim)}
 
 <!-- DASHBOARD -->
 <div class="page active" id="page-dashboard">
-  <div class="page-title">Dashboard</div>
-  <div class="page-sub">ภาพรวมข้อมูลหวยไทย</div>
-  <div class="grid-4">
-    <div class="card"><div class="card-title">งวดทั้งหมด</div><div class="stat-val" id="s-total">—</div></div>
-    <div class="card"><div class="card-title">งวดล่าสุด</div><div class="stat-val" id="s-date" style="font-size:1rem">—</div></div>
-    <div class="card" style="text-align:center">
-      <div class="card-title">⏰ นับถอยหลังงวดถัดไป</div>
-      <div id="countdown-val" style="font-family:'IBM Plex Mono',monospace;font-size:1.1rem;font-weight:700;color:var(--gold2);letter-spacing:1px">—</div>
-      <div id="countdown-date" style="font-size:.72rem;color:var(--text3);margin-top:2px"></div>
+  <div class="dash-hero">
+    <div class="card dash-hero-main">
+      <div class="dash-hero-top">
+        <div>
+          <div class="page-title" style="margin-bottom:2px">Dashboard</div>
+          <div class="page-sub" style="margin-bottom:0">ภาพรวมข้อมูลหวยไทยและจุดที่ควรดูต่อ</div>
+        </div>
+        <div id="dash-data-status" class="dash-status warn">กำลังโหลดข้อมูล</div>
+      </div>
+      <div class="dash-latest-ticket">
+        <div>
+          <div class="card-title">รางวัลที่ 1 ล่าสุด</div>
+          <div class="dash-prize-large" id="s-prize1"></div>
+        </div>
+        <div class="dash-result-grid" id="latest-draw-detail"></div>
+      </div>
+      <div class="dash-actions">
+        <button class="btn btn-primary" onclick="loadP1Widget()">ทำนายงวดถัดไป</button>
+        <button class="btn btn-secondary" onclick="showPage('formula')">เปิดสูตรคำนวณ</button>
+        <button class="btn btn-secondary" onclick="showPage('history')">ดูผลย้อนหลัง</button>
+      </div>
     </div>
-    <div class="card"><div class="card-title">รางวัลที่ 1 ล่าสุด</div><div class="prize1-box" id="s-prize1"></div></div>
+    <div class="dash-side-stack">
+      <div class="card dash-kpi">
+        <div class="card-title">งวดถัดไป</div>
+        <div id="countdown-val" style="font-family:'IBM Plex Mono',monospace;font-size:1.4rem;font-weight:700;color:var(--gold2);letter-spacing:1px">—</div>
+        <div id="countdown-date" style="font-size:.78rem;color:var(--text3);margin-top:4px"></div>
+      </div>
+      <div class="card dash-kpi">
+        <div class="card-title">ข้อมูลล่าสุด</div>
+        <div class="stat-val" id="s-date" style="font-size:1.05rem">—</div>
+        <div class="stat-sub" id="dash-cache-info">—</div>
+      </div>
+      <div class="card dash-kpi">
+        <div class="card-title">งวดทั้งหมด</div>
+        <div class="stat-val" id="s-total">—</div>
+        <div class="stat-sub" id="dash-range">—</div>
+      </div>
+    </div>
   </div>
-  <div class="grid-2">
-    <div class="card"><div class="card-title">ผลงวดล่าสุด</div><div id="latest-draw-detail" style="font-size:.85rem;line-height:2"></div></div>
-    <div class="card"><div class="card-title">Top 10 เลข 3 ตัวบน ร้อนสุด (12 เดือน)</div><div id="hot-list"></div></div>
+
+  <div class="dash-insight-grid">
+    <div class="card">
+      <div class="dash-card-head">
+        <div class="card-title">Top 10 เลข 3 ตัวบนร้อนสุด (12 เดือน)</div>
+        <button class="dash-link" onclick="showPage('frequency')">ดูตารางความถี่</button>
+      </div>
+      <div id="hot-list"></div>
+    </div>
+    <div class="card">
+      <div class="dash-card-head">
+        <div class="card-title">5 งวดล่าสุด</div>
+        <button class="dash-link" onclick="showPage('history')">ดูทั้งหมด</button>
+      </div>
+      <div id="recent-compact" class="dash-recent-compact"></div>
+    </div>
+    <div class="card">
+      <div class="dash-card-head">
+        <div class="card-title">สูตรเด่นงวดนี้</div>
+        <button class="dash-link" onclick="showPage('formula')">เปิดสูตร</button>
+      </div>
+      <div id="dashboard-formula-picks" class="dash-formula-list"><div class="dash-empty">กำลังจัดอันดับสูตร...</div></div>
+    </div>
   </div>
+
   <div class="card" id="p1-widget-card">
-    <div class="card-title">🎯 Prize1 Prediction — งวดถัดไป <span id="p1-widget-date" style="color:var(--text3);font-size:.8rem;font-weight:400"></span></div>
-    <div id="p1-widget-body" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;min-height:56px">
-      <span style="color:var(--text3);font-size:.85rem">กด Refresh เพื่อดูการทำนาย...</span>
+    <div class="dash-card-head">
+      <div class="card-title">Prize1 Prediction <span id="p1-widget-date" style="color:var(--text3);font-size:.8rem;font-weight:400"></span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label class="ctrl-label" for="dash-date" style="margin:0;white-space:nowrap;font-size:.78rem">งวด</label>
+        <select id="dash-date" onchange="loadP1Widget()" style="font-size:.78rem;padding:3px 6px"></select>
+        <button class="dash-link" onclick="showPage('predict')">ไปหน้าทำนาย</button>
+      </div>
     </div>
-    <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-      <button class="btn" style="padding:4px 12px;font-size:.78rem" onclick="loadP1Widget()">🔮 ทำนายงวดถัดไป</button>
+    <div id="p1-widget-body" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;min-height:56px">
+      <span style="color:var(--text3);font-size:.85rem">กำลังเตรียมการทำนาย...</span>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-secondary" style="padding:6px 12px;font-size:.78rem" onclick="loadP1Widget()">คำนวณใหม่</button>
       <span id="p1-widget-lift" style="font-size:.75rem;color:var(--text3)"></span>
     </div>
   </div>
-  <div class="card"><div class="card-title">15 งวดล่าสุด</div>
+  <div class="card"><div class="dash-card-head"><div class="card-title">15 งวดล่าสุด</div><button class="dash-link" onclick="showPage('history')">เปิดหน้าผลย้อนหลัง</button></div>
     <div class="tbl-wrap"><table id="recent-tbl">
       <thead><tr><th>วันที่</th><th>รางวัลที่ 1</th><th>3 บน</th><th>2 บน</th><th>3 หน้า 1</th><th>3 หน้า 2</th><th>3 ล่าง 1</th><th>3 ล่าง 2</th><th>2 ล่าง</th></tr></thead>
       <tbody id="recent-tbody"></tbody>
@@ -176,13 +125,14 @@ select:focus,input:focus{border-color:var(--gold-dim)}
   </div>
 </div>
 
+<!-- DECISION CENTER -->
 <!-- FREQUENCY -->
 <div class="page" id="page-frequency">
   <div class="page-title">ตารางความถี่</div>
   <div class="page-sub">จำนวนครั้งที่เลขออก + เลขที่ไม่เคยออก</div>
   <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="freq-col" onchange="loadFreq()"></select></div>
-    <div class="ctrl-group"><div class="ctrl-label">Top N</div><select id="freq-top" onchange="loadFreq()"><option value="30">30</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></div>
+    <div class="ctrl-group"><label class="ctrl-label" for="freq-col">ประเภท</label><select id="freq-col" onchange="loadFreq()"></select></div>
+    <div class="ctrl-group"><label class="ctrl-label" for="freq-top">Top N</label><select id="freq-top" onchange="loadFreq()"><option value="30">30</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></div>
   </div>
   <div class="grid-2">
     <div class="card">
@@ -194,243 +144,394 @@ select:focus,input:focus{border-color:var(--gold-dim)}
     </div>
     <div>
       <div class="card" style="margin-bottom:16px"><div class="card-title">เลขที่ไม่เคยออกเลย</div><div id="never-list" style="line-height:1.8"></div></div>
-      <div class="card"><div class="card-title">Top 20 Bar Chart</div><div style="height:260px"><canvas id="freq-chart"></canvas></div></div>
+      <div class="card"><div class="card-title">Top 20 Bar Chart</div><div style="height:260px"><canvas id="freq-chart" role="img" aria-label="กราฟแท่ง Top 20 เลขที่ออกบ่อย"></canvas></div></div>
     </div>
   </div>
 </div>
 
 <!-- HOT/COLD -->
-<div class="page" id="page-hotcold">
-  <div class="page-title">ร้อน / เย็น</div>
-  <div class="page-sub">เลขที่ออกบ่อย vs น้อยในช่วงที่เลือก</div>
-  <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="hc-col" onchange="loadHotCold()"></select></div>
-    <div class="ctrl-group"><div class="ctrl-label">ช่วงเดือน</div><select id="hc-months" onchange="loadHotCold()"><option value="6">6 เดือน</option><option value="12" selected>12 เดือน</option><option value="24">24 เดือน</option><option value="36">36 เดือน</option></select></div>
-  </div>
-  <div class="grid-2">
-    <div class="card"><div class="section-h">🔥 Hot — ออกบ่อยสุด</div><div id="hot-bars"></div></div>
-    <div class="card"><div class="section-h">❄️ Cold — ออกน้อยสุด</div><div id="cold-bars"></div></div>
-  </div>
-  <div class="card"><div class="card-title">Hot vs Cold Chart</div><div style="height:280px"><canvas id="hc-chart"></canvas></div></div>
-</div>
-
-<!-- HEATMAP -->
-<div class="page" id="page-heatmap">
-  <div class="page-title">Heat Map</div>
-  <div class="page-sub">ความถี่ 2 หลักแบบ matrix (หลักสิบ × หลักหน่วย)</div>
-  <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="hm-col" onchange="loadHeatmap()"></select></div>
-  </div>
-  <div class="card">
-    <div class="card-title">Matrix (แถว=หลักสิบ, คอลัมน์=หลักหน่วย)</div>
-    <div style="overflow-x:auto"><div id="heatmap-grid"></div></div>
-    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:.72rem;color:var(--text3)">
-      <span>น้อย</span>
-      <div style="width:120px;height:8px;border-radius:4px;background:linear-gradient(90deg,#06060b,#c8a84b,#e8c96b)"></div>
-      <span>มาก</span>
-    </div>
-  </div>
-</div>
-
-<!-- OVERDUE -->
-<div class="page" id="page-overdue">
-  <div class="page-title">เลขค้าง</div>
-  <div class="page-sub">เลขที่ไม่ออกมาหลายงวด + โอกาสออก</div>
-  <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="ov-col" onchange="loadOverdue()"></select></div>
-    <div class="ctrl-group"><div class="ctrl-label">Top N</div><select id="ov-top" onchange="loadOverdue()"><option value="15">15</option><option value="20" selected>20</option><option value="30">30</option></select></div>
-  </div>
-  <div class="grid-2">
-    <div class="card" style="max-height:520px;overflow-y:auto"><div class="card-title">รายการเลขค้าง</div><div id="overdue-list"></div></div>
-    <div class="card"><div class="card-title">Bar Chart — ค้างกี่งวด</div><div style="height:420px"><canvas id="overdue-chart"></canvas></div></div>
-  </div>
-</div>
-
 <!-- PREDICT -->
 <div class="page" id="page-predict">
-  <div class="page-title">ทำนายงวดหน้า</div>
-  <div class="page-sub">สถิติหลายมิติ + Ensemble + Context</div>
-  <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="pred-col"></select></div>
-    <div class="ctrl-group"><div class="ctrl-label">งวด</div><select id="pred-date"></select></div>
-    <div class="ctrl-group"><div class="ctrl-label">Top N</div><select id="pred-topn"><option value="10">10</option><option value="15">15</option><option value="20" selected>20</option><option value="30">30</option></select></div>
-    <button class="btn btn-primary" onclick="loadPredict()">🔮 ทำนาย</button>
+  <div class="page-title">🔮 คำนวณเลขงวดหน้า</div>
+  <div class="page-sub">ทำนายและสูตรคำนวณเลขเด็ดทุกประเภทรางวัล</div>
+  <div class="card pred-shared-bar">
+    <div class="pred-shared-controls">
+      <div class="ctrl-group"><label class="ctrl-label" for="shared-draw-date">งวดหลัก</label><select id="shared-draw-date" onchange="syncSharedDrawDate(this.value,true)"></select></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="shared-lottery-focus">ประเภทหวย</label><select id="shared-lottery-focus" onchange="applySharedLotteryFocus()">
+        <option value="">ทุกประเภท</option>
+        <option value="prize1">รางวัลที่ 1</option>
+        <option value="top3">3 ตัวบน</option>
+        <option value="front3">หน้า 3</option>
+        <option value="back3">ท้าย 3</option>
+        <option value="bottom2">ท้าย 2 ล่าง</option>
+      </select></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="shared-workflow">มุมมอง</label><select id="shared-workflow" onchange="switchPredTab(this.value)">
+        <option value="predict">ทำนาย</option>
+        <option value="formula">สูตรคำนวณ</option>
+        <option value="decision">สรุปงวดนี้</option>
+      </select></div>
+    </div>
+    <div class="pred-shared-actions">
+      <button class="btn btn-primary" onclick="runSharedPrimaryAction()">รันมุมมองนี้</button>
+      <button class="btn btn-secondary" onclick="showPage('decision')">สรุปงวดนี้</button>
+    </div>
   </div>
-  <div id="prize1-section" style="display:none;margin-bottom:16px">
-    <div style="background:var(--surface);padding:12px;border-radius:var(--radius);border:1px solid var(--border2)">
-      <div class="ctrl-row" style="margin-bottom:0">
-        <div class="ctrl-group"><div class="ctrl-label">Algorithm</div><span style="font-size:.85rem;font-weight:600;color:var(--accent)">Ultimate (Trigram+Positional+Back3)</span></div>
-        <div class="ctrl-group"><div class="ctrl-label">Beam Width</div><input type="number" id="p1-beam" value="300" min="50" max="500" style="width:80px"></div>
-        <div class="ctrl-group"><div class="ctrl-label">K Back</div><input type="number" id="p1-kback" value="50" min="10" max="100" style="width:70px"></div>
+  <!-- Main page tabs -->
+  <div class="pred-page-tabs" style="display:flex;gap:6px;margin-bottom:18px">
+    <button id="pred-main-btn-predict" class="pred-main-tab-btn active" onclick="switchPredTab('predict')">🔮 ทำนาย</button>
+    <button id="pred-main-btn-formula" class="pred-main-tab-btn" onclick="switchPredTab('formula')">🔢 สูตรคำนวณ</button>
+    <button id="pred-main-btn-decision" class="pred-main-tab-btn" onclick="switchPredTab('decision')">🎯 สรุปงวดนี้</button>
+  </div>
+  <!-- Tab panel: ทำนาย -->
+  <div id="pred-main-tab-predict" class="pred-main-tab-panel">
+  <div class="card predict-toolbar">
+    <div class="predict-controls">
+      <div class="ctrl-group tab-local-date"><label class="ctrl-label" for="pred-date">งวด</label><select id="pred-date"></select></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="pred-topn">Top N</label><select id="pred-topn"><option value="5">5</option><option value="10" selected>10</option><option value="15">15</option><option value="20">20</option><option value="30">30</option><option value="50">50</option></select></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="p1-preset">Risk Filter</label><select id="p1-preset"><option value="optimized" selected>เน้นแม่น</option><option value="balanced">สมดุล</option><option value="coverage">เน้นครอบคลุม</option></select></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="p1-beam">Beam</label><input type="number" id="p1-beam" value="500" min="50" max="1000" style="width:88px"></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="p1-kback">Back3 Pool</label><input type="number" id="p1-kback" value="100" min="10" max="200" style="width:88px"></div>
+    </div>
+    <div class="predict-actions">
+      <button class="btn btn-primary" onclick="loadPredict()">ทำนายทุกประเภท</button>
+      <button class="btn btn-secondary" onclick="predictSaveSnapshot()">บันทึก Snapshot</button>
+      <button class="btn btn-secondary" onclick="loadLuckyNews()">ข่าวเลขเด็ด</button>
+      <button class="btn btn-secondary" onclick="exportPredCSV()">Export CSV</button>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:14px"><div class="dc-label">Snapshot หน้าทำนาย</div><div id="predict-snapshot-list" class="dc-row"></div></div>
+  <div id="predict-summary" class="predict-summary"></div>
+  <div id="predict-final" class="predict-final"></div>
+  <div id="predict-decision-board" class="predict-decision-board"></div>
+  <div id="predict-consensus" class="predict-consensus"></div>
+  <div id="predict-tools" class="predict-tools">
+    <div class="predict-tool-controls">
+      <input id="predict-search" type="search" placeholder="ค้นหาเลข / หมวด" oninput="filterPredictions()">
+      <select id="predict-group-filter" onchange="filterPredictions()">
+        <option value="">ทุกหมวด</option>
+        <option value="prize1">รางวัลที่ 1</option>
+        <option value="front3">หน้า 3</option>
+        <option value="back3">ท้าย 3</option>
+        <option value="bottom2">ท้าย 2</option>
+      </select>
+      <button class="btn btn-secondary" style="padding:7px 11px" onclick="resetPredictionFilters()">ล้างตัวกรอง</button>
+    </div>
+    <div id="predict-filter-count" class="predict-filter-count"></div>
+  </div>
+
+  <!-- lottery-style grid -->
+  <div id="all-pred-grid" style="display:none;margin-top:16px">
+    <!-- รางวัลที่ 1 -->
+    <div style="margin-bottom:20px">
+      <div class="section-h" style="background:linear-gradient(90deg,#c8a84b22,transparent);border-left:3px solid var(--accent)">🏆 รางวัลที่ 1 (6 หลัก)</div>
+      <div class="card predict-card" data-pred-group="prize1" style="border:1px solid var(--accent)44">
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px" id="p1-badges"></div>
+        <div class="tbl-wrap" style="max-height:320px;overflow-y:auto">
+          <table><thead><tr><th>#</th><th>เลข 6 หลัก</th><th>หน้า3</th><th>ท้าย3</th><th>คะแนน</th></tr></thead>
+          <tbody id="p1-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3 ตัว row -->
+    <div class="predict-grid-4">
+      <div class="card predict-card" data-pred-group="front3" style="border-top:2px solid #4d9de0">
+        <div class="card-title" style="color:#4d9de0">หน้า 3 ตัว ชุด 1</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px" id="f31-badges"></div>
+        <div class="tbl-wrap" style="max-height:240px;overflow-y:auto">
+          <table><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="f31-tbody"></tbody></table>
+        </div>
+      </div>
+      <div class="card predict-card" data-pred-group="front3" style="border-top:2px solid #4d9de0">
+        <div class="card-title" style="color:#4d9de0">หน้า 3 ตัว ชุด 2</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px" id="f32-badges"></div>
+        <div class="tbl-wrap" style="max-height:240px;overflow-y:auto">
+          <table><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="f32-tbody"></tbody></table>
+        </div>
+      </div>
+      <div class="card predict-card" data-pred-group="back3" style="border-top:2px solid #a855f7">
+        <div class="card-title" style="color:#a855f7">ท้าย 3 ตัว ชุด 1</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px" id="b31-badges"></div>
+        <div class="tbl-wrap" style="max-height:240px;overflow-y:auto">
+          <table><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="b31-tbody"></tbody></table>
+        </div>
+      </div>
+      <div class="card predict-card" data-pred-group="back3" style="border-top:2px solid #a855f7">
+        <div class="card-title" style="color:#a855f7">ท้าย 3 ตัว ชุด 2</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px" id="b32-badges"></div>
+        <div class="tbl-wrap" style="max-height:240px;overflow-y:auto">
+          <table><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="b32-tbody"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2 ตัว -->
+    <div class="predict-grid-2">
+      <div class="card predict-card" data-pred-group="bottom2" style="border-top:2px solid #3dd68c">
+        <div class="card-title" style="color:#3dd68c">ท้าย 2 ตัว</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px" id="bt2-badges"></div>
+        <div class="tbl-wrap" style="max-height:200px;overflow-y:auto">
+          <table><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="bt2-tbody"></tbody></table>
+        </div>
+      </div>
+      <div id="ref-section">
+        <div class="card" style="border-top:2px solid var(--border2)">
+          <div class="card-title">📋 งวดเดียวกันในอดีต</div>
+          <div class="tbl-wrap" style="max-height:200px;overflow-y:auto">
+            <table><thead><tr><th>วันที่</th><th>รางวัลที่1</th><th>3บน</th><th>2บน</th><th>3ล่าง1</th><th>3ล่าง2</th><th>2ล่าง</th></tr></thead><tbody id="ref-tbody"></tbody></table>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-  <div class="conf-banner" id="conf-banner" style="display:none">
-    <div><div class="conf-score" id="conf-score">—</div><div class="conf-label">Confidence Score</div></div>
-    <div class="conf-info"><div id="conf-level" style="font-size:.9rem;font-weight:700;margin-bottom:4px">—</div><div id="conf-reason" style="font-size:.8rem;color:var(--text2)">—</div></div>
-  </div>
-  <div class="section-h" style="display:flex;align-items:center;justify-content:space-between">
-    <span>🎯 Top แนะนำ</span>
-    <button class="btn" id="pred-export-btn" style="display:none;padding:4px 10px;font-size:.75rem" onclick="exportPredCSV()">⬇ CSV</button>
-  </div>
-  <div id="pred-top-badges" style="margin-bottom:16px"></div>
-  <div class="grid-2">
-    <div class="card"><div class="card-title">อันดับทั้งหมด</div>
-      <div class="tbl-wrap" style="max-height:440px;overflow-y:auto">
-        <table id="pred-table"><thead id="pred-thead"><tr><th>#</th><th>เลข</th><th>คะแนน</th><th>ความเชื่อมั่น</th><th>เหตุผล</th></tr></thead><tbody id="pred-tbody"></tbody></table>
+
+  <!-- ข่าวเลขเด็ด -->
+  <div id="lucky-news-section" style="margin-top:16px;display:none">
+    <div class="section-h" style="background:linear-gradient(90deg,#f0545422,transparent);border-left:3px solid #f05454">📰 เลขเด็ดจากข่าว/ความเชื่อ</div>
+    <div class="card" style="border:1px solid #f0545444">
+      <div style="font-size:.8rem;color:var(--text3);margin-bottom:8px" id="lucky-source"></div>
+      <div style="margin-bottom:10px">
+        <div style="font-size:.75rem;color:var(--text2);margin-bottom:4px">เลข 3 ตัว</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="lucky-3d"></div>
       </div>
-    </div>
-    <div class="card"><div class="card-title">Top 15 Chart</div><div style="height:420px"><canvas id="pred-chart"></canvas></div></div>
-  </div>
-  <div id="ensemble-section" style="margin-top:16px;display:none">
-    <div class="section-h">🧬 Ensemble Prediction</div>
-    <div class="card">
-      <div id="ensemble-badges" style="margin-bottom:8px"></div>
-      <div class="tbl-wrap" style="max-height:300px;overflow-y:auto">
-        <table><thead><tr><th>#</th><th>เลข</th><th>Score</th></tr></thead><tbody id="ensemble-tbody"></tbody></table>
+      <div>
+        <div style="font-size:.75rem;color:var(--text2);margin-bottom:4px">เลข 2 ตัว</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px" id="lucky-2d"></div>
       </div>
+      <div id="lucky-note" style="margin-top:10px;font-size:.75rem;color:var(--text3);font-style:italic"></div>
     </div>
   </div>
-  <div style="margin-top:16px">
-    <div class="section-h">📋 งวดเดียวกันในอดีต</div>
-    <div class="card">
-      <div class="tbl-wrap" style="max-height:300px;overflow-y:auto">
-        <table><thead><tr><th>วันที่</th><th>รางวัลที่ 1</th><th>3 บน</th><th>2 บน</th><th>3 ล่าง 1</th><th>3 ล่าง 2</th><th>2 ล่าง</th></tr></thead><tbody id="ref-tbody"></tbody></table>
+
+  <!-- hidden compat fields for old exportPredCSV -->
+  <input type="hidden" id="pred-col" value="prize1">
+  <div id="pred-top-badges" style="display:none"></div>
+  <div id="pred-export-btn" style="display:none"></div>
+  <div id="conf-banner" style="display:none">
+    <div id="conf-score"></div><div id="conf-level"></div><div id="conf-reason"></div>
+  </div>
+  <div id="ensemble-section" style="display:none"><div id="ensemble-badges"></div><tbody id="ensemble-tbody"></tbody></div>
+  <table style="display:none"><thead id="pred-thead"></thead><tbody id="pred-tbody"></tbody></table>
+  <canvas id="pred-chart" style="display:none"></canvas>
+  </div><!-- /pred-main-tab-predict -->
+
+  <!-- Tab panel: สูตรคำนวณ -->
+  <div id="pred-main-tab-formula" class="pred-main-tab-panel" style="display:none">
+
+  <!-- ข้อมูลงวดก่อน -->
+  <div class="card formula-input-panel">
+    <div class="formula-head">
+      <div>
+        <div class="card-title" style="margin-bottom:2px">📌 ข้อมูลงวดก่อน (อิงจากงวดที่ต้องการทำนาย)</div>
+        <div id="f-prev-info" style="font-size:.78rem;color:var(--accent)">—</div>
+      </div>
+      <div class="formula-head-actions">
+        <div class="ctrl-group tab-local-date">
+          <label class="ctrl-label" for="f-target-date">งวดที่ต้องการทำนาย</label>
+          <select id="f-target-date" onchange="autoFillFormula()" style="min-width:160px"></select>
+        </div>
+        <button class="btn btn-secondary" onclick="autoFillFormula()">↻ โหลด</button>
+      </div>
+    </div>
+
+    <div class="formula-section-grid">
+      <div class="formula-section">
+        <div class="formula-section-title">ผลรางวัลหลัก</div>
+        <div class="formula-fields">
+          <div><label class="ctrl-label" for="f-prize1">รางวัลที่ 1</label><input type="text" id="f-prize1" maxlength="6" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="xxxxxx" style="width:100%;font-family:'IBM Plex Mono',monospace;font-size:1rem;letter-spacing:2px"></div>
+          <div><label class="ctrl-label" for="f-top3">3 ตัวบน</label><input type="text" id="f-top3" maxlength="3" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="xxx" style="width:100%;font-family:'IBM Plex Mono',monospace;font-size:1rem"></div>
+          <div><label class="ctrl-label" for="f-bottom2">ท้าย 2 ตัว</label><input type="text" id="f-bottom2" maxlength="2" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="xx" style="width:100%;font-family:'IBM Plex Mono',monospace;font-size:1rem"></div>
+        </div>
+      </div>
+
+      <div class="formula-section">
+        <div class="formula-section-title">เลขหน้า/ท้าย 3 ตัว</div>
+        <div class="formula-fields">
+          <div><label class="ctrl-label" for="f-front3-1">หน้า 3 ตัว #1</label><input type="text" id="f-front3-1" maxlength="3" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="xxx" style="width:100%;font-family:'IBM Plex Mono',monospace;font-size:1rem"></div>
+          <div><label class="ctrl-label" for="f-front3-2">หน้า 3 ตัว #2</label><input type="text" id="f-front3-2" maxlength="3" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="xxx" style="width:100%;font-family:'IBM Plex Mono',monospace;font-size:1rem"></div>
+          <div><label class="ctrl-label" for="f-back3-1">ท้าย 3 ตัว #1</label><input type="text" id="f-back3-1" maxlength="3" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="xxx" style="width:100%;font-family:'IBM Plex Mono',monospace;font-size:1rem"></div>
+          <div><label class="ctrl-label" for="f-back3-2">ท้าย 3 ตัว #2</label><input type="text" id="f-back3-2" maxlength="3" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="xxx" style="width:100%;font-family:'IBM Plex Mono',monospace;font-size:1rem"></div>
+        </div>
+      </div>
+
+      <div class="formula-section">
+        <div class="formula-section-title">ข้อมูลเสริม</div>
+        <div class="formula-fields">
+          <div><label class="ctrl-label" for="f-drawday">งวดวันที่</label><input type="number" id="f-drawday" value="1" min="1" max="16" style="width:100%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="formula-actions">
+      <div class="formula-primary-actions">
+        <button class="btn btn-primary" onclick="runAllFormulas()">⚡ คำนวณทุกสูตร</button>
+        <button class="btn btn-secondary" onclick="formulaSaveSnapshot()">บันทึก Snapshot</button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--text2);user-select:none">
+          <input type="checkbox" id="f-auto-run" checked style="min-width:auto"> Auto-run on draw change
+        </label>
+      </div>
+      <div class="formula-birth-actions">
+        <span style="font-size:.8rem;color:var(--text2)">วันเกิด (สูตร B):</span>
+        <input type="number" id="f-bday" aria-label="วันเกิด (วัน)" title="วันเกิด (วัน)" placeholder="วัน" min="1" max="31" style="width:55px;min-width:55px">
+        <input type="number" id="f-bmon" aria-label="วันเกิด (เดือน)" title="วันเกิด (เดือน)" placeholder="เดือน" min="1" max="12" style="width:65px;min-width:65px">
+        <input type="number" id="f-byear" aria-label="วันเกิด (ปีพ.ศ.)" title="วันเกิด (ปีพ.ศ.)" placeholder="ปีพ.ศ." min="2480" max="2580" style="width:85px;min-width:85px">
       </div>
     </div>
   </div>
-</div>
+
+  <div class="card" style="margin-bottom:14px"><div class="dc-label">Snapshot หน้าสูตรคำนวณ</div><div id="formula-snapshot-list" class="dc-row"></div></div>
+  <div id="formula-summary" class="formula-summary-bar"></div>
+  <div id="formula-final" class="formula-final"></div>
+  <div id="formula-insights" class="formula-insights"></div>
+  <div id="formula-tools" class="formula-tools">
+    <div class="formula-tool-controls">
+      <input id="formula-search" type="search" placeholder="ค้นหาชื่อสูตร / เลข" oninput="filterFormulaCards()">
+      <select id="formula-target-filter" onchange="filterFormulaCards()">
+        <option value="">ทุกประเภทผลลัพธ์</option>
+        <option value="digit">เลขวิ่ง / หลักหน่วย</option>
+        <option value="bottom">2 ตัว / mixed</option>
+        <option value="3-digit">3 ตัว</option>
+        <option value="front 3">หน้า 3</option>
+        <option value="back 3">ท้าย 3</option>
+        <option value="prize1">รางวัลที่ 1 / ท้ายรางวัล</option>
+      </select>
+      <button class="btn btn-secondary" style="padding:7px 11px" onclick="resetFormulaFilters()">ล้างตัวกรอง</button>
+    </div>
+    <div id="formula-filter-count" class="formula-filter-count"></div>
+  </div>
+
+  <!-- ผลรางวัลที่สร้างจากสูตร (เลียนแบบใบหวยจริง) -->
+
+  <!-- Sub-tabs -->
+  <div class="ftab-nav" role="tablist" aria-label="หมวดสูตร" onkeydown="ftabKeyNav(event)" style="margin-bottom:16px">
+    <button id="ftab-btn-ALL" class="ftab-btn" role="tab" aria-selected="false" aria-controls="formula-results-ALL" data-color="green" data-ftab="ALL" onclick="switchFormulaTab('ALL')">รวมทุกสูตร</button>
+    <select id="ftab-group-select" aria-label="เลือกกลุ่มสูตร" onchange="if(this.value)switchFormulaTab(this.value)" style="min-width:190px">
+      <option value="" disabled>กลุ่มสูตร…</option>
+      <option value="A" selected>A · สูตรพื้นบ้าน</option>
+      <option value="B">B · ล็อตเตอรี่พลัส</option>
+      <option value="C">C · พิชิตโชค</option>
+      <option value="D">D · สูตร Arithmetic</option>
+      <option value="F">F · สูตร Rolling Stats</option>
+      <option value="G">G · แม่นขั้นเทพ</option>
+      <option value="H">H · มิสเตอร์ซี</option>
+      <option value="E">E · สายมู/ความเชื่อ</option>
+    </select>
+    <button id="ftab-btn-FB" class="ftab-btn" role="tab" aria-selected="false" aria-controls="formula-results-FB" data-color="gold" data-ftab="FB" onclick="switchFormulaTab('FB')">✨ FABLE</button>
+    <button id="ftab-btn-BT" class="ftab-btn" role="tab" aria-selected="false" aria-controls="formula-results-BT" data-color="orange" data-ftab="BT" onclick="switchFormulaTab('BT')">Backtest</button>
+  </div>
+
+  <!-- Tab descriptions -->
+  <div id="ftab-desc-A" class="ftab-info" data-color="gold">สูตรบวกเลข · คี่คู่ · คูณหลัก · วันออก · อมตะ — สูตรพื้นบ้านจาก Facebook</div>
+  <div id="ftab-desc-B" class="ftab-info hidden" data-color="blue">สูตรวัน+เดือน+ปี+หน่วยล่าง · สูตรวันเกิด+ราศี — จากเพจ Lottery Plus</div>
+  <div id="ftab-desc-C" class="ftab-info hidden" data-color="purple">สูตรผันผวนเป็นตัวเงิน · 2530 ปีทอง · หงส์ฟ้าถล่มปฐพี — จากหนังสือ "สูตรลับคำนวณเลขพิชิตโชค" คุณยายสวัสดิ์</div>
+  <div id="ftab-desc-ALL" class="ftab-info hidden" data-color="green">แสดงผลทุกสูตรพร้อมกัน</div>
+  <div id="ftab-desc-D" class="ftab-info hidden" data-color="cyan">สูตร Claude สร้างเอง อ้างอิงงวดก่อน — แยกตามประเภทรางวัล: ท้าย2, หน้า3, ท้าย3, รางวัลที่1</div>
+  <div id="ftab-desc-F" class="ftab-info hidden" data-color="lime">สูตร Codex ใช้ rolling history ก่อนงวดทำนายเท่านั้น — จำนวนเลขเท่ากับเจ้าพ่อ Claude เพื่อเทียบ backtest แบบแฟร์</div>
+  <div id="ftab-desc-G" class="ftab-info hidden" data-color="red">แม่นขั้นเทพ — สูตรร้อยมาลัย 3 ตัวบน 3 แบบ และเลขท้าย 2 ตัวล่างแบบเด่น 3 ชุดตรง</div>
+  <div id="ftab-desc-H" class="ftab-info hidden" data-color="amber">มิสเตอร์ซี — สูตรจากคลิป YouTube สำหรับ 3 ตัวบนตรง มีสูตรชุดเดียว 2 แบบ และชุดจับคู่จากสองสูตรสูงสุด 8 ชุด</div>
+  <div id="ftab-desc-E" class="ftab-info hidden" data-color="pink">
+    เลขตามความเชื่อ/สายมู ของงวดนั้น — เลขวันที่หวยออก · เลขกำลังวัน(โหราศาสตร์ไทย) · เลขมงคล พ.ศ. · เลขเด็ดยอดนิยม
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button class="btn" style="padding:5px 12px;font-size:.75rem;background:#ec4899;color:#fff;border:none;border-radius:6px;cursor:pointer" onclick="searchLuckyNews('เลขเด็ด')">🔎 ค้นข่าวเลขเด็ดงวดนี้</button>
+      <button class="btn" style="padding:5px 12px;font-size:.75rem;background:var(--surface2);color:var(--text1);border:1px solid var(--border2);border-radius:6px;cursor:pointer" onclick="searchLuckyNews('เลขดัง พระ เจ้าแม่')">🛕 ค้นเลขดัง/เลขพระ</button>
+    </div>
+  </div>
+  <div id="ftab-desc-FB" class="ftab-info hidden" data-color="gold">สูตร FABLE — ทายเลขท้าย 2/3 ตัวจาก pool รางวัลที่ 1-5 รวม (~168 เลข/งวด) พร้อมสัญญาณทดลอง near-miss, transition และ diversity</div>
+  <div id="ftab-desc-BT" class="ftab-info hidden" data-color="orange">ทดสอบความแม่นของแต่ละสูตรย้อนหลัง — ใช้ผลงวดจริงจาก DB เปรียบเทียบ</div>
+
+  <!-- Results per tab -->
+  <div id="formula-results-A" class="formula-results-panel active" role="tabpanel" aria-labelledby="ftab-btn-A"></div>
+  <div id="formula-results-B" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-B"></div>
+  <div id="formula-results-C" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-C"></div>
+  <div id="formula-results-ALL" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-ALL"></div>
+  <div id="formula-results-D" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-D"></div>
+  <div id="formula-results-F" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-F"></div>
+  <div id="formula-results-G" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-G"></div>
+  <div id="formula-results-H" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-H"></div>
+  <div id="formula-results-E" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-E"></div>
+  <div id="formula-results-FB" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-FB">
+    <div class="fable-control-board">
+      <div class="fable-control-head">
+        <div>
+          <div class="fable-control-title">FABLE ตามงวดที่เลือก</div>
+          <div id="fable-target-label" class="fable-target-label">งวดเป้าหมาย -</div>
+        </div>
+        <span id="fable-status-badge"></span>
+      </div>
+      <div class="fable-config-controls">
+        <div class="ctrl-group"><label class="ctrl-label" for="fable-window">Window</label><input id="fable-window" type="number" value="100" min="30" max="200" step="10"></div>
+        <div class="ctrl-group"><label class="ctrl-label" for="fable-cross-w">cross</label><input id="fable-cross-w" type="number" value="0.45" min="0" max="2" step="0.05"></div>
+        <div class="ctrl-group"><label class="ctrl-label" for="fable-digit-w">digit</label><input id="fable-digit-w" type="number" value="0.20" min="0" max="2" step="0.05"></div>
+        <div class="ctrl-group"><label class="ctrl-label" for="fable-momentum-w">momentum</label><input id="fable-momentum-w" type="number" value="0.20" min="0" max="2" step="0.05"></div>
+        <div class="ctrl-group"><label class="ctrl-label" for="fable-lag-penalty">lag penalty</label><input id="fable-lag-penalty" type="number" value="0.25" min="0" max="0.95" step="0.05"></div>
+        <div class="ctrl-group"><label class="ctrl-label" for="fable-near-w">near</label><input id="fable-near-w" type="number" value="0" min="0" max="2" step="0.05"></div>
+        <div class="ctrl-group"><label class="ctrl-label" for="fable-transition-w">transition</label><input id="fable-transition-w" type="number" value="0" min="0" max="2" step="0.05"></div>
+        <div class="ctrl-group"><label class="ctrl-label" for="fable-diversity-penalty">diversity</label><input id="fable-diversity-penalty" type="number" value="0" min="0" max="0.95" step="0.05"></div>
+        <div class="ctrl-group"><label class="ctrl-label" for="fable-drawday-w">draw_day</label><input id="fable-drawday-w" type="number" value="0.25" min="0" max="2" step="0.05"></div>
+      </div>
+      <div class="fable-action-row">
+        <button class="btn btn-primary" onclick="loadFable()">คำนวณตามงวดที่เลือก</button>
+        <button class="btn btn-secondary" onclick="resetFableConfig()">รีเซ็ต config</button>
+        <button id="fable-bt-btn" class="btn btn-secondary" onclick="loadFableBacktest()">FABLE Lab / Backtest</button>
+        <button class="btn btn-secondary" onclick="saveFableSnapshot()">บันทึก Snapshot</button>
+        <button class="btn btn-secondary" onclick="exportFableSnapshots('json')">Export JSON</button>
+        <button class="btn btn-secondary" onclick="exportFableSnapshots('csv')">Export CSV</button>
+      </div>
+      <div class="fable-exp-controls">
+        <div class="ctrl-group"><label class="ctrl-label" for="fable-grid-n">Grid draws</label><select id="fable-grid-n"><option value="80" selected>80</option><option value="120">120</option><option value="160">160</option></select></div>
+        <div class="ctrl-group"><label class="ctrl-label" for="fable-grid-holdout">Holdout</label><select id="fable-grid-holdout"><option value="30" selected>30</option><option value="40">40</option><option value="50">50</option></select></div>
+        <div class="ctrl-group"><label class="ctrl-label" for="fable-grid-max">Configs</label><select id="fable-grid-max"><option value="6" selected>6</option><option value="9">9</option><option value="12">12</option></select></div>
+        <button id="fable-grid-btn" class="btn btn-secondary" onclick="loadFableExperiments()">Grid Search</button>
+        <button id="fable-holdout-btn" class="btn btn-secondary" onclick="loadFableHoldoutReport()">Holdout / Live</button>
+      </div>
+    </div>
+    <div id="fable-warning" style="display:none;background:rgba(245,158,11,.12);border:1px solid #f59e0b55;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.8rem;color:var(--text2)"></div>
+    <div id="fable-lab"></div>
+    <div id="fable-results"></div>
+    <div id="fable-exp-results" style="margin-top:16px"></div>
+    <div id="fable-holdout-results" style="margin-top:16px"></div>
+    <div id="fable-snapshot-results" style="margin-top:16px"></div>
+    <div id="fable-bt-results" style="margin-top:16px"></div>
+  </div>
+  <div id="formula-results-BT" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-BT">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <div class="ctrl-group"><label class="ctrl-label" for="bt-formula-n">จำนวนงวดย้อนหลัง</label><select id="bt-formula-n"><option value="20">20 งวด</option><option value="50" selected>50 งวด</option><option value="100">100 งวด</option><option value="200">200 งวด</option></select></div>
+      <button class="btn btn-primary" onclick="runFormulaBacktest()">▶ รัน Backtest</button>
+    </div>
+    <div id="formula-bt-loading" style="display:none;text-align:center;padding:24px;color:var(--text3)">กำลังคำนวณ...</div>
+    <div id="formula-bt-table"></div>
+  </div>
+
+  <div id="formula-empty" style="text-align:center;padding:40px;color:var(--text3)">กรอกข้อมูลงวดก่อนแล้วกด ⚡ คำนวณทุกสูตร</div>
+  </div><!-- /pred-main-tab-formula -->
+
+  <!-- Tab panel: สรุปงวดนี้ -->
+  <div id="pred-main-tab-decision" class="pred-main-tab-panel" style="display:none">
+  <div class="card predict-toolbar" style="margin-top:14px">
+    <div class="predict-controls">
+      <div class="ctrl-group tab-local-date"><label class="ctrl-label" for="dc-date">งวดเป้าหมาย</label><select id="dc-date" onchange="loadDecisionCenter()"></select></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="dc-mode">โหมดคัดเลข</label><select id="dc-mode" onchange="loadDecisionCenter()"><option value="strict">ปลอดภัย</option><option value="balanced" selected>สมดุล</option><option value="coverage">ลุ้นสูง</option></select></div>
+    </div>
+    <div class="predict-actions">
+      <button class="btn btn-primary" onclick="loadDecisionCenter()">คำนวณสรุปงวดนี้</button>
+      <button class="btn btn-secondary" onclick="dcSaveSnapshot()">บันทึก Snapshot</button>
+    </div>
+  </div>
+  <div id="dc-root" class="dc-loading">กำลังรวมสัญญาณงวดนี้...</div>
+  </div><!-- /pred-main-tab-decision -->
+</div><!-- /page-predict -->
 
 <!-- HISTORY -->
 <div class="page" id="page-history">
   <div class="page-title">ผลย้อนหลัง</div>
   <div class="page-sub">ค้นหาและดูผลหวยย้อนหลัง</div>
   <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">จำนวนงวด</div><select id="hist-n" onchange="loadHistory()"><option value="30">30</option><option value="50" selected>50</option><option value="100">100</option><option value="200">200</option></select></div>
-    <div class="ctrl-group"><div class="ctrl-label">กรองเลข</div><input type="text" id="hist-search" placeholder="000..." oninput="filterHistory()" style="width:160px"></div>
+    <div class="ctrl-group"><label class="ctrl-label" for="hist-n">จำนวนงวด</label><select id="hist-n" onchange="loadHistory()"><option value="30">30</option><option value="50" selected>50</option><option value="100">100</option><option value="200">200</option></select></div>
+    <div class="ctrl-group"><label class="ctrl-label" for="hist-search">กรองเลข</label><input type="text" id="hist-search" placeholder="000..." oninput="filterHistory()" style="width:160px"></div>
   </div>
   <div class="card">
     <div class="tbl-wrap" style="max-height:640px;overflow-y:auto">
       <table><thead><tr><th>วันที่</th><th>รางวัลที่ 1</th><th>3 บน</th><th>2 บน</th><th>3 หน้า 1</th><th>3 หน้า 2</th><th>3 ล่าง 1</th><th>3 ล่าง 2</th><th>2 ล่าง</th></tr></thead><tbody id="hist-tbody"></tbody></table>
     </div>
-  </div>
-</div>
-
-<!-- PAIRS -->
-<div class="page" id="page-pairs">
-  <div class="page-title">เลขคู่ &amp; ลำดับต่อเนื่อง</div>
-  <div class="page-sub">Cross-type correlation + Lag-1 pattern</div>
-  <div class="tab-bar">
-    <button class="tab-btn active" onclick="switchPairsTab('pairs-tab',this)">🔗 เลขคู่</button>
-    <button class="tab-btn" onclick="switchPairsTab('consec-tab',this)">⏭️ ลำดับต่อเนื่อง</button>
-  </div>
-  <div class="tab-panel active" id="pairs-tab">
-    <div class="ctrl-row">
-      <div class="ctrl-group"><div class="ctrl-label">ประเภท A</div><select id="pair-cola"></select></div>
-      <div class="ctrl-group"><div class="ctrl-label">ประเภท B</div><select id="pair-colb"></select></div>
-      <div class="ctrl-group"><div class="ctrl-label">เลข A ที่รู้</div><input type="text" id="pair-query" placeholder="000"></div>
-      <button class="btn btn-primary" onclick="loadPairs()">ค้นหา</button>
-      <button class="btn btn-secondary" onclick="document.getElementById('pair-query').value='';loadPairsOverview()">Overview</button>
-    </div>
-    <div class="card"><div class="card-title" id="pairs-title">Overview</div>
-      <div class="tbl-wrap" style="max-height:420px;overflow-y:auto">
-        <table><thead><tr><th>เลข A</th><th>เลข B</th><th>ครั้ง</th><th>%</th></tr></thead><tbody id="pairs-tbody"></tbody></table>
-      </div>
-    </div>
-  </div>
-  <div class="tab-panel" id="consec-tab">
-    <div class="ctrl-row">
-      <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="consec-col"></select></div>
-      <div class="ctrl-group"><div class="ctrl-label">เลขงวดก่อน</div><input type="text" id="consec-query" placeholder="000"></div>
-      <button class="btn btn-primary" onclick="loadConsec()">ค้นหา</button>
-      <button class="btn btn-secondary" onclick="document.getElementById('consec-query').value='';loadConsec()">Top pairs</button>
-    </div>
-    <div class="card"><div class="card-title" id="consec-title">Top คู่ที่ออกติดต่อกันบ่อยสุด</div>
-      <div class="tbl-wrap" style="max-height:420px;overflow-y:auto">
-        <table><thead><tr><th>#</th><th>เลขก่อน</th><th>เลขตามมา</th><th>ครั้ง</th><th>%</th></tr></thead><tbody id="consec-tbody"></tbody></table>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- DECADE -->
-<div class="page" id="page-decade">
-  <div class="page-title">เปรียบทศวรรษ</div>
-  <div class="page-sub">เลขยอดนิยมในแต่ละช่วงปี</div>
-  <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="dec-col" onchange="loadDecade()"></select></div>
-    <div class="ctrl-group"><div class="ctrl-label">Top N</div><select id="dec-top" onchange="loadDecade()"><option value="10">10</option><option value="15" selected>15</option><option value="20">20</option></select></div>
-  </div>
-  <div class="card"><div class="card-title">ความถี่แยกตามช่วงปี</div><div style="height:320px"><canvas id="decade-chart"></canvas></div></div>
-  <div class="grid-2" style="margin-top:16px">
-    <div class="card"><div class="section-h">📈 ดาวรุ่ง</div>
-      <div class="tbl-wrap"><table><thead><tr><th>เลข</th><th>1994–2004</th><th>2005–2014</th><th id="dec-era3-r">ล่าสุด</th></tr></thead><tbody id="rising-tbody"></tbody></table></div>
-    </div>
-    <div class="card"><div class="section-h">📉 ดาวร่วง</div>
-      <div class="tbl-wrap"><table><thead><tr><th>เลข</th><th>1994–2004</th><th>2005–2014</th><th id="dec-era3-f">ล่าสุด</th></tr></thead><tbody id="falling-tbody"></tbody></table></div>
-    </div>
-  </div>
-</div>
-
-<!-- WATCHLIST -->
-<div class="page" id="page-watchlist">
-  <div class="page-title">ตั๋วเสี่ยง</div>
-  <div class="page-sub">บันทึกเลขที่สนใจ ดูสถิติรวม</div>
-  <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="wl-col" onchange="loadWatchlist()"></select></div>
-    <div class="ctrl-group"><div class="ctrl-label">เพิ่มเลข</div><input type="text" id="wl-input" placeholder="เช่น 053" maxlength="6"></div>
-    <button class="btn btn-primary" onclick="addToWatchlist()">➕ เพิ่ม</button>
-    <button class="btn btn-danger" onclick="clearWatchlist()">🗑️ ล้างทั้งหมด</button>
-  </div>
-  <div id="wl-list"></div>
-  <div id="wl-empty" class="card" style="text-align:center;color:var(--text3);padding:32px;display:none">เพิ่มเลขด้านบนเพื่อเริ่มวิเคราะห์</div>
-  <div class="card" id="wl-summary-card" style="display:none"><div class="card-title">สรุป</div><div class="grid-3" id="wl-metrics"></div></div>
-</div>
-
-<!-- ML -->
-<div class="page" id="page-ml">
-  <div class="page-title">ML Prediction</div>
-  <div class="page-sub">GradientBoosting — features: month, weekday, overdue, momentum, lag-1</div>
-  <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="ml-col" onchange="checkMLStatus()"></select></div>
-    <div class="ctrl-group"><div class="ctrl-label">งวด</div><select id="ml-date"></select></div>
-    <div id="ml-status-wrap"></div>
-    <button class="btn btn-green" onclick="trainML()" id="ml-train-btn">🚀 Train Model</button>
-    <button class="btn btn-primary" onclick="loadML()">🤖 Predict</button>
-  </div>
-  <div id="ml-not-ready" class="card" style="text-align:center;color:var(--text3);padding:24px;display:none">⚠️ Model ยังไม่ถูก train — กด Train ก่อน</div>
-  <div id="ml-results" style="display:none">
-    <div class="section-h">🤖 ML Top 5</div>
-    <div id="ml-badges" style="margin-bottom:16px"></div>
-    <div class="grid-2">
-      <div class="card"><div class="card-title">ML Ranking</div>
-        <div class="tbl-wrap" style="max-height:400px;overflow-y:auto">
-          <table><thead><tr><th>#</th><th>เลข</th><th>ML Score</th></tr></thead><tbody id="ml-tbody"></tbody></table>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-title">ML vs สถิติ — เห็นตรงกัน</div>
-        <div id="ml-agree-wrap" style="margin-bottom:16px"></div>
-        <div class="card-title">Feature Importance</div>
-        <div style="height:260px"><canvas id="fi-chart"></canvas></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- NETWORK -->
-<div class="page" id="page-network">
-  <div class="page-title">เครือข่ายเลข</div>
-  <div class="page-sub">เส้นเชื่อม = มักออกงวดเดียวกัน</div>
-  <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">ประเภท A</div><select id="net-cola"></select></div>
-    <div class="ctrl-group"><div class="ctrl-label">ประเภท B</div><select id="net-colb"></select></div>
-    <div class="ctrl-group"><div class="ctrl-label">ออกร่วมอย่างน้อย</div><input type="number" id="net-min" value="4" min="1" max="20" style="width:70px"></div>
-    <button class="btn btn-primary" onclick="loadNetwork()">สร้าง Network</button>
-  </div>
-  <div class="card">
-    <canvas id="network-canvas" style="width:100%;height:500px;display:block"></canvas>
-    <div style="font-size:.75rem;color:var(--text3);margin-top:8px;text-align:center">🟡 ประเภท A &nbsp; 🔵 ประเภท B &nbsp; เส้น = ออกร่วมกัน</div>
   </div>
 </div>
 
@@ -440,906 +541,28 @@ select:focus,input:focus{border-color:var(--gold-dim)}
   <div class="page-sub">วัดความแม่น prediction ย้อนหลัง (out-of-sample)</div>
   <div class="ctrl-row">
     <div class="ctrl-group"><div class="ctrl-label">Algorithm</div><span style="font-size:.85rem;font-weight:600;color:var(--accent)">Ultimate</span></div>
-    <div class="ctrl-group"><div class="ctrl-label">งวดทดสอบ</div><input type="number" id="bt-n" value="50" min="10" max="200" style="width:80px"></div>
-    <div class="ctrl-group"><div class="ctrl-label">Top N</div><input type="number" id="bt-topn" value="20" min="5" max="50" style="width:70px"></div>
+    <div class="ctrl-group"><label class="ctrl-label" for="bt-preset">Prize1 Preset</label><select id="bt-preset"><option value="optimized" selected>Prize1 optimized</option><option value="balanced">Balanced</option><option value="coverage">Coverage</option></select></div>
+    <div class="ctrl-group"><label class="ctrl-label" for="bt-n">งวดทดสอบ</label><input type="number" id="bt-n" value="80" min="10" max="200" style="width:80px"></div>
+    <div class="ctrl-group"><label class="ctrl-label" for="bt-topn">Top N</label><input type="number" id="bt-topn" value="50" min="5" max="50" style="width:70px"></div>
+    <div class="ctrl-group"><label class="ctrl-label" for="bt-beam">Beam</label><input type="number" id="bt-beam" value="500" min="50" max="1000" style="width:80px"></div>
+    <div class="ctrl-group"><label class="ctrl-label" for="bt-kback">Back3 Pool</label><input type="number" id="bt-kback" value="100" min="10" max="200" style="width:80px"></div>
     <button class="btn btn-primary" onclick="loadBacktest()">▶ Run Backtest</button>
   </div>
   <div id="bt-loading" style="display:none;text-align:center;padding:40px;color:var(--text3)">กำลังรัน... (30–120 วินาที)</div>
   <div id="bt-results" style="display:none">
     <div class="grid-4" id="bt-metrics"></div>
-    <div class="card" style="margin-top:0"><div class="card-title">Lift Chart</div><div style="height:200px"><canvas id="bt-lift-chart"></canvas></div></div>
+    <div class="card" style="margin-top:0"><div class="card-title">Lift Chart</div><div style="height:200px"><canvas id="bt-lift-chart" role="img" aria-label="กราฟ Lift Chart ผลการ Backtest"></canvas></div></div>
   </div>
 </div>
 
-<!-- DIGIT ANALYSIS -->
-<div class="page" id="page-digit">
-  <div class="page-title">วิเคราะห์หลัก</div>
-  <div class="page-sub">ความถี่เลข 0–9 ในแต่ละตำแหน่งของรางวัลที่ 1</div>
-  <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">งวดเป้าหมาย</div><select id="dig-date"></select></div>
-    <button class="btn btn-primary" onclick="loadDigitAnalysis()">วิเคราะห์</button>
-  </div>
-  <div class="card"><div class="card-title">ความถี่แยกตำแหน่ง</div><div style="height:320px"><canvas id="digit-chart"></canvas></div></div>
-  <div class="card" style="margin-top:16px">
-    <div class="tbl-wrap"><table><thead><tr><th>ตำแหน่ง</th><th>เลข 0–9 (ความถี่)</th></tr></thead><tbody id="digit-tbody"></tbody></table></div>
-  </div>
-
-  <div style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border2)">
-    <div class="page-title" style="font-size:1rem;margin-bottom:4px">ความถี่หลักทุกประเภทรางวัล</div>
-    <div class="page-sub" style="margin-bottom:12px">วิเคราะห์หลัก 0–9 ในแต่ละตำแหน่งสำหรับทุกประเภทรางวัล</div>
-    <div class="ctrl-row">
-      <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="df-col" onchange="loadDigitFreq()"></select></div>
-    </div>
-    <div class="card"><div class="card-title" id="df-chart-title">ความถี่หลักแยกตำแหน่ง</div><div style="height:300px"><canvas id="df-chart"></canvas></div></div>
-    <div class="card" style="margin-top:12px">
-      <div class="tbl-wrap" style="max-height:320px;overflow-y:auto">
-        <table><thead><tr><th>ตำแหน่ง</th><th>เลข</th><th>จำนวนครั้ง</th><th>สัดส่วน</th></tr></thead><tbody id="df-tbody"></tbody></table>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="page" id="page-trend">
-  <div class="page-title">แนวโน้มรายปี</div>
-  <div class="page-sub">ค้นหาแนวโน้มการออกของเลขที่สนใจในแต่ละปี</div>
-  <div class="ctrl-row">
-    <div class="ctrl-group"><div class="ctrl-label">ประเภท</div><select id="trend-col"></select></div>
-    <div class="ctrl-group"><div class="ctrl-label">เลขที่ต้องการ</div><input id="trend-num" type="text" placeholder="เช่น 45" style="width:100px;padding:6px 10px;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:.85rem"></div>
-    <button class="btn btn-primary" onclick="loadTrend()">🔍 ค้นหา</button>
-  </div>
-  <div class="card"><div class="card-title" id="trend-chart-title">กราฟแนวโน้ม</div><div style="height:320px"><canvas id="trend-chart"></canvas></div></div>
-  <div class="card" style="margin-top:16px">
-    <div class="tbl-wrap" style="max-height:360px;overflow-y:auto">
-      <table><thead><tr><th>ปี</th><th>ครั้งที่ออก</th><th>แนวโน้ม</th></tr></thead><tbody id="trend-tbody"></tbody></table>
-    </div>
-  </div>
-</div>
 
 </main>
 
-<div id="toast-container"></div>
-<div id="api-spinner"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
+<div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
+<div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script>
-// ─── Config ───────────────────────────────────────────────────────────────────
-const LOTTERY_TYPES = {
-  "รางวัลที่ 1":"prize1","3 ตัวบน":"top3","2 ตัวบน":"top2",
-  "3 ตัวหน้า 1":"front3_1","3 ตัวหน้า 2":"front3_2",
-  "3 ตัวล่าง 1":"back3_1","3 ตัวล่าง 2":"back3_2","2 ตัวล่าง":"bottom2"
-};
-const ALL_OPTS = Object.entries(LOTTERY_TYPES).map(([l,v])=>`<option value="${v}">${l}</option>`).join('');
-const NO_P1_OPTS = Object.entries(LOTTERY_TYPES).filter(([,v])=>v!=='prize1').map(([l,v])=>`<option value="${v}">${l}</option>`).join('');
-const TWO_DIGIT_OPTS = Object.entries(LOTTERY_TYPES).filter(([,v])=>v==='top2'||v==='bottom2').map(([l,v])=>`<option value="${v}">${l}</option>`).join('');
+<script src="/static/formula-engine.js?v=fable-target-ui2"></script>
+<script src="/static/app.js"></script>
 
-// ─── Chart registry ───────────────────────────────────────────────────────────
-const _charts = {};
-function mkChart(id, cfg){
-  if(_charts[id]){ _charts[id].destroy(); }
-  const el = document.getElementById(id);
-  if(!el) return;
-  _charts[id] = new Chart(el.getContext('2d'), cfg);
-  return _charts[id];
-}
-
-// ─── Toast ────────────────────────────────────────────────────────────────────
-function toast(msg, type=''){
-  const el = Object.assign(document.createElement('div'), {className:'toast'+(type?' '+type:''), textContent:msg});
-  document.getElementById('toast-container').appendChild(el);
-  setTimeout(()=>el.remove(), 3500);
-}
-
-// ─── Nav ──────────────────────────────────────────────────────────────────────
-let currentPage = 'dashboard';
-document.querySelectorAll('.nav-item').forEach(item=>{
-  item.addEventListener('click',()=>{
-    const p = item.dataset.page;
-    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-    item.classList.add('active');
-    document.querySelectorAll('.page').forEach(pg=>pg.classList.remove('active'));
-    document.getElementById('page-'+p).classList.add('active');
-    if(p!==currentPage){ currentPage=p; onPageLoad(p); }
-  });
-});
-
-function onPageLoad(p){
-  if(p==='frequency') loadFreq();
-  else if(p==='hotcold') loadHotCold();
-  else if(p==='heatmap') loadHeatmap();
-  else if(p==='overdue') loadOverdue();
-  else if(p==='history') loadHistory();
-  else if(p==='pairs') loadPairsOverview();
-  else if(p==='decade') loadDecade();
-  else if(p==='watchlist') loadWatchlist();
-  else if(p==='ml') checkMLStatus();
-  else if(p==='network') loadNetwork();
-  else if(p==='digit'){ loadDigitAnalysis(); loadDigitFreq(); }
-  else if(p==='trend') {};
-}
-
-function switchPairsTab(panelId, btn){
-  document.querySelectorAll('#page-pairs .tab-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  document.querySelectorAll('#page-pairs .tab-panel').forEach(p=>p.classList.remove('active'));
-  document.getElementById(panelId).classList.add('active');
-}
-
-// ─── API ──────────────────────────────────────────────────────────────────────
-let _apiInFlight=0;
-async function api(path){
-  _apiInFlight++;
-  if(_apiInFlight===1) document.getElementById('api-spinner').classList.add('active');
-  try{
-    const r=await fetch('/api/'+path);
-    return await r.json();
-  }catch(e){
-    return {error:String(e)};
-  }finally{
-    _apiInFlight=Math.max(0,_apiInFlight-1);
-    if(_apiInFlight===0) document.getElementById('api-spinner').classList.remove('active');
-  }
-}
-
-// ─── Init ─────────────────────────────────────────────────────────────────────
-async function init(){
-  // Populate selects
-  [['freq-col','ALL'],['hc-col','ALL'],['hm-col','TWO_DIGIT'],['ov-col','ALL'],
-   ['pred-col','ALL'],['dec-col','ALL'],['wl-col','ALL'],['ml-col','NO_P1'],
-   ['pair-cola','NO_P1'],['pair-colb','NO_P1'],
-   ['consec-col','NO_P1'],['net-cola','NO_P1'],['net-colb','NO_P1'],
-   ['trend-col','NO_P1'],['df-col','NO_P1']
-  ].forEach(([id,type])=>{
-    const el = document.getElementById(id);
-    if(!el) return;
-    el.innerHTML = type==='ALL' ? ALL_OPTS : type==='TWO_DIGIT' ? TWO_DIGIT_OPTS : NO_P1_OPTS;
-  });
-  document.getElementById('pair-colb').value='top2';
-  document.getElementById('net-colb').value='top2';
-  document.getElementById('freq-col').value='top3';
-  document.getElementById('hc-col').value='top3';
-  document.getElementById('ov-col').value='top3';
-
-  // Latest draw date in sidebar
-  api('summary').then(s=>{
-    const d=s.latest?.date||s.date_max||'';
-    if(d){
-      document.getElementById('sidebar-draw-date-val').textContent=d;
-      document.getElementById('sidebar-draw-date').style.display='block';
-    }
-  });
-
-  // Next draws
-  const nd = await api('next-draws');
-  const drawOpts = (nd.draws||[]).map(d=>`<option value="${d.date}">${d.label}</option>`).join('');
-  ['pred-date','ml-date','dig-date'].forEach(id=>{
-    const el = document.getElementById(id);
-    if(el) el.innerHTML = drawOpts;
-  });
-
-  // pred-col change wires prize1 section
-  document.getElementById('pred-col').addEventListener('change',()=>{
-    document.getElementById('prize1-section').style.display = document.getElementById('pred-col').value==='prize1'?'block':'none';
-  });
-
-  await loadDashboard();
-}
-
-// ─── Dashboard ────────────────────────────────────────────────────────────────
-function fmtDate(s){
-  if(!s) return '—';
-  const [y,m,dd] = s.includes('-') ? s.split('-') : [s.slice(4),s.slice(2,4),s.slice(0,2)];
-  const M=['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
-  return `${parseInt(dd)} ${M[parseInt(m)]} ${parseInt(y)+543}`;
-}
-
-async function loadDashboard(){
-  const d = await api('summary');
-  if(d.error){ toast(d.error,'error'); return; }
-  document.getElementById('s-total').textContent = (d.total_draws||0).toLocaleString();
-  document.getElementById('s-date').textContent = fmtDate(d.latest?.date);
-  if(document.getElementById('s-from')) document.getElementById('s-from').textContent = fmtDate(d.date_min);
-  const p1 = d.latest?.prize1||'';
-  document.getElementById('s-prize1').innerHTML = p1.split('').map(c=>`<div class="digit-box">${c}</div>`).join('');
-  const lt = d.latest||{};
-  document.getElementById('latest-draw-detail').innerHTML = `
-    <div><span style="color:var(--text3)">3 ตัวบน:</span> <b style="color:var(--gold2)">${lt.top3||'—'}</b></div>
-    <div><span style="color:var(--text3)">2 ตัวบน:</span> <b>${lt.top2||'—'}</b></div>
-    <div><span style="color:var(--text3)">3 ตัวหน้า:</span> <b>${lt.front3_1||'—'}</b> / <b>${lt.front3_2||'—'}</b></div>
-    <div><span style="color:var(--text3)">3 ตัวล่าง:</span> <b>${lt.back3_1||'—'}</b> / <b>${lt.back3_2||'—'}</b></div>
-    <div><span style="color:var(--text3)">2 ตัวล่าง:</span> <b>${lt.bottom2||'—'}</b></div>`;
-  const hot = d.hot_top3||[];
-  const maxHot = hot[0] ? (Object.values(hot[0]).find(v=>typeof v==='number'&&v>0)||1) : 1;
-  document.getElementById('hot-list').innerHTML = hot.slice(0,10).map(r=>{
-    const num = r['เลข']||'';
-    const cnt = r['ความถี่ล่าสุด']??r['จำนวนครั้ง']??0;
-    return `<div class="hc-row"><span class="hc-num">${num}</span><div class="hc-bar-wrap"><div class="hc-bar-fill hot-fill" style="width:${(cnt/maxHot*100).toFixed(0)}%"></div></div><span class="hc-val">${cnt}</span></div>`;
-  }).join('');
-  document.getElementById('recent-tbody').innerHTML = (d.recent_draws||[]).map(r=>`<tr>
-    <td>${r.date||''}</td><td><b style="font-family:'IBM Plex Mono',monospace">${r.prize1||''}</b></td>
-    <td>${r.top3||''}</td><td>${r.top2||''}</td><td>${r.front3_1||''}</td>
-    <td>${r.front3_2||''}</td><td>${r.back3_1||''}</td><td>${r.back3_2||''}</td><td>${r.bottom2||''}</td>
-  </tr>`).join('');
-}
-
-async function refreshData(){
-  toast('กำลังรีเฟรช...');
-  const r = await fetch('/api/refresh',{method:'POST'});
-  const d = await r.json();
-  toast(`อัปเดต ${d.rows} งวด`,'success');
-  loadDashboard();
-}
-
-// ─── Frequency ────────────────────────────────────────────────────────────────
-async function loadFreq(){
-  const col = document.getElementById('freq-col').value;
-  const top = document.getElementById('freq-top').value;
-  const d = await api(`freq-table?col=${col}&top_n=${top}`);
-  const rows = d.data||[];
-  const maxCnt = rows[0]?.['จำนวนครั้ง']||1;
-  document.getElementById('freq-tbody').innerHTML = rows.map((r,i)=>`<tr>
-    <td><span class="rank-badge ${i<3?'rank-'+(i+1):''}">${i+1}</span></td>
-    <td><b style="font-family:'IBM Plex Mono',monospace">${r['เลข']||''}</b></td>
-    <td>${r['จำนวนครั้ง']||0}</td>
-    <td>${(r['อัตรา (%)']||0).toFixed(2)}%</td>
-    <td><div class="progress-bar"><div class="progress-fill" style="width:${((r['จำนวนครั้ง']||0)/maxCnt*100).toFixed(0)}%"></div></div></td>
-  </tr>`).join('');
-  const never = d.never||[];
-  const neverEl = document.getElementById('never-list');
-  neverEl.innerHTML = never.length
-    ? `<div style="color:var(--text3);font-size:.78rem;margin-bottom:8px">ไม่เคยออก ${never.length} เลข:</div>`+never.map(n=>`<span class="num-badge" style="border-color:var(--text3);color:var(--text3)">${n}</span>`).join('')
-    : '<span style="color:var(--text3)">ทุกเลขเคยออกแล้ว</span>';
-  mkChart('freq-chart',{type:'bar',
-    data:{labels:rows.slice(0,20).map(r=>String(r['เลข']||'')),datasets:[{data:rows.slice(0,20).map(r=>r['จำนวนครั้ง']||0),backgroundColor:'rgba(200,168,75,0.7)',borderWidth:0}]},
-    options:chartOpts('ครั้ง')});
-}
-
-// ─── Hot/Cold ─────────────────────────────────────────────────────────────────
-async function loadHotCold(){
-  const col = document.getElementById('hc-col').value;
-  const months = document.getElementById('hc-months').value;
-  const d = await api(`hot-cold?col=${col}&months=${months}`);
-  const rows = d.data||[];
-  if(!rows.length){ toast('ไม่มีข้อมูล'); return; }
-  const keys = Object.keys(rows[0]);
-  const hotKey = keys.find(k=>k.includes('ล่าสุด')||k.includes('recent'))||keys.find(k=>k!=='เลข')||keys[1];
-  const cntKey = keys.find(k=>k.includes('จำนวน'))||hotKey;
-  const sorted = [...rows].sort((a,b)=>(b[hotKey]??0)-(a[hotKey]??0));
-  const hot10 = sorted.slice(0,10);
-  const cold10 = [...sorted].reverse().slice(0,10);
-  const maxH = hot10[0]?.[hotKey]||1;
-  const maxC = cold10.reduce((m,r)=>Math.max(m,r[hotKey]??0),0)||1;
-  function bars(items,key,max,cls){
-    return items.map(r=>{const v=r[key]??0;return`<div class="hc-row"><span class="hc-num">${r['เลข']||''}</span><div class="hc-bar-wrap"><div class="hc-bar-fill ${cls}" style="width:${(v/max*100).toFixed(0)}%"></div></div><span class="hc-val">${v}</span></div>`;}).join('');
-  }
-  document.getElementById('hot-bars').innerHTML = bars(hot10,hotKey,maxH,'hot-fill');
-  document.getElementById('cold-bars').innerHTML = bars(cold10,hotKey,maxC,'cold-fill');
-  const top20 = sorted.slice(0,20);
-  mkChart('hc-chart',{type:'bar',
-    data:{labels:top20.map(r=>String(r['เลข']||'')),datasets:[
-      {label:'ล่าสุด',data:top20.map(r=>r[hotKey]??0),backgroundColor:'rgba(240,84,84,0.7)'},
-      {label:'รวม',data:top20.map(r=>r[cntKey]??0),backgroundColor:'rgba(77,157,224,0.4)'}
-    ]},options:chartOpts('ครั้ง',true)});
-}
-
-// ─── Heatmap ──────────────────────────────────────────────────────────────────
-async function loadHeatmap(){
-  const col = document.getElementById('hm-col').value;
-  const d = await api(`heatmap?col=${col}`);
-  const rows = d.data||[];
-  const grid = Array.from({length:10},()=>Array(10).fill(0));
-  let maxV = 0;
-  rows.forEach(r=>{
-    const num = String(r['เลข']||'').padStart(2,'0');
-    const t=parseInt(num[0]), u=parseInt(num[1]);
-    if(t>=0&&t<10&&u>=0&&u<10){ grid[t][u]=r['จำนวนครั้ง']||0; if(grid[t][u]>maxV) maxV=grid[t][u]; }
-  });
-  let html=`<div style="display:grid;grid-template-columns:30px repeat(10,1fr);gap:2px;min-width:300px"><div></div>`;
-  for(let c=0;c<10;c++) html+=`<div style="text-align:center;font-size:.65rem;color:var(--text3);padding:2px">${c}</div>`;
-  for(let r=0;r<10;r++){
-    html+=`<div style="display:flex;align-items:center;font-size:.65rem;color:var(--text3)">${r}</div>`;
-    for(let c=0;c<10;c++){
-      const v=grid[r][c]; const pct=maxV>0?v/maxV:0;
-      html+=`<div class="hm-cell" style="background:rgba(200,168,75,${(0.05+pct*0.9).toFixed(2)});color:${pct>0.5?'#0a0a0a':'#9090a8'}" title="${r}${c}: ${v}ครั้ง">${v||''}</div>`;
-    }
-  }
-  html+='</div>';
-  document.getElementById('heatmap-grid').innerHTML = html;
-}
-
-// ─── Overdue ──────────────────────────────────────────────────────────────────
-async function loadOverdue(){
-  const col = document.getElementById('ov-col').value;
-  const top = document.getElementById('ov-top').value;
-  const d = await api(`overdue?col=${col}&top_n=${top}`);
-  const rows = d.data||[];
-  const maxOv = rows[0]?.['ค้างกี่งวด']||1;
-  document.getElementById('overdue-list').innerHTML = rows.map(r=>{
-    const ov=r['ค้างกี่งวด']||0;
-    let bc='ov-ok', bt=`ค้าง ${ov} งวด`;
-    if(ov>=50){bc='ov-warn';bt=`⚠️ ค้าง ${ov} งวด`;}
-    else if(ov>=20){bc='ov-caution';bt=`⏰ ค้าง ${ov} งวด`;}
-    return`<div class="overdue-item">
-      <span class="overdue-num">${r['เลข']||''}</span>
-      <div style="flex:1">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-          <span class="overdue-badge ${bc}">${bt}</span>
-          <span style="font-size:.72rem;color:var(--text3)">โอกาส ${(r['โอกาสออก(%)']||0).toFixed(1)}%</span>
-        </div>
-        <div class="progress-bar"><div class="progress-fill ${ov>=50?'red':ov>=20?'':'green'}" style="width:${(ov/maxOv*100).toFixed(0)}%"></div></div>
-        <div style="font-size:.68rem;color:var(--text3);margin-top:3px">ล่าสุด: ${r['ออกล่าสุด']||'ไม่เคย'}</div>
-      </div></div>`;
-  }).join('');
-  mkChart('overdue-chart',{type:'bar',
-    data:{labels:rows.map(r=>String(r['เลข']||'')),datasets:[{label:'งวด',data:rows.map(r=>r['ค้างกี่งวด']||0),backgroundColor:rows.map(r=>(r['ค้างกี่งวด']||0)>=50?'rgba(240,84,84,0.7)':'rgba(200,168,75,0.6)'),borderWidth:0}]},
-    options:{...chartOpts('งวด'),indexAxis:'y'}});
-}
-
-// ─── Lottery Countdown Timer ──────────────────────────────────────────────────
-function startCountdown(){
-  function getNextDraw(){
-    // Thai lottery: 1st and 16th of each month, draw at 14:30 Bangkok (UTC+7)
-    const now = new Date();
-    const bkk = new Date(now.getTime() + (7*60 - now.getTimezoneOffset()) * 60000);
-    const y=bkk.getUTCFullYear(), m=bkk.getUTCMonth(), d=bkk.getUTCDate();
-    const h=bkk.getUTCHours(), mn=bkk.getUTCMinutes();
-    const pastDraw = (day) => d > day || (d === day && (h > 14 || (h === 14 && mn >= 30)));
-    let nextDay, nextMon=m, nextYr=y;
-    if(!pastDraw(1) ) { nextDay=1; }
-    else if(!pastDraw(16)) { nextDay=16; }
-    else { nextDay=1; nextMon=m+1; if(nextMon>11){nextMon=0;nextYr=y+1;} }
-    // Next draw in UTC: Bangkok 14:30 = UTC 07:30
-    return new Date(Date.UTC(nextYr, nextMon, nextDay, 7, 30, 0));
-  }
-  function tick(){
-    const next=getNextDraw();
-    const now=new Date();
-    const diff=next-now;
-    if(diff<=0){document.getElementById('countdown-val').textContent='กำลังออกผล!';return;}
-    const days=Math.floor(diff/86400000);
-    const hrs=Math.floor((diff%86400000)/3600000);
-    const mins=Math.floor((diff%3600000)/60000);
-    const secs=Math.floor((diff%60000)/1000);
-    const pad=n=>String(n).padStart(2,'0');
-    document.getElementById('countdown-val').textContent=
-      days>0?`${days}วัน ${pad(hrs)}:${pad(mins)}:${pad(secs)}`:`${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
-    const dateEl=document.getElementById('countdown-date');
-    if(dateEl) dateEl.textContent=`งวด ${next.toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'})}`;
-  }
-  tick();
-  setInterval(tick,1000);
-}
-startCountdown();
-
-// ─── Export Predictions CSV ───────────────────────────────────────────────────
-function exportPredCSV(){
-  const data=window._lastPredData||[];
-  if(!data.length)return;
-  const col=window._lastPredCol||'';
-  const date=window._lastPredDate||'';
-  const keys=Object.keys(data[0]);
-  const rows=[keys.join(','),...data.map(r=>keys.map(k=>{
-    const v=r[k]??'';
-    return typeof v==='string'&&v.includes(',')?`"${v}"`:v;
-  }).join(','))];
-  const blob=new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`predict_${col}_${date||'latest'}.csv`;
-  a.click();URL.revokeObjectURL(a.href);
-}
-
-// ─── Prize1 Dashboard Widget ──────────────────────────────────────────────────
-async function loadP1Widget(){
-  document.getElementById('p1-widget-body').innerHTML='<span style="color:var(--text3)">กำลังคำนวณ...</span>';
-  // Next draw date: 1st or 16th whichever is next from today
-  const now=new Date();
-  const d=now.getDate();
-  let nextDraw;
-  if(d<1||d<16){const m=now.getMonth(),y=now.getFullYear();nextDraw=`${y}-${String(m+1).padStart(2,'0')}-${d<16?'16':'01'}`;}
-  else{const nx=new Date(now.getFullYear(),now.getMonth()+1,1);nextDraw=`${nx.getFullYear()}-${String(nx.getMonth()+1).padStart(2,'0')}-01`;}
-  document.getElementById('p1-widget-date').textContent='('+nextDraw+')';
-  const r=await api(`predict/prize1?top_n=10&beam_width=500&k_back=100&date=${nextDraw}`);
-  const preds=r.predictions||[];
-  if(!preds.length){document.getElementById('p1-widget-body').innerHTML='<span style="color:#f05454">ไม่มีข้อมูล</span>';return;}
-  document.getElementById('p1-widget-body').innerHTML=preds.slice(0,5).map((p,i)=>{
-    const fb=+(p['Front Beam']||0).toFixed(2);
-    const bk=+(p['Back Top3']||0).toFixed(2);
-    const score=+(p['คะแนนรวม']||0).toFixed(1);
-    const color=i===0?'var(--gold2)':i<3?'var(--accent)':'var(--text2)';
-    return `<div style="text-align:center;padding:8px 12px;background:var(--surface2);border-radius:8px;border:1px solid ${i===0?'var(--gold2)':'var(--border)'}">
-      <div style="font-family:'IBM Plex Mono',monospace;font-size:${i===0?'1.4rem':'1.1rem'};font-weight:700;color:${color};letter-spacing:3px">${p['เลข']||''}</div>
-      <div style="font-size:.65rem;color:var(--text3);margin-top:2px">${p['หน้า 3']||''}·${p['หลัง 3']||''}</div>
-      <div style="font-size:.65rem;color:var(--text3)">F:${fb} B:${bk}</div>
-    </div>`;
-  }).join('');
-  document.getElementById('p1-widget-lift').textContent='Front3 lift ~5.1x | Back3 lift ~2.0x (n=80 backtest)';
-}
-
-// ─── Predict ──────────────────────────────────────────────────────────────────
-async function loadPredict(){
-  const col = document.getElementById('pred-col').value;
-  const date = document.getElementById('pred-date').value;
-  const topn = document.getElementById('pred-topn').value;
-  const isPrize1 = col==='prize1';
-
-  const conf = await api(`confidence?col=${col}&date=${date}`);
-  if(!conf.error){
-    document.getElementById('conf-banner').style.display='flex';
-    const lvl=conf.level||'MEDIUM';
-    const sc=document.getElementById('conf-score');
-    sc.textContent=(conf.score||0).toFixed(1); sc.className=`conf-score conf-${lvl}`;
-    const lv=document.getElementById('conf-level'); lv.textContent=`ระดับ: ${lvl}`; lv.className=`conf-${lvl}`;
-    document.getElementById('conf-reason').textContent=conf.reason||'';
-  }
-
-  let data=[], ensemble=[];
-  if(isPrize1){
-    const beam=document.getElementById('p1-beam').value;
-    const kb=document.getElementById('p1-kback').value;
-    const r=await api(`predict/prize1?top_n=${topn}&beam_width=${beam}&k_back=${kb}&date=${date}`);
-    data=r.predictions||[];
-  } else {
-    const r=await api(`predict-with-reasons?col=${col}&top_n=${topn}&date=${date}`);
-    data=r.data||[];
-    const er=await api(`ensemble?col=${col}&top_n=${topn}&date=${date}`);
-    ensemble=er.data||[];
-  }
-
-  document.getElementById('pred-top-badges').innerHTML=data.slice(0,5).map(r=>`<span class="num-badge">${r['เลข']||''}</span>`).join('');
-  window._lastPredData=data; window._lastPredCol=col; window._lastPredDate=date;
-  document.getElementById('pred-export-btn').style.display='inline-block';
-
-  const scoreKey=data[0]?Object.keys(data[0]).find(k=>k.includes('คะแนน')||k.includes('Score'))||'':'';
-  const maxScore=data[0]?.[scoreKey]||1;
-  function _sigCount(r){
-    let s=0;
-    if((r['วัน+เดือนเดียวกัน']||0)>=1) s++;
-    if((r['วันที่เดียวกัน']||0)>=5) s++;
-    if((r['เดือนเดียวกัน']||0)>=8) s++;
-    if((r['ค้างกี่งวด']||0)>=20) s++;
-    if((r['รวมทั้งหมด']||0)>=25) s++;
-    if((r['momentum']||0)>0) s++;
-    return s;
-  }
-  const MAX_SIG=6;
-  const isPrize1 = col === 'prize1';
-  document.getElementById('pred-thead').innerHTML = isPrize1
-    ? '<tr><th>#</th><th>เลข</th><th>หน้า·หลัง</th><th>คะแนน</th><th>F · B · J</th><th>DS</th></tr>'
-    : '<tr><th>#</th><th>เลข</th><th>คะแนน</th><th>ความเชื่อมั่น</th><th>เหตุผล</th></tr>';
-  document.getElementById('pred-tbody').innerHTML=data.map((r,i)=>{
-    const sig=_sigCount(r);
-    const sigPct=(sig/MAX_SIG*100).toFixed(0);
-    const sigColor=sig>=4?'#54a24b':sig>=2?'#f5e642':'#ff6b35';
-    const scoreVal=(r[scoreKey]||0);
-    const barW=((scoreVal/maxScore)*100).toFixed(0);
-    if(isPrize1){
-      const fb=+(r['Front Beam']||0).toFixed(3);
-      const bk=+(r['Back Top3']||0).toFixed(3);
-      const jn=+(r['Junction']||0).toFixed(3);
-      const fbColor=fb>0.5?'#3dd68c':fb>0.3?'#c8a84b':'#f05454';
-      const bkColor=bk>0.5?'#3dd68c':bk>0.3?'#c8a84b':'#f05454';
-      return `<tr>
-      <td><span class="rank-badge ${i<3?'rank-'+(i+1):''}">${i+1}</span></td>
-      <td><b style="font-family:'IBM Plex Mono',monospace;font-size:1rem;letter-spacing:2px">${r['เลข']||''}</b></td>
-      <td style="font-size:.78rem;color:var(--text3)"><span style="color:var(--accent)">${r['หน้า 3']||''}</span> · <span style="color:#4d9de0">${r['หลัง 3']||''}</span></td>
-      <td><div style="display:flex;align-items:center;gap:4px"><div class="progress-bar" style="width:60px"><div class="progress-fill" style="width:${barW}%"></div></div><span style="font-size:.72rem;color:var(--text3)">${scoreVal.toFixed(1)}</span></div></td>
-      <td style="font-size:.72rem"><span style="color:${fbColor}">F:${fb}</span> <span style="color:${bkColor}">B:${bk}</span> <span style="color:var(--text3)">J:${jn}</span></td>
-      <td style="font-size:.72rem;color:var(--text3)">${r['Digit Sum']||''}</td>
-    </tr>`;
-    }
-    return `<tr>
-    <td><span class="rank-badge ${i<3?'rank-'+(i+1):''}">${i+1}</span></td>
-    <td><b style="font-family:'IBM Plex Mono',monospace">${r['เลข']||''}</b></td>
-    <td><div style="display:flex;align-items:center;gap:6px"><div class="progress-bar" style="width:80px"><div class="progress-fill" style="width:${barW}%"></div></div><span style="font-size:.75rem;color:var(--text3)">${scoreVal.toFixed?.(4)}</span></div></td>
-    <td><div style="display:flex;align-items:center;gap:5px"><div class="progress-bar" style="width:54px"><div class="progress-fill" style="width:${sigPct}%;background:${sigColor}"></div></div><span style="font-size:.72rem;color:${sigColor};font-weight:600">${sig}/${MAX_SIG}</span></div></td>
-    <td style="font-size:.72rem;color:var(--text2)">${r['เหตุผล']||''}</td>
-  </tr>`;}).join('');
-
-  mkChart('pred-chart',{type:'bar',
-    data:{labels:data.slice(0,15).map(r=>String(r['เลข']||'')),datasets:[{data:data.slice(0,15).map(r=>r[scoreKey]||0),backgroundColor:'rgba(200,168,75,0.7)',borderWidth:0}]},
-    options:chartOpts('คะแนน')});
-
-  const ensSection=document.getElementById('ensemble-section');
-  if(ensemble.length){
-    ensSection.style.display='block';
-    document.getElementById('ensemble-badges').innerHTML=ensemble.slice(0,5).map(r=>`<span class="num-badge agree">${r['เลข']||''}</span>`).join('');
-    const ek=Object.keys(ensemble[0]||{}).find(k=>k.includes('คะแนน')||k.includes('Score'))||'';
-    document.getElementById('ensemble-tbody').innerHTML=ensemble.map((r,i)=>`<tr><td>${i+1}</td><td><b>${r['เลข']||''}</b></td><td>${(r[ek]||0).toFixed?.(4)}</td></tr>`).join('');
-  } else ensSection.style.display='none';
-
-  // Ref draws (same day+month)
-  if(date){
-    const [,m,dd]=date.split('-');
-    const h=await api('history?n=500');
-    const refs=(h.data||[]).filter(r=>{
-      if(!r.date) return false;
-      const p=r.date.split('/');
-      return p[0]===dd&&p[1]===m;
-    }).slice(0,15);
-    document.getElementById('ref-tbody').innerHTML=refs.map(r=>`<tr>
-      <td>${r.date}</td><td>${r.prize1||''}</td><td>${r.top3||''}</td>
-      <td>${r.top2||''}</td><td>${r.back3_1||''}</td><td>${r.back3_2||''}</td><td>${r.bottom2||''}</td>
-    </tr>`).join('');
-  }
-}
-
-// ─── History ──────────────────────────────────────────────────────────────────
-let _histData=[];
-async function loadHistory(){
-  const n=document.getElementById('hist-n').value;
-  const d=await api(`history?n=${n}`);
-  _histData=d.data||[];
-  filterHistory();
-}
-function filterHistory(){
-  const q=document.getElementById('hist-search').value.trim().toLowerCase();
-  const rows=q?_histData.filter(r=>Object.values(r).some(v=>String(v).toLowerCase().includes(q))):_histData;
-  document.getElementById('hist-tbody').innerHTML=rows.map(r=>`<tr>
-    <td>${r.date||''}</td><td><b style="font-family:'IBM Plex Mono',monospace;color:var(--gold2)">${r.prize1||''}</b></td>
-    <td>${r.top3||''}</td><td>${r.top2||''}</td><td>${r.front3_1||''}</td>
-    <td>${r.front3_2||''}</td><td>${r.back3_1||''}</td><td>${r.back3_2||''}</td><td>${r.bottom2||''}</td>
-  </tr>`).join('');
-}
-
-// ─── Pairs ────────────────────────────────────────────────────────────────────
-async function loadPairsOverview(){
-  const cola=document.getElementById('pair-cola').value;
-  const colb=document.getElementById('pair-colb').value;
-  const d=await api(`pairs?col_a=${cola}&col_b=${colb}`);
-  document.getElementById('pairs-title').textContent=`Top 5 ${cola} → Top 3 ${colb}`;
-  const ck=`top3_${colb}`;
-  document.getElementById('pairs-tbody').innerHTML=(d.data||[]).map(r=>`<tr>
-    <td><b>${r[cola]||''}</b></td><td colspan="3">${r[ck]||'-'}</td>
-  </tr>`).join('');
-}
-async function loadPairs(){
-  const cola=document.getElementById('pair-cola').value;
-  const colb=document.getElementById('pair-colb').value;
-  const q=document.getElementById('pair-query').value.trim();
-  if(!q){ return loadPairsOverview(); }
-  const d=await api(`pairs?col_a=${cola}&col_b=${colb}&query=${q}&top_n=15`);
-  document.getElementById('pairs-title').textContent=`ถ้า ${cola}=${q} → ${colb} มักออก...`;
-  document.getElementById('pairs-tbody').innerHTML=(d.data||[]).map(r=>`<tr>
-    <td>${q}</td><td><b>${r['เลข']||''}</b></td>
-    <td>${r['จำนวนครั้ง']||0}</td><td>${(r['เปอร์เซ็นต์']||0).toFixed(1)}%</td>
-  </tr>`).join('');
-}
-async function loadConsec(){
-  const col=document.getElementById('consec-col').value;
-  const q=document.getElementById('consec-query').value.trim();
-  const url=q?`consecutive?col=${col}&query=${encodeURIComponent(q)}&top_n=15`:`consecutive?col=${col}&top_n=15`;
-  const d=await api(url);
-  document.getElementById('consec-title').textContent=q?`หลัง ${q} ออก → งวดถัดมา:`:'Top คู่ที่ออกติดต่อกัน';
-  const rows=d.data||[];
-  if(q&&rows.length===0){
-    document.getElementById('consec-tbody').innerHTML=`<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:16px">ไม่พบ "${q}" ในประวัติข้อมูล — ยังไม่เคยออกในประเภทนี้</td></tr>`;
-  } else {
-    document.getElementById('consec-tbody').innerHTML=rows.map((r,i)=>`<tr>
-      <td>${i+1}</td>
-      <td>${r['เลขก่อน']||q||''}</td>
-      <td><b>${r['เลขตามมา']||r['คู่เลข (ก่อน→ตาม)']||r['เลข']||''}</b></td>
-      <td>${r['จำนวนครั้ง']||0}</td>
-      <td>${(r['เปอร์เซ็นต์']||0).toFixed(1)}%</td>
-    </tr>`).join('');
-  }
-}
-
-// ─── Decade ───────────────────────────────────────────────────────────────────
-async function loadDecade(){
-  const col=document.getElementById('dec-col').value;
-  const top=document.getElementById('dec-top').value;
-  const d=await api(`decade?col=${col}&top_n=${top}`);
-  if(!d.data.length) return;
-  const ey=d.end_year||2026;
-  const eras=['1994–2004','2005–2014',`2015–${ey}`];
-  const labels=d.data.map(r=>String(r['เลข']||''));
-  mkChart('decade-chart',{type:'bar',
-    data:{labels,datasets:eras.map((era,i)=>({label:era,data:d.data.map(r=>r[era]||0),backgroundColor:['#4C78A8aa','#F58518aa','#c8a84baa'][i],borderColor:['#4C78A8','#F58518','#c8a84b'][i],borderWidth:1}))},
-    options:chartOpts('ครั้ง',true)});
-  const le=eras[2];
-  document.getElementById('dec-era3-r').textContent=le;
-  document.getElementById('dec-era3-f').textContent=le;
-  const rising=d.data.filter(r=>(r[le]||0)>(r['1994–2004']||0)).slice(0,5);
-  const falling=d.data.filter(r=>(r[le]||0)<(r['1994–2004']||0)).slice(0,5);
-  function dRows(items){return items.map(r=>`<tr><td><b>${r['เลข']||''}</b></td><td>${r['1994–2004']||0}</td><td>${r['2005–2014']||0}</td><td><b style="color:var(--gold2)">${r[le]||0}</b></td></tr>`).join('');}
-  document.getElementById('rising-tbody').innerHTML=dRows(rising);
-  document.getElementById('falling-tbody').innerHTML=dRows(falling);
-}
-
-// ─── Watchlist ────────────────────────────────────────────────────────────────
-async function loadWatchlist(){
-  const col=document.getElementById('wl-col').value;
-  const [d, h]=await Promise.all([api(`watchlist?col=${col}`), api('history?n=500')]);
-  const histRows=h.data||[];
-  const listEl=document.getElementById('wl-list');
-  const emptyEl=document.getElementById('wl-empty');
-  const sumEl=document.getElementById('wl-summary-card');
-  if(!(d.numbers&&d.numbers.length)){listEl.innerHTML='';emptyEl.style.display='block';sumEl.style.display='none';return;}
-  emptyEl.style.display='none';sumEl.style.display='block';
-  listEl.innerHTML=(d.status||[]).map(r=>{
-    const ov=r['ค้างกี่งวด']||0;
-    let ah='';
-    if(ov===0) ah=`<span class="wl-alert alert-great">🎉 ออกงวดล่าสุด!</span>`;
-    else if(ov>=50) ah=`<span class="wl-alert alert-warn">⚠️ ค้าง ${ov} งวด</span>`;
-    else if(ov>=20) ah=`<span class="wl-alert alert-caution">⏰ ค้าง ${ov} งวด</span>`;
-    const num=r['เลข']||'';
-    const hits=histRows.filter(h2=>String(h2[col]||'')==num).slice(0,10);
-    const histHtml=hits.length
-      ?`<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">${hits.map(h2=>`<span style="font-size:.68rem;padding:2px 7px;background:var(--surface2);border:1px solid var(--border2);border-radius:10px;color:var(--text2)">${h2.date||''}</span>`).join('')}</div>`
-      :`<div style="margin-top:4px;font-size:.68rem;color:var(--text3)">ยังไม่มีประวัติในช่วงนี้</div>`;
-    return`<div class="wl-item" style="flex-direction:column;align-items:flex-start;gap:6px">
-      <div style="display:flex;align-items:center;gap:12px;width:100%">
-        <span class="wl-num">${num}</span>
-        <div class="wl-info" style="flex:1"><div>ออก ${r['ออกทั้งหมด']||0} ครั้ง (${(r['อัตรา (%)']||0).toFixed(2)}%) · ล่าสุด: ${r['ออกล่าสุด']||'ไม่เคย'}</div>${ah}</div>
-        <button class="btn btn-danger" style="padding:4px 10px;font-size:.72rem" onclick="removeWatchlist('${col}','${num}')">✕</button>
-      </div>
-      <div style="width:100%;padding-left:4px">
-        <div style="font-size:.68rem;color:var(--text3);margin-bottom:2px">10 งวดล่าสุดที่ออก:</div>
-        ${histHtml}
-      </div>
-    </div>`;
-  }).join('');
-  const status=d.status||[];
-  if(status.length){
-    const avgR=(status.reduce((s,r)=>s+(r['อัตรา (%)']||0),0)/status.length).toFixed(2);
-    const mOv=status.reduce((a,b)=>(a['ค้างกี่งวด']||0)>(b['ค้างกี่งวด']||0)?a:b);
-    const mFr=status.reduce((a,b)=>(a['ออกทั้งหมด']||0)>(b['ออกทั้งหมด']||0)?a:b);
-    document.getElementById('wl-metrics').innerHTML=`
-      <div class="card"><div class="card-title">อัตราออกเฉลี่ย</div><div class="stat-val" style="font-size:1.4rem">${avgR}%</div></div>
-      <div class="card"><div class="card-title">ค้างนานสุด</div><div class="stat-val" style="font-size:1.1rem">${mOv['เลข']} (${mOv['ค้างกี่งวด']} งวด)</div></div>
-      <div class="card"><div class="card-title">ออกบ่อยสุด</div><div class="stat-val" style="font-size:1.1rem">${mFr['เลข']} (${mFr['ออกทั้งหมด']} ครั้ง)</div></div>`;
-  }
-}
-async function addToWatchlist(){
-  const col=document.getElementById('wl-col').value;
-  const num=document.getElementById('wl-input').value.trim();
-  if(!num){toast('ใส่เลขก่อน','error');return;}
-  await fetch('/api/watchlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({col,number:num})});
-  document.getElementById('wl-input').value='';
-  toast(`เพิ่ม ${num}`,'success'); loadWatchlist();
-}
-async function removeWatchlist(col,num){
-  await fetch(`/api/watchlist?col=${col}&number=${num}`,{method:'DELETE'});
-  toast(`ลบ ${num}`); loadWatchlist();
-}
-async function clearWatchlist(){
-  const col=document.getElementById('wl-col').value;
-  const d=await api(`watchlist?col=${col}`);
-  for(const n of d.numbers||[]) await fetch(`/api/watchlist?col=${col}&number=${n}`,{method:'DELETE'});
-  toast('ล้างแล้ว'); loadWatchlist();
-}
-
-// ─── ML ───────────────────────────────────────────────────────────────────────
-async function checkMLStatus(){
-  const col=document.getElementById('ml-col').value;
-  const d=await api(`ml-status?col=${col}`);
-  document.getElementById('ml-status-wrap').innerHTML=d.trained
-    ?`<span class="ml-status-badge ml-ready">✅ พร้อม</span>`
-    :`<span class="ml-status-badge ml-notready">⚠️ ยังไม่ train</span>`;
-  document.getElementById('ml-not-ready').style.display=d.trained?'none':'block';
-  document.getElementById('ml-results').style.display='none';
-  document.getElementById('ml-train-btn').textContent=d.trained?'🔄 Re-train':'🚀 Train Model';
-}
-async function trainML(){
-  const col=document.getElementById('ml-col').value;
-  const btn=document.getElementById('ml-train-btn');
-  btn.textContent='⏳ กำลัง train...'; btn.disabled=true; toast('เริ่ม train...');
-  const r=await fetch(`/api/ml-train?col=${col}`,{method:'POST'});
-  const d=await r.json();
-  btn.disabled=false;
-  if(d.error){toast('error: '+d.error,'error');btn.textContent='🚀 Train';return;}
-  toast('Train เสร็จ!','success'); checkMLStatus();
-}
-async function loadML(){
-  const col=document.getElementById('ml-col').value;
-  const date=document.getElementById('ml-date').value;
-  const d=await api(`ml-predict?col=${col}&top_n=20&date=${date}`);
-  if(d.error==='model_not_trained'){document.getElementById('ml-not-ready').style.display='block';return;}
-  if(d.error){toast('ML error: '+d.error,'error');return;}
-  document.getElementById('ml-not-ready').style.display='none';
-  document.getElementById('ml-results').style.display='block';
-  const rows=d.data||[];
-  document.getElementById('ml-badges').innerHTML=rows.slice(0,5).map(r=>`<span class="num-badge">${r['เลข']||''}</span>`).join('');
-  const sk=Object.keys(rows[0]||{}).find(k=>k.includes('Score')||k.includes('ML'))||'';
-  document.getElementById('ml-tbody').innerHTML=rows.map((r,i)=>`<tr><td>${i+1}</td><td><b style="font-family:'IBM Plex Mono',monospace">${r['เลข']||''}</b></td><td>${(r[sk]||0).toFixed?.(4)}</td></tr>`).join('');
-  const fi=d.feature_importance||[];
-  if(fi.length){
-    const fk=Object.keys(fi[0]).find(k=>k.includes('Importance'))||'Importance';
-    const nk=Object.keys(fi[0]).find(k=>k.includes('Feature'))||'Feature';
-    mkChart('fi-chart',{type:'bar',data:{labels:fi.slice(0,10).map(r=>r[nk]),datasets:[{data:fi.slice(0,10).map(r=>r[fk]||0),backgroundColor:'rgba(168,85,247,0.7)',borderWidth:0}]},options:{...chartOpts('Importance'),indexAxis:'y'}});
-  }
-  const sr=await api(`predict-with-reasons?col=${col}&top_n=20&date=${date}`);
-  const mlN=new Set(rows.map(r=>r['เลข'])), stN=new Set((sr.data||[]).map(r=>r['เลข']));
-  const common=[...mlN].filter(n=>stN.has(n));
-  document.getElementById('ml-agree-wrap').innerHTML=common.length
-    ?`<div style="font-size:.8rem;color:var(--text2);margin-bottom:6px">เห็นตรงกัน ${common.length} เลข:</div>`+common.map(n=>`<span class="num-badge agree">${n}</span>`).join('')
-    :'<span style="color:var(--text3);font-size:.8rem">ไม่มีเลขที่ตรงกัน</span>';
-}
-
-// ─── Network ──────────────────────────────────────────────────────────────────
-async function loadNetwork(){
-  const cola=document.getElementById('net-cola').value;
-  const colb=document.getElementById('net-colb').value;
-  const minW=document.getElementById('net-min').value;
-  const d=await api(`network?col_a=${cola}&col_b=${colb}&min_weight=${minW}`);
-  drawNetwork(d.nodes||[],d.edges||[]);
-}
-function drawNetwork(nodes,edges){
-  const canvas=document.getElementById('network-canvas');
-  // offsetWidth is 0 when the page isn't visible yet; fall back to parent or 800px
-  if(!canvas.offsetWidth){
-    requestAnimationFrame(()=>drawNetwork(nodes,edges));
-    return;
-  }
-  const dpr=window.devicePixelRatio||1;
-  const W=canvas.offsetWidth, H=canvas.offsetHeight||500;
-  canvas.width=W*dpr; canvas.height=H*dpr;
-  const ctx=canvas.getContext('2d');
-  ctx.scale(dpr,dpr);
-  ctx.fillStyle='#12121e'; ctx.fillRect(0,0,W,H);
-  if(!nodes.length){ctx.fillStyle='#5a5a72';ctx.font='16px sans-serif';ctx.textAlign='center';ctx.fillText('ไม่มีข้อมูล — ลองลด min weight',W/2,H/2);return;}
-  const pos={};
-  nodes.forEach(n=>{pos[n.id||n]={x:W*0.1+Math.random()*(W*0.8),y:H*0.1+Math.random()*(H*0.8)};});
-  for(let i=0;i<200;i++){
-    nodes.forEach(a=>nodes.forEach(b=>{
-      if(a===b) return;
-      const pa=pos[a.id||a],pb=pos[b.id||b];
-      const dx=pa.x-pb.x,dy=pa.y-pb.y,dist=Math.sqrt(dx*dx+dy*dy)||1,f=2000/(dist*dist);
-      pa.x+=dx/dist*f; pa.y+=dy/dist*f;
-    }));
-    edges.forEach(e=>{
-      const pa=pos[e.source],pb=pos[e.target];
-      if(!pa||!pb) return;
-      const dx=pb.x-pa.x,dy=pb.y-pa.y,dist=Math.sqrt(dx*dx+dy*dy)||1,f=(dist-80)*0.05;
-      pa.x+=dx/dist*f; pa.y+=dy/dist*f; pb.x-=dx/dist*f; pb.y-=dy/dist*f;
-    });
-    nodes.forEach(n=>{const p=pos[n.id||n];p.x=Math.max(30,Math.min(W-30,p.x));p.y=Math.max(30,Math.min(H-30,p.y));});
-  }
-  const maxW=Math.max(...edges.map(e=>e.weight||1),1);
-  edges.forEach(e=>{
-    const pa=pos[e.source],pb=pos[e.target];
-    if(!pa||!pb) return;
-    ctx.beginPath(); ctx.moveTo(pa.x,pa.y); ctx.lineTo(pb.x,pb.y);
-    ctx.strokeStyle=`rgba(200,168,75,${0.1+(e.weight||1)/maxW*0.5})`;
-    ctx.lineWidth=1+(e.weight||1)/maxW*3; ctx.stroke();
-  });
-  nodes.forEach(n=>{
-    const p=pos[n.id||n],isA=n.type==='A';
-    ctx.beginPath(); ctx.arc(p.x,p.y,14,0,Math.PI*2);
-    ctx.fillStyle=isA?'rgba(200,168,75,0.85)':'rgba(77,157,224,0.85)'; ctx.fill();
-    ctx.fillStyle='#0a0a0a'; ctx.font='bold 10px IBM Plex Mono,monospace';
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(String(n.id||n).slice(0,3),p.x,p.y);
-  });
-}
-
-// ─── Backtest ─────────────────────────────────────────────────────────────────
-async function loadBacktest(){
-  const n=document.getElementById('bt-n').value;
-  const topn=document.getElementById('bt-topn').value;
-  document.getElementById('bt-loading').style.display='block';
-  document.getElementById('bt-results').style.display='none';
-  const d=await api(`backtest?n_draws=${n}&top_n=${topn}`);
-  document.getElementById('bt-loading').style.display='none';
-  if(d.error){toast('error: '+d.error,'error');return;}
-  document.getElementById('bt-results').style.display='block';
-  const pct=v=>v!=null?(v*100).toFixed(2)+'%':'—';
-  const lx=v=>v!=null?v.toFixed(2)+'x':'—';
-  const liftColor=v=>v>=2?'#3dd68c':v>=1.2?'#c8a84b':'#f05454';
-  document.getElementById('bt-metrics').innerHTML=`
-    <div class="card">
-      <div class="card-title">🎯 Front3 Hit Rate (Top-${topn})</div>
-      <div class="stat-val">${pct(d.front3_rate)}</div>
-      <div class="stat-sub" style="color:${liftColor(d.front3_lift||0)}">Lift ${lx(d.front3_lift)} vs สุ่ม ${pct(d.front3_random)}</div>
-    </div>
-    <div class="card">
-      <div class="card-title">🎯 Back3 Hit Rate (Top-${topn})</div>
-      <div class="stat-val">${pct(d.back3_rate)}</div>
-      <div class="stat-sub" style="color:${liftColor(d.back3_lift||0)}">Lift ${lx(d.back3_lift)} vs สุ่ม ${pct(d.back3_random)}</div>
-    </div>
-    <div class="card">
-      <div class="card-title">🏆 Prize1 Combined (Top-${topn})</div>
-      <div class="stat-val">${d.hits||0} hits</div>
-      <div class="stat-sub" style="color:${liftColor(d.lift||0)}">Lift ${lx(d.lift)} | ${pct(d.rate)} vs สุ่ม ${pct(d.random_rate)}</div>
-    </div>
-    <div class="card">
-      <div class="card-title">📊 งวดทดสอบ</div>
-      <div class="stat-val">${d.n_tested||n}</div>
-      <div class="stat-sub">beam=${d.beam_width||500} k_back=${d.k_back||100} ${d.errors?'❌ '+d.errors+' err':''}</div>
-    </div>`;
-  mkChart('bt-lift-chart',{type:'bar',
-    data:{labels:['Front3 Lift','Back3 Lift','Combined Lift','Random (1x)'],datasets:[
-      {label:'Lift vs Random',
-       data:[+(d.front3_lift||0).toFixed(3),+(d.back3_lift||0).toFixed(3),+(d.lift||0).toFixed(3),1],
-       backgroundColor:['rgba(61,214,140,0.7)','rgba(77,157,224,0.7)','rgba(200,168,75,0.7)','rgba(120,120,120,0.4)'],
-       borderWidth:0}
-    ]},
-    options:{...chartOpts('x',true),scales:{y:{min:0,ticks:{callback:v=>v+'x'}}}}});
-}
-
-// ─── Digit Analysis ───────────────────────────────────────────────────────────
-async function loadDigitAnalysis(){
-  const date=document.getElementById('dig-date').value;
-  const d=await api(`digit-analysis?date=${date}`);
-  const rows=d.data||[];
-  if(!rows.length){toast('ไม่มีข้อมูล');return;}
-  const positions=[...new Set(rows.map(r=>r['ตำแหน่ง']))].sort((a,b)=>a-b);
-  const digits=[0,1,2,3,4,5,6,7,8,9];
-  const colors=['#c8a84b','#f05454','#3dd68c','#4d9de0','#a855f7','#f0a84b'];
-  mkChart('digit-chart',{type:'bar',
-    data:{labels:digits.map(String),datasets:positions.map((pos,i)=>({
-      label:`ตำแหน่ง ${pos}`,
-      data:digits.map(d2=>{const r=rows.find(r=>r['ตำแหน่ง']===pos&&(r['เลข']===d2||String(r['เลข'])===String(d2)));return r?.['จำนวนครั้ง']||0;}),
-      backgroundColor:colors[i%colors.length]+'99',borderColor:colors[i%colors.length],borderWidth:1
-    }))},
-    options:chartOpts('ครั้ง',true)});
-  const grouped={};
-  rows.forEach(r=>{const p=r['ตำแหน่ง'];if(!grouped[p])grouped[p]=[];grouped[p].push(r);});
-  document.getElementById('digit-tbody').innerHTML=Object.entries(grouped).map(([pos,rs])=>`<tr>
-    <td><b>pos ${pos}</b></td>
-    <td>${[...rs].sort((a,b)=>(a['เลข']??0)-(b['เลข']??0)).map(r=>`<span style="margin-right:6px"><b style="color:var(--gold2)">${r['เลข']}</b>:<span style="color:var(--text3)">${r['จำนวนครั้ง']||0}</span></span>`).join('')}</td>
-  </tr>`).join('');
-}
-
-// ─── Digit Frequency ──────────────────────────────────────────────────────────
-async function loadDigitFreq(){
-  const col=document.getElementById('df-col').value;
-  const d=await api(`digit-freq?col=${col}`);
-  const rows=d.data||[];
-  if(!rows.length){toast('ไม่มีข้อมูล','warn');return;}
-  const colName=Object.entries(LOTTERY_TYPES).find(([,v])=>v===col)?.[0]||col;
-  document.getElementById('df-chart-title').textContent=`ความถี่หลักแยกตำแหน่ง — ${colName}`;
-  const positions=[...new Set(rows.map(r=>r['ตำแหน่ง']))];
-  const digits=['0','1','2','3','4','5','6','7','8','9'];
-  const colors=['#c8a84b','#f05454','#3dd68c','#4d9de0','#a855f7','#f0a84b'];
-  mkChart('df-chart',{type:'bar',
-    data:{labels:digits,datasets:positions.map((pos,i)=>({
-      label:pos,
-      data:digits.map(dg=>{const r=rows.find(r=>r['ตำแหน่ง']===pos&&String(r['เลข'])===dg);return r?.['จำนวนครั้ง']||0;}),
-      backgroundColor:colors[i%colors.length]+'99',borderColor:colors[i%colors.length],borderWidth:1
-    }))},
-    options:chartOpts('ครั้ง',true)});
-  const total=rows.reduce((s,r)=>s+(r['จำนวนครั้ง']||0),0)/positions.length;
-  document.getElementById('df-tbody').innerHTML=rows.map(r=>{
-    const pct=total>0?((r['จำนวนครั้ง']||0)/total*100).toFixed(1):'0.0';
-    const dev=Number(pct)-10;
-    const devStr=dev>=0?`<span style="color:#54a24b">+${dev.toFixed(1)}%</span>`:`<span style="color:#ff6b35">${dev.toFixed(1)}%</span>`;
-    return `<tr><td>${r['ตำแหน่ง']}</td><td><b>${r['เลข']}</b></td><td>${r['จำนวนครั้ง']||0}</td><td>${pct}% ${devStr}</td></tr>`;
-  }).join('');
-}
-
-// ─── Trend ────────────────────────────────────────────────────────────────────
-async function loadTrend(){
-  const col=document.getElementById('trend-col').value;
-  const num=document.getElementById('trend-num').value.trim();
-  if(!num){toast('กรุณากรอกเลขที่ต้องการค้นหา','warn');return;}
-  const d=await api(`trend?col=${col}&number=${encodeURIComponent(num)}`);
-  if(d.error){toast('ไม่พบข้อมูล: '+d.error,'error');return;}
-  const rows=d.data||[];
-  if(!rows.length){toast('ไม่มีข้อมูลสำหรับเลขนี้','warn');return;}
-  const labels=rows.map(r=>String(r['year']));
-  const vals=rows.map(r=>r['ครั้ง']||0);
-  const maxVal=Math.max(...vals,1);
-  const colName=Object.entries(LOTTERY_TYPES).find(([,v])=>v===col)?.[0]||col;
-  document.getElementById('trend-chart-title').textContent=`แนวโน้มการออกของเลข "${num}" (${colName}) รายปี`;
-  mkChart('trend-chart',{type:'bar',
-    data:{labels,datasets:[{data:vals,backgroundColor:vals.map(v=>v>=3?'rgba(84,162,75,0.75)':v>=1?'rgba(200,168,75,0.75)':'rgba(90,90,114,0.45)'),borderColor:vals.map(v=>v>=3?'#54a24b':v>=1?'#c8a84b':'#3a3a4e'),borderWidth:1,borderRadius:3}]},
-    options:chartOpts('ครั้งที่ออก')});
-  const total=vals.reduce((a,b)=>a+b,0);
-  const nonZero=vals.filter(v=>v>0).length;
-  document.getElementById('trend-tbody').innerHTML=rows.map((r,i)=>{
-    const v=r['ครั้ง']||0;
-    const bar=v>0?`<div style="display:inline-block;width:${Math.round(v/maxVal*120)}px;height:8px;background:${v>=3?'#54a24b':v>=1?'#c8a84b':'#5a5a72'};border-radius:2px"></div>`:'—';
-    return `<tr><td>${r['year']}</td><td style="color:${v>=3?'#54a24b':v>=1?'var(--gold2)':'var(--text3)'}"><b>${v}</b></td><td>${bar}</td></tr>`;
-  }).join('')+`<tr style="border-top:1px solid var(--border2)"><td><b>รวม</b></td><td><b style="color:var(--gold)">${total}</b> ครั้ง / ${nonZero} ปี</td><td></td></tr>`;
-}
-
-// ─── Chart defaults ───────────────────────────────────────────────────────────
-function chartOpts(yLabel='',legend=false){
-  return{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:legend,labels:{color:'#9090a8',font:{size:11}}},tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.y??ctx.parsed.x}`}}},scales:{x:{ticks:{color:'#9090a8',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'}},y:{ticks:{color:'#9090a8',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'},title:{display:!!yLabel,text:yLabel,color:'#5a5a72'}}}};
-}
-
-// ─── Boot ─────────────────────────────────────────────────────────────────────
-init();
-</script>
 </body>
 </html>

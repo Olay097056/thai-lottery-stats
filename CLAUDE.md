@@ -2,134 +2,119 @@
 
 ## Project Overview
 
-A Thai lottery statistics and prediction dashboard.
+A Thai lottery statistics and prediction dashboard, macOS-dark-themed, desktop-first.
 - **Backend**: FastAPI (`main.py`, port 8509)
-- **Frontend**: Single-page HTML (`static/index.html`, ~1200 lines)
-- **Prediction engine**: `analyzer.py` (~1864 lines)
-- **ML layer**: `ml_predictor.py` (GradientBoosting, ~309 lines)
-- **Data**: `scraper.py` scrapes/caches draw history; cache in `lottery_cache.csv`
+- **Frontend**: Single-page HTML (`static/index.html`) + `static/formula-engine.js`
+- **Prediction engine**: `analyzer.py` (statistical), `fable_formula.py` (FABLE experimental formula)
+- **ML layer**: `ml_predictor.py` — endpoints kept as reference, not shown in UI
+- **Data**: `scraper.py` (myhora.com, prize1/top3/top2/front3/back3/bottom2) + `sanook_scraper.py` (near1/prize2/prize3/prize4/prize5), cached in `lottery_cache.csv`
+
+See [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md) for current phase status and [CHANGELOG.md](CHANGELOG.md) for implementation history.
 
 ## Running the App
 
 ```bash
+pip install -r requirements.txt
 uvicorn main:app --port 8509 --reload
 ```
 
-Open `http://localhost:8509` in a browser.
+Open `http://localhost:8509`. On Windows, prefer the venv at `%LOCALAPPDATA%\lottery_stats_runtime\.venv\Scripts\python.exe` (has pandas/fastapi/sklearn installed) — plain `uvicorn` on PATH may resolve to a Python without dependencies. `.claude/launch.json` is configured to use this venv with `--app-dir lottery_stats --reload`.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `main.py` | FastAPI app, 30+ endpoints, data loading via `get_df()` |
-| `analyzer.py` | All statistical/prediction functions |
-| `ml_predictor.py` | GBM training/prediction, model cache in `.ml_cache/` |
-| `scraper.py` | `load_data()`, `incremental_update()`, `get_cache_info()` |
-| `watchlist.py` | JSON-backed watchlist CRUD |
-| `static/index.html` | Full SPA — 15 pages, Chart.js charts, no build step |
+| `main.py` | FastAPI app, endpoints, data loading via `get_df()` |
+| `analyzer.py` | Statistical prediction functions (predict_numbers, hot_cold, beam search, etc.) |
+| `fable_formula.py` | FABLE experimental formula — pool-based scoring across prize 1–5, promotion gate logic |
+| `ml_predictor.py` | GBM training/prediction — endpoints kept, not exposed in current UI |
+| `scraper.py` | `load_data()`, `incremental_update()`, `get_cache_info()`, myhora.com scraping |
+| `sanook_scraper.py` | Scrapes near1/prize2/prize3/prize4/prize5 from news.sanook.com JSON-LD |
+| `enrich_from_sanook.py` | One-off backfill script for historical Sanook data |
+| `watchlist.py` | JSON-backed watchlist CRUD — endpoints kept, not exposed in current UI |
+| `static/index.html` | SPA shell markup only — 5 pages; styles and script now split out (no build step) |
+| `static/app.css` | All CSS — macOS dark palette, layout, component styles |
+| `static/app.js` | Core JS — init, api(), showPage/switchPredTab, loadXxx page loaders, Chart.js wiring. Loaded after `formula-engine.js` (its `init()` call at the bottom relies on formula-engine being defined first) |
+| `static/formula-engine.js` | Formula calculators (A–H groups), backtest engine, FABLE Lab UI |
 
-## Lottery Types (`col` parameter)
+Dev/debug/one-off scripts (not imported by production code) live in `scripts/`: `debug.py`, `sweep.py`, `_rebuild_analyzer.py`, `test_scrape.py`, `test_multi_year.py`, `scrape_all.py`. Run them from the project root, e.g. `python scripts/debug.py` — they add the project root to `sys.path` themselves.
 
-| Value | Description |
-|-------|-------------|
-| `prize1` | รางวัลที่ 1 (6 digits) |
-| `top3` | 3 ตัวบน |
-| `top2` | 2 ตัวบน |
-| `front3_1`, `front3_2` | 3 ตัวหน้า |
-| `back3_1`, `back3_2` | 3 ตัวล่าง |
-| `bottom2` | 2 ตัวล่าง |
+## Pages (5, sidebar order)
+
+Dashboard · ทำนาย-สูตร (3 tabs: ทำนาย / สูตรคำนวณ / สรุปงวดนี้) · ตารางความถี่ · ผลย้อนหลัง · Backtest
+
+Watchlist and ML Prediction pages were removed from the UI (2026-07-02, desktop-first cleanup) — backend endpoints remain for reference but nothing in the frontend calls them.
+
+## Lottery Columns (`col` parameter)
+
+| Value | Description | Source |
+|-------|-------------|--------|
+| `prize1` | รางวัลที่ 1 (6 digits) | myhora |
+| `top3` / `top2` | 3/2 ตัวบน (derived from prize1) | myhora |
+| `front3_1`, `front3_2` | 3 ตัวหน้า | myhora |
+| `back3_1`, `back3_2` | 3 ตัวล่าง | myhora |
+| `bottom2` | 2 ตัวล่าง | myhora |
+| `near1_1`, `near1_2` | ข้างเคียงรางวัลที่ 1 | sanook |
+| `prize2_1..5` | รางวัลที่ 2 (5 ใบ) | sanook |
+| `prize3_1..10` | รางวัลที่ 3 (10 ใบ) | sanook |
+| `prize4`, `prize5` | รางวัลที่ 4 (50 ใบ) / 5 (100 ใบ) — **string เดียวคั่น space**, not split into columns | sanook |
+
+Sanook columns only populated for ~456/777 draws (data available back to ~2549). All lottery number values are strings — never parse as int (loses leading zeros).
+
+## Formula Groups (`static/formula-engine.js`)
+
+A (กูชอบ) · B (ลอตโตพลัส) · C (พิชิตโชค) · D (Claude) · F (Codex, rolling stats) · G (แม่นขั้นเทพ) · H (มิสเตอร์ซี) · E (สายมู) — all use only the previous single draw as input.
+
+**FB (FABLE)** — the exception: uses the full prize 1–5 pool across a rolling history window instead of one prior draw. Experimental status — see DEVELOPMENT_PLAN.md for promotion gate criteria. Never promote to "recommended" or feed into Decision Center scoring until the gate passes (enforced by filtering config names starting with `FB` in `dcBuildScoreRows()`).
 
 ## API Endpoints
 
-All endpoints are under `/api/`. Notable ones:
+Notable ones under `/api/`:
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/summary` | Latest draw, total counts, recent 15 draws |
+| `GET /api/summary` | Latest draw, totals, recent 15 draws |
 | `GET /api/predict-with-reasons?col=&top_n=&date=` | Statistical predictions with Thai reason text |
-| `GET /api/ensemble?col=&top_n=&date=` | Statistical + ML blended predictions |
-| `GET /api/predict/prize1?algorithm=&...` | Prize1 6-digit prediction (v2/v3/v4/beam) |
-| `GET /api/hot-cold?col=&months=` | Hot/cold number analysis |
-| `GET /api/overdue?col=&top_n=` | Overdue numbers with geometric probability |
-| `GET /api/trend?col=&number=` | Year-by-year frequency for a number |
-| `GET /api/digit-freq?col=` | Per-position digit (0–9) frequency |
-| `GET /api/pairs?col=` | Pair co-occurrence analysis |
-| `GET /api/network?cola=&colb=` | Number co-occurrence network graph |
-| `GET /api/decade?col=` | Decade comparison (3 eras) |
-| `GET /api/heatmap?col=` | Day-of-month heatmap |
-| `GET /api/history?n=` | Raw draw history (last N draws) |
-| `GET /api/confidence?col=&date=` | Sample-size confidence estimate |
-| `GET /api/ml-predict?col=&date=` | GBM predictions |
-| `POST /api/ml-train?col=` | Train/retrain GBM model |
-| `GET /api/watchlist?col=` | Watchlist status |
-| `POST /api/watchlist` | Add number to watchlist |
-| `DELETE /api/watchlist?col=&number=` | Remove from watchlist |
-| `GET /api/ticket-analysis?col=&number=` | Full ticket stats |
-| `GET /api/backtest?col=` | Prize1 backtest (last 20 draws) |
+| `GET /api/predict/prize1?top_n=&beam_width=&k_back=&date=` | Prize1 6-digit prediction (beam search) |
+| `GET /api/hot-cold`, `/api/overdue`, `/api/trend`, `/api/digit-freq`, `/api/pairs`, `/api/decade`, `/api/heatmap` | Statistical analysis endpoints |
+| `GET /api/history?n=` | Raw draw history |
+| `GET /api/prize-history?n=` | History including near1/prize2/prize3/prize4/prize5 |
+| `GET /api/prize-freq?prize=` | Frequency table for prize2/3/4/5 |
+| `GET /api/fable?date=&...weights` | FABLE prediction for a target draw date |
+| `GET /api/fable-backtest?n_draws=&gate=&validation_draws=&live_draws=` | FABLE backtest; `gate=true` adds validation/live windows |
+| `GET /api/fable-grid-search`, `/api/fable-holdout-report` | FABLE config experimentation |
+| `GET /api/backtest?n_draws=&top_n=&beam_width=&k_back=` | Prize1 backtest |
 
 ## Prediction Architecture
 
 ### Statistical (`predict_numbers` → `predict_with_reasons`)
-Composite score from 9 signals with coordinate-descent optimized weights:
-- `p1` (0.09) — same day+month joint frequency
-- `p2` (0.18) — same day-of-month
-- `p3` (0.09) — same month
-- `p4` (0.08) — same weekday
-- `p5` (0.20) — recency-weighted overall frequency (3-tier year bands)
-- `yoy` (0.16) — year-over-year consistency
-- `dp_norm` (0.10) — digit-position joint probability
-- `geo` (0.06) — geometric overdue probability
-- `mom_norm` (0.04) — 3-month vs 12-month momentum
-- `lag_factor` — up to 35% penalty if number appeared last draw
+Composite score from 9 signals: same day+month freq, same day-of-month, same month, same weekday, recency-weighted overall frequency, year-over-year consistency, digit-position joint probability, geometric overdue probability, momentum, minus a lag penalty if the number appeared last draw.
 
 ### Prize1 Beam Search (`_beam_front3_v4`)
-- Decomposes 6-digit prize1 into front3 × back3
-- 3 CONFIGS with varying (pos_w, pair_w, trig_w) weights
-- Per-position score normalization: pos=0 divides by w0, pos=1 by w0+w1, pos=2 by sum of all three — prevents position bias
-- Results merged via harmonic mean ranking
+Decomposes 6-digit prize1 into front3 × back3, 3 weight configs, per-position score normalization, merged via harmonic mean ranking.
 
-### ML (`ml_predictor.py`)
-- GradientBoostingClassifier, one model per lottery type
-- Features: month, weekday, overdue_draws, momentum_3m, lag_1_appeared
-- Models cached as `.pkl` in `.ml_cache/`; invalidated when data hash changes
-
-### Ensemble (`ensemble_predict`)
-- Blends statistical rank score (45%) with ML probability (55%)
-- Deduplicates via set union before blending
-
-## Frontend Architecture (`static/index.html`)
-
-Single HTML file with inline CSS + JS, no build step required.
-
-Key globals:
-- `LOTTERY_TYPES` — mapping of Thai label → col value
-- `ALL_OPTS / NO_P1_OPTS / TWO_DIGIT_OPTS` — pre-built `<option>` HTML for selects
-- `api(path)` — global fetch wrapper with in-flight spinner (ref-counted)
-- `mkChart(id, cfg)` — Chart.js wrapper with auto-destroy on re-render
-- `currentPage` — tracks active page; `onPageLoad(p)` fires data loads on nav
-
-Pages (15 total): dashboard, frequency, hotcold, heatmap, overdue, predict, history, pairs, decade, watchlist, ml, network, backtest, digit, trend
+### FABLE (`fable_formula.py`)
+Scores 3-digit head/tail slices from the prize 1–5 pool across a rolling window using: recency-weighted cross-frequency, digit-position joint probability, momentum (6 vs 24 draws), anti-lag penalty, near-miss carry (±1 and duplicates), slice transition (cross-draw pattern), draw-day affinity (target date's day-slot/month), and a diversity penalty on final picks. Generates 6-digit numbers by pairing top-scoring heads × tails. All walk-forward — never uses future data.
 
 ## Data Flow
 
 ```
-scraper.py  →  lottery_cache.csv  →  get_df() (main.py)
-                                        │
-                    ┌───────────────────┤
-                    ▼                   ▼
-              analyzer.py         ml_predictor.py
-                    │                   │
-                    └──────┬────────────┘
-                           ▼
-                    FastAPI endpoints
-                           │
-                           ▼
-                  static/index.html (SPA)
+scraper.py (myhora) ──┐
+                       ├──► lottery_cache.csv ──► get_df() (main.py)
+sanook_scraper.py ─────┘                              │
+                                    ┌──────────────────┼──────────────────┐
+                                    ▼                  ▼                  ▼
+                              analyzer.py      fable_formula.py    ml_predictor.py (unused in UI)
+                                    │                  │
+                                    └────────┬─────────┘
+                                             ▼
+                                     FastAPI endpoints ──► static/index.html (SPA)
 ```
 
 ## Development Notes
 
-- Data is loaded once per process via `get_df()` with a module-level cache; call `POST /api/refresh` or `POST /api/ml-train` to reload
-- `watchlist.json` is the persistence file for the watchlist (auto-created)
-- `.ml_cache/` stores trained GBM models; safe to delete to force retraining
-- `lottery_cache.csv` is the raw data cache; safe to delete and re-scrape
+- Data loaded once per process via `get_df()` module-level cache; call `POST /api/refresh` to reload
+- `lottery_cache.csv` is safe to delete and re-scrape
+- `.ml_cache/` and `watchlist.json` still created but unused by current UI
+- API endpoints validate `col` against known lottery columns; number inputs must match digit width for that column
+- Styling: `:root` CSS variables in `static/app.css` define the macOS dark palette (`--bg`, `--surface`, `--gold` for prize numbers, `--accent` = system blue). Skin rules live in a dedicated block near the end of the file — keep new component styles consistent with that palette rather than the original gold-heavy theme.

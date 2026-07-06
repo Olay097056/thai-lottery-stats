@@ -4,11 +4,11 @@ Keeps: everything up to predict_numbers, shared helpers, predict_prize1_ultimate
 
 Run with: python _rebuild_analyzer.py [--dry-run]
 """
-import sys
+import sys, os
 
 DRY_RUN = "--dry-run" in sys.argv
 
-SRC = "analyzer.py"
+SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "analyzer.py")
 
 with open(SRC, "r", encoding="utf-8") as f:
     lines = f.readlines()

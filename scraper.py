@@ -17,9 +17,19 @@ DRAW_PATTERN = re.compile(r"/lottery/result-(\d+)-(\d+)-(\d+)\.aspx")
 
 # คอลัมน์เลขหวย — ต้อง read กลับเป็น string เสมอ
 LOTTERY_COLS = ["prize1", "top3", "top2", "front3_1", "front3_2", "back3_1", "back3_2", "bottom2"]
+# คอลัมน์จาก Sanook (รางวัลที่ 2-3 + ข้างเคียง)
+SANOOK_COLS = (
+    ["near1_1", "near1_2"] +
+    [f"prize2_{i}" for i in range(1, 6)] +
+    [f"prize3_{i}" for i in range(1, 11)]
+)
+# รางวัลที่ 4 (50 ใบ) / 5 (100 ใบ) — เก็บเป็น string เดียวคั่น space ต่อคอลัมน์
+SANOOK_MULTI_COLS = ["prize4", "prize5"]
+ALL_LOTTERY_COLS = LOTTERY_COLS + SANOOK_COLS + SANOOK_MULTI_COLS
 # ความยาวที่ถูกต้องของแต่ละคอลัมน์ (สำหรับ zfill)
 LOTTERY_WIDTHS = {"prize1": 6, "top3": 3, "top2": 2, "front3_1": 3, "front3_2": 3,
                   "back3_1": 3, "back3_2": 3, "bottom2": 2}
+SANOOK_WIDTHS = {c: 6 for c in SANOOK_COLS}
 
 THAI_MONTHS = {
     "มกราคม": 1, "กุมภาพันธ์": 2, "มีนาคม": 3, "เมษายน": 4,
@@ -157,11 +167,22 @@ def load_data(force_refresh=False, start_year=1994, progress_callback=None) -> p
     if not force_refresh and CACHE_FILE.exists():
         df = pd.read_csv(
             CACHE_FILE, encoding="utf-8",
-            dtype={col: str for col in LOTTERY_COLS}, parse_dates=["date"],
+            dtype={col: str for col in ALL_LOTTERY_COLS}, parse_dates=["date"],
         )
         df["date"] = pd.to_datetime(df["date"])
         for col, width in LOTTERY_WIDTHS.items():
             df[col] = df[col].apply(_fix_num, width=width)
+        for col in SANOOK_COLS:
+            if col not in df.columns:
+                df[col] = ""
+            else:
+                df[col] = df[col].apply(_fix_num, width=6)
+        for col in SANOOK_MULTI_COLS:
+            if col not in df.columns:
+                df[col] = ""
+            else:
+                # multi-number string — ห้าม _fix_num (จะพังเพราะไม่ใช่เลขเดี่ยว)
+                df[col] = df[col].fillna("").astype(str).replace("nan", "")
         return _enforce_prize1_identity(df)
 
     current_year_ad = datetime.now().year
@@ -199,7 +220,7 @@ def incremental_update(progress_callback=None) -> pd.DataFrame:
 
     df_old = pd.read_csv(
         CACHE_FILE, encoding="utf-8",
-        dtype={col: str for col in LOTTERY_COLS}, parse_dates=["date"],
+        dtype={col: str for col in ALL_LOTTERY_COLS}, parse_dates=["date"],
     )
     df_old["date"] = pd.to_datetime(df_old["date"])
 
@@ -226,9 +247,28 @@ def incremental_update(progress_callback=None) -> pd.DataFrame:
     df_new = pd.DataFrame(new_rows)
     df_new["date"] = pd.to_datetime(df_new["date"])
 
+    # เสริม Sanook data สำหรับงวดใหม่
+    try:
+        from sanook_scraper import scrape_draw
+        from datetime import date as date_type
+        for idx, row in df_new.iterrows():
+            dt = row["date"].date() if hasattr(row["date"], "date") else row["date"]
+            sanook = scrape_draw(dt)
+            if sanook:
+                for col in SANOOK_COLS + SANOOK_MULTI_COLS:
+                    df_new.at[idx, col] = sanook.get(col, "")
+        print(f"  Sanook enrichment: done for {len(df_new)} งวด")
+    except Exception as e:
+        print(f"  Sanook enrichment skipped: {e}")
+
     # ลบปีที่ scrape ใหม่ออกจาก cache เดิม แล้ว concat
     min_new_year = df_new["date"].dt.year.min()
     df_keep = df_old[df_old["date"].dt.year < min_new_year]
+    # เติม Sanook cols ที่ขาดใน df_old
+    for col in SANOOK_COLS + SANOOK_MULTI_COLS:
+        if col not in df_keep.columns:
+            df_keep = df_keep.copy()
+            df_keep[col] = ""
 
     df_merged = pd.concat([df_keep, df_new], ignore_index=True)
     df_merged = df_merged.sort_values("date").reset_index(drop=True)

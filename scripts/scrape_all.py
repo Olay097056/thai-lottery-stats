@@ -1,4 +1,7 @@
 """รัน script นี้เพื่อ scrape ข้อมูลทั้งหมดและบันทึก cache"""
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from scraper import load_data
 import time
 

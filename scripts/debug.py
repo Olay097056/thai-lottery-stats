@@ -1,3 +1,6 @@
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from scraper import load_data
 from analyzer import overdue_numbers, predict_numbers, next_thai_draw
 from datetime import datetime

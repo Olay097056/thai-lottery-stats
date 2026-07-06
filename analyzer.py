@@ -218,9 +218,9 @@ def next_thai_draw(from_date: datetime = None) -> list[dict]:
     if from_date is None:
         from_date = datetime.now()
     draws = []
-    d = from_date
+    # Keep today's draw selectable until the official 16:00 Thailand draw time.
+    d = from_date if (from_date.day in (1, 16) and from_date.hour < 16) else from_date + timedelta(days=1)
     while len(draws) < 6:
-        d = d + timedelta(days=1)
         if d.day in (1, 16):
             draws.append({
                 "date": d,
@@ -230,6 +230,7 @@ def next_thai_draw(from_date: datetime = None) -> list[dict]:
                 "weekday": DAY_MAP.get(d.weekday(), ""),
                 "label": f"{d.day} {MONTH_TH.get(d.month, str(d.month))} {d.year + 543}",
             })
+        d = d + timedelta(days=1)
     return draws
 
 
@@ -434,7 +435,10 @@ def predict_numbers(df: pd.DataFrame, col: str, target_date: datetime, top_n: in
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _p1_pos_digit_scores(df_sorted: pd.DataFrame, valid: pd.Series,
-                          target_date: datetime, alpha: float = 0.5) -> np.ndarray:
+                          target_date: datetime, alpha: float = 0.5,
+                          _w_overall: float = 0.35, _w_dm: float = 0.35,
+                          _w_day: float = 0.15, _w_yoy: float = 0.15,
+                          _rec_days: int = 730, _rec_mult: float = 3.0) -> np.ndarray:
     """
     Returns shape (6, 10) — marginal score for each digit at each position.
     Combines: recency-weighted overall, D/M-conditional, YoY consistency.
@@ -455,7 +459,7 @@ def _p1_pos_digit_scores(df_sorted: pd.DataFrame, valid: pd.Series,
     mask_dm  = (vday == td) & (vmon == tm)
     mask_day = vday == td
     max_date = vdate.max()
-    mask_rec = vdate >= (max_date - np.timedelta64(730, "D"))
+    mask_rec = vdate >= (max_date - np.timedelta64(_rec_days, "D"))
     n_dm_yrs = max(int(np.unique(vyr[mask_dm]).size), 1)
 
     # Build (N, 6) digit matrix
@@ -465,7 +469,7 @@ def _p1_pos_digit_scores(df_sorted: pd.DataFrame, valid: pd.Series,
     )  # (N, 6)
 
     # Precompute scalar denominators
-    w_all  = float(np.sum(mask_rec)) * 3.0 + float(np.sum(~mask_rec))
+    w_all  = float(np.sum(mask_rec)) * _rec_mult + float(np.sum(~mask_rec))
     n_dm   = int(mask_dm.sum())
     n_day  = int(mask_day.sum())
 
@@ -477,7 +481,7 @@ def _p1_pos_digit_scores(df_sorted: pd.DataFrame, valid: pd.Series,
         # --- Overall recency-weighted (vectorized over digits 0-9) ---
         cnt_rec = np.bincount(col_d[mask_rec],  minlength=10).astype(float)
         cnt_old = np.bincount(col_d[~mask_rec], minlength=10).astype(float)
-        w_vec   = cnt_rec * 3.0 + cnt_old                         # (10,)
+        w_vec   = cnt_rec * _rec_mult + cnt_old                    # (10,)
         s_overall = (w_vec + alpha) / (w_all + alpha * 10)
 
         # --- D/M conditional ---
@@ -497,7 +501,7 @@ def _p1_pos_digit_scores(df_sorted: pd.DataFrame, valid: pd.Series,
                 n_yoy = int(np.unique(dm_years[dm_digits == di]).size)
                 s_yoy[di] = (n_yoy + alpha * 0.5) / (n_dm_yrs + alpha * 5)
 
-        scores[pos] = s_overall * 0.35 + s_dm * 0.35 + s_day * 0.15 + s_yoy * 0.15
+        scores[pos] = s_overall * _w_overall + s_dm * _w_dm + s_day * _w_day + s_yoy * _w_yoy
 
     row_sums = scores.sum(axis=1, keepdims=True)
     return scores / np.maximum(row_sums, 1e-12)
@@ -794,13 +798,96 @@ def _beam_front3_v4(
     return beams
 
 
+def _p1_back3_direct_scores(
+    valid: pd.Series,
+    df_sorted: pd.DataFrame,
+    target_date: datetime,
+    alpha: float = 0.3,
+) -> dict[str, float]:
+    """
+    Score all 3-digit back3 numbers using prize1 back3 (positions 3-5) history.
+    Combines: recency-weighted freq + D/M conditional + day-of-month conditional.
+    Returns dict num→score, normalized to [0,1] (max=1).
+    """
+    arr = valid.values
+    dates = df_sorted.loc[valid.index, "date"].values.astype("datetime64[ns]")
+    days  = df_sorted.loc[valid.index, "day"].values
+    months = df_sorted.loc[valid.index, "month"].values
+
+    td, tm = target_date.day, target_date.month
+
+    valid_mask = np.array([len(v) == 6 for v in arr])
+    arr6       = arr[valid_mask]
+    dates6     = dates[valid_mask]
+    days6      = days[valid_mask]
+    months6    = months[valid_mask]
+
+    max_date = dates6.max() if len(dates6) else dates.max()
+    mask_rec_b  = dates6 >= (max_date - np.timedelta64(730, "D"))
+    mask_dm_b   = (days6 == td) & (months6 == tm)
+    mask_day_b  = days6 == td
+
+    from collections import Counter
+    cnt_all: Counter[str] = Counter()
+    cnt_rec: Counter[str] = Counter()
+    cnt_dm:  Counter[str] = Counter()
+    cnt_day: Counter[str] = Counter()
+
+    for i, v in enumerate(arr6):
+        num = v[3:]
+        cnt_all[num] += 1
+        if mask_rec_b[i]: cnt_rec[num]  += 1
+        if mask_dm_b[i]:  cnt_dm[num]   += 1
+        if mask_day_b[i]: cnt_day[num]  += 1
+
+    n_total = float(max(len(arr6), 1))
+    n_rec   = float(max(int(mask_rec_b.sum()), 1))
+    n_dm    = float(max(int(mask_dm_b.sum()), 1))
+    n_day   = float(max(int(mask_day_b.sum()), 1))
+
+    raw: dict[str, float] = {}
+    for i in range(1000):
+        num = f"{i:03d}"
+        rec_c = cnt_rec.get(num, 0)
+        all_c = cnt_all.get(num, 0)
+        s_all = (rec_c * 3 + (all_c - rec_c) + alpha) / (n_rec * 3 + (n_total - n_rec) + alpha * 10)
+        s_dm  = (cnt_dm.get(num, 0)  + alpha * 0.5) / (n_dm  + alpha * 5)
+        s_day = (cnt_day.get(num, 0) + alpha * 0.5) / (n_day + alpha * 5)
+        raw[num] = 0.50 * s_all + 0.35 * s_dm + 0.15 * s_day
+
+    max_raw = max(raw.values()) or 1.0
+    return {k: v / max_raw for k, v in raw.items()}
+
 
 def predict_prize1_ultimate(
     df: pd.DataFrame,
     target_date: datetime,
     top_n: int = 20,
-    beam_width: int = 300,
+    beam_width: int = 500,
     k_back: int = 50,
+    _pair_w: float = 0.40,
+    _trig_w: float = 0.20,
+    _hot_w: float = 0.20,
+    _junc_w: float = 0.08,
+    _n_recent: int = 25,
+    _hot_blend: float = 0.70,
+    _jbg: float = 0.75,
+    _jtg: float = 0.15,
+    _jqg: float = 0.10,
+    _back3_hot_w: float = 0.08,
+    _back3_pos_w: float = 0.60,
+    _ds_sigma: float = 3.0,
+    _front_w: float = 0.475,
+    _lag_pen: float = 0.55,
+    _w_overall: float = 0.35,
+    _w_dm: float = 0.35,
+    _w_day: float = 0.15,
+    _w_yoy: float = 0.15,
+    _rec_days: int = 730,
+    _rec_mult: float = 3.0,
+    _selection_mode: str = "diverse_front",
+    _back_pool_factor: int = 4,
+    _back3_direct_w: float = 0.35,
 ) -> pd.DataFrame:
     """
     Ultimate Prize1 predictor — single optimized beam fusing all signals from v1-v4.
@@ -839,49 +926,77 @@ def predict_prize1_ultimate(
         return pd.DataFrame()
 
     # ── Precompute all matrices (shared, computed once) ──
-    pos_scores_6   = _p1_pos_digit_scores(df_sorted, valid, target_date)  # (6,10)
+    pos_scores_6   = _p1_pos_digit_scores(df_sorted, valid, target_date,
+                       _w_overall=_w_overall, _w_dm=_w_dm, _w_day=_w_day, _w_yoy=_w_yoy,
+                       _rec_days=_rec_days, _rec_mult=_rec_mult)  # (6,10)
     pair_matrix_5  = _p1_pair_matrix(valid)                               # (5,10,10)
     trigram_4      = _p1_trigram_matrix(valid)                            # (4,10,10,10)
     quadgram_seam  = _p1_quadgram_seam(valid)                             # (10,10,10,10)
-    hot_scores_3   = _p1_hot_digit_scores(valid, n_recent=25)             # (3,10) last-25 draws (optimal)
+    hot_scores_3   = _p1_hot_digit_scores(valid, n_recent=_n_recent)      # (3,10) per-position frequency
     overdue_3      = _p1_overdue_digit_scores(valid)                      # (3,10) geometric overdue
-    # Additive blend: 70% hot + 30% overdue (confirmed optimal)
-    hot_combined_3 = 0.70 * hot_scores_3 + 0.30 * overdue_3
+    hot_combined_3 = _hot_blend * hot_scores_3 + (1 - _hot_blend) * overdue_3
     hot_combined_3 = hot_combined_3 / np.maximum(hot_combined_3.sum(axis=1, keepdims=True), 1e-12)
     mean_ds, std_ds = _p1_digitsum_dist(valid, target_date, df_sorted)
     mean_ds, std_ds = float(mean_ds), float(std_ds)
 
-    # ── Back3: full 10-signal top3 predictor + hot/overdue boost ──
-    back_pred = predict_numbers(df, "top3", target_date, top_n=None)
+    # ── Back3: ranked candidate pool + hot/overdue boost ──
+    # Keep only the ranked pool needed to build the final back3 shortlist; this
+    # makes repeated prize1 backtests practical without changing the scorer.
+    back_pool_n = min(1000, max(k_back * _back_pool_factor, k_back, 100))
+    back_pred = predict_numbers(df, "top3", target_date, top_n=back_pool_n)
     if back_pred is None or back_pred.empty:
         return pd.DataFrame()
     back_max = float(back_pred["คะแนนรวม"].max()) or 1.0
-    _bk = back_pred["เลข"].astype(str).str.zfill(3)
-    _bv = back_pred["คะแนนรวม"].astype(float) / back_max
+    _bk = back_pred["เลข"].astype(str).str.zfill(3).tolist()
+    _bv = (back_pred["คะแนนรวม"].astype(float) / back_max).tolist()
+    stat_back_scores = dict(zip(_bk, _bv))
+    direct_back_scores = _p1_back3_direct_scores(valid, df_sorted, target_date)
+    direct_top = sorted(direct_back_scores, key=direct_back_scores.get, reverse=True)[:back_pool_n]
+    back_candidates = list(dict.fromkeys(_bk + direct_top))
 
     # Build hot signal for back3 from prize1 back3 history (pos 3-5)
     arr_b3 = valid.values
     arr_b3 = arr_b3[np.array([len(v) for v in arr_b3]) == 6]
-    recent_b3 = [v[3:] for v in arr_b3[-20:]] if len(arr_b3) >= 20 else [v[3:] for v in arr_b3]
+
+    # back_top selection: stat-based + small hot
+    recent_b3_list = [v[3:] for v in arr_b3[-_n_recent:]] if len(arr_b3) >= _n_recent else [v[3:] for v in arr_b3]
     hot_back3_counts: dict[str, float] = {}
-    for s in recent_b3:
+    for s in recent_b3_list:
         hot_back3_counts[s] = hot_back3_counts.get(s, 0) + 1
     hot_back3_max = max(hot_back3_counts.values(), default=1)
 
-    # Blend: 92% statistical + 8% hot recency (overdue signal hurts back3 — statistical predictor already calibrated)
+    # Positional score for back3: joint probability of digits at pos 3,4,5
+    # Uses raw product (high dynamic range captures concentration at positions)
+    pos_b = pos_scores_6[3:]  # (3,10)
+
+    back_pos_raw: dict[str, float] = {}
+    for num in back_candidates:
+        if len(num) == 3:
+            back_pos_raw[num] = float(pos_b[0, int(num[0])] * pos_b[1, int(num[1])] * pos_b[2, int(num[2])])
+    back_pos_max = max(back_pos_raw.values(), default=1.0) or 1.0
+
     back_scores_norm: dict[str, float] = {}
-    for num, stat_score in zip(_bk, _bv):
+    direct_w = min(max(float(_back3_direct_w), 0.0), 1.0)
+    for num in back_candidates:
+        stat_score = stat_back_scores.get(num, 0.0)
+        direct_score = direct_back_scores.get(num, 0.0)
+        base_score = (1 - direct_w) * stat_score + direct_w * direct_score
         hot_score = hot_back3_counts.get(num, 0) / hot_back3_max
-        back_scores_norm[num] = 0.92 * stat_score + 0.08 * hot_score
+        if _back3_pos_w > 0 and len(num) == 3:
+            ps = back_pos_raw.get(num, 0.0) / back_pos_max
+        else:
+            ps = 0.0
+        rem = 1.0 - _back3_hot_w - _back3_pos_w
+        back_scores_norm[num] = rem * base_score + _back3_hot_w * hot_score + _back3_pos_w * ps
     back_top = sorted(back_scores_norm, key=back_scores_norm.get, reverse=True)[:k_back]
 
     # ── Single optimized beam search (front3 positions 0-2) ──
-    # Weights: pos=0.25, pair=0.28, trig=0.32, hot=0.15 (all sum to 1.0)
+    # Defaults: pair=0.32, trig=0.28, hot=0.20, pos derived (must sum to 1)
     beams = _beam_front3_v4(
         pos_scores_6[:3], pair_matrix_5[:2], trigram_4[0],
         beam_width=beam_width,
-        pair_w=0.28, trig_w=0.32,
-        hot_scores=hot_combined_3, hot_w=0.20,
+        pair_w=_pair_w, trig_w=_trig_w,
+        hot_scores=hot_combined_3, hot_w=_hot_w,
     )
 
     if not beams:
@@ -931,21 +1046,21 @@ def predict_prize1_ultimate(
 
             b_norm = back_scores_norm.get(b_str, 0.0)
 
-            # Junction: 40% bigram + 35% trigram + 25% quadgram (uses full front3 context)
-            junction = (0.40 * float(pair_junc[d2_f, d3_b]) +
-                        0.35 * float(trig_junc[d1_f, d2_f, d3_b]) +
-                        0.25 * float(quadgram_seam[d0_f, d1_f, d2_f, d3_b]))
+            junction = (_jbg * float(pair_junc[d2_f, d3_b]) +
+                        _jtg * float(trig_junc[d1_f, d2_f, d3_b]) +
+                        _jqg * float(quadgram_seam[d0_f, d1_f, d2_f, d3_b]))
 
-            # Weighted score: junction=0.20 optimal (grid: 0.15->0.20->0.25, peak at 0.20)
-            raw = 0.38 * front_norm + 0.20 * junction + 0.42 * b_norm
+            # Weighted: junction small (0.08 optimal) — front/back absorb the weight
+            raw = (1 - _junc_w) * _front_w * front_norm + _junc_w * junction + (1 - _junc_w) * (1 - _front_w) * b_norm
 
-            # Digit-sum Gaussian soft penalty (floor sigma at 2.5)
+            # Digit-sum Gaussian soft penalty
             ds = sum(int(c) for c in cand)
             z = abs(ds - mean_ds) / std_ds
-            ds_f = math.exp(-0.5 * min(z / 2.5, 3.0) ** 2)
+            ds_f = math.exp(-0.5 * min(z / _ds_sigma, 3.0) ** 2)
 
-            lag = 0.55 if cand in last_draws else 1.0
+            lag = _lag_pen if cand in last_draws else 1.0
 
+            b_pos = float(pos_b[0, int(b_str[0])] * pos_b[1, int(b_str[1])] * pos_b[2, int(b_str[2])]) if len(b_str) == 3 else 0.0
             rows.append({
                 "เลข":        cand,
                 "หน้า 3":    f_str,
@@ -953,6 +1068,7 @@ def predict_prize1_ultimate(
                 "Digit Sum":  ds,
                 "Front Beam": round(front_norm, 4),
                 "Back Top3":  round(b_norm, 4),
+                "Back Pos":   round(b_pos * 1000, 4),
                 "Junction":   round(junction, 4),
                 "คะแนนรวม":   round(raw * ds_f * lag * 100.0, 2),
             })
@@ -961,8 +1077,58 @@ def predict_prize1_ultimate(
         return pd.DataFrame()
 
     res = pd.DataFrame(rows).sort_values("คะแนนรวม", ascending=False)
+
+    if _selection_mode == "score":
+        res = res.head(top_n).copy()
+    elif _selection_mode == "diverse_pair":
+        selected: list[int] = []
+        used_front: set[str] = set()
+        used_back: set[str] = set()
+        remaining: list[int] = []
+        for idx in res.index if hasattr(res, 'index') else range(len(res)):
+            f3 = res.at[idx, "หน้า 3"] if idx in res.index else res.iloc[idx]["หน้า 3"]
+            b3 = res.at[idx, "หลัง 3"] if idx in res.index else res.iloc[idx]["หลัง 3"]
+            if f3 not in used_front and b3 not in used_back:
+                used_front.add(f3)
+                used_back.add(b3)
+                selected.append(idx)
+            else:
+                remaining.append(idx)
+            if len(selected) >= top_n:
+                break
+        if len(selected) < top_n:
+            for idx in remaining:
+                f3 = res.at[idx, "หน้า 3"] if idx in res.index else res.iloc[idx]["หน้า 3"]
+                b3 = res.at[idx, "หลัง 3"] if idx in res.index else res.iloc[idx]["หลัง 3"]
+                if f3 not in used_front or b3 not in used_back:
+                    used_front.add(f3)
+                    used_back.add(b3)
+                    selected.append(idx)
+                if len(selected) >= top_n:
+                    break
+        if len(selected) < top_n:
+            selected.extend([idx for idx in res.index if idx not in set(selected)][:top_n - len(selected)])
+        res = res.loc[selected[:top_n]].copy()
+    else:
+        # Diversity selection: greedily pick best per unique front3 first, then fill
+        diverse: list[int] = []
+        used_front: set[str] = set()
+        remaining: list[int] = []
+        for idx in res.index if hasattr(res, 'index') else range(len(res)):
+            f3 = res.at[idx, "หน้า 3"] if idx in res.index else res.iloc[idx]["หน้า 3"]
+            if f3 not in used_front:
+                used_front.add(f3)
+                diverse.append(idx)
+            else:
+                remaining.append(idx)
+            if len(diverse) >= top_n:
+                break
+        if len(diverse) < top_n:
+            diverse.extend(remaining[:top_n - len(diverse)])
+
+        res = res.loc[diverse[:top_n]].copy()
     res.index = range(1, len(res) + 1)
-    return res.head(top_n)
+    return res
 
 
 def prize1_backtest(
@@ -971,6 +1137,29 @@ def prize1_backtest(
     top_n: int = 20,
     beam_width: int = 500,
     k_back: int = 100,
+    _pair_w: float = 0.40,
+    _trig_w: float = 0.20,
+    _hot_w: float = 0.20,
+    _junc_w: float = 0.08,
+    _n_recent: int = 25,
+    _hot_blend: float = 0.70,
+    _jbg: float = 0.75,
+    _jtg: float = 0.15,
+    _jqg: float = 0.10,
+    _back3_hot_w: float = 0.08,
+    _back3_pos_w: float = 0.60,
+    _ds_sigma: float = 3.0,
+    _front_w: float = 0.475,
+    _lag_pen: float = 0.55,
+    _w_overall: float = 0.35,
+    _w_dm: float = 0.35,
+    _w_day: float = 0.15,
+    _w_yoy: float = 0.15,
+    _rec_days: int = 730,
+    _rec_mult: float = 3.0,
+    _selection_mode: str = "diverse_front",
+    _back_pool_factor: int = 4,
+    _back3_direct_w: float = 0.35,
 ) -> dict:
     """
     Out-of-sample backtest for predict_prize1_ultimate — decomposed metrics.
@@ -990,9 +1179,13 @@ def prize1_backtest(
     hits_combined = 0
     hits_front3 = 0
     hits_back3 = 0
+    paired_halves_available = 0
     errors = 0
     unique_front3_counts: list[int] = []
     unique_back3_counts: list[int] = []
+    front3_hit_ranks: list[int] = []
+    back3_hit_ranks: list[int] = []
+    combined_hit_ranks: list[int] = []
 
     for idx in test_idx:
         actual = prize1_raw.iloc[idx]
@@ -1002,7 +1195,16 @@ def prize1_backtest(
         td = df_sorted["date"].iloc[idx]
         try:
             pred = predict_prize1_ultimate(
-                df_train, td, top_n=top_n, beam_width=beam_width, k_back=k_back
+                df_train, td, top_n=top_n, beam_width=beam_width, k_back=k_back,
+                _pair_w=_pair_w, _trig_w=_trig_w, _hot_w=_hot_w, _junc_w=_junc_w,
+                _n_recent=_n_recent, _hot_blend=_hot_blend,
+                _jbg=_jbg, _jtg=_jtg, _jqg=_jqg,
+                _back3_hot_w=_back3_hot_w, _back3_pos_w=_back3_pos_w,
+                _ds_sigma=_ds_sigma, _front_w=_front_w, _lag_pen=_lag_pen,
+                _w_overall=_w_overall, _w_dm=_w_dm, _w_day=_w_day, _w_yoy=_w_yoy,
+                _rec_days=_rec_days, _rec_mult=_rec_mult,
+                _selection_mode=_selection_mode, _back_pool_factor=_back_pool_factor,
+                _back3_direct_w=_back3_direct_w,
             )
             if pred.empty:
                 continue
@@ -1012,10 +1214,15 @@ def prize1_backtest(
             unique_back3_counts.append(uniq_b)
             if actual in pred["เลข"].values:
                 hits_combined += 1
+                combined_hit_ranks.append(int(pred.index[pred["เลข"] == actual][0]))
             if actual_front in pred["หน้า 3"].values:
                 hits_front3 += 1
+                front3_hit_ranks.append(int(pred.index[pred["หน้า 3"] == actual_front][0]))
             if actual_back in pred["หลัง 3"].values:
                 hits_back3 += 1
+                back3_hit_ranks.append(int(pred.index[pred["หลัง 3"] == actual_back][0]))
+            if actual_front in pred["หน้า 3"].values and actual_back in pred["หลัง 3"].values:
+                paired_halves_available += 1
         except Exception as exc:
             if errors == 0:
                 print("[backtest] first error at draw " + str(idx) + ": " + str(exc))
@@ -1038,6 +1245,9 @@ def prize1_backtest(
         "top_n":               top_n,
         "beam_width":          beam_width,
         "k_back":              k_back,
+        "selection_mode":      _selection_mode,
+        "back_pool_factor":    _back_pool_factor,
+        "back3_direct_w":      _back3_direct_w,
         # Combined 6-digit
         "hits":                hits_combined,
         "rate":                combined_rate,
@@ -1055,6 +1265,10 @@ def prize1_backtest(
         "back3_random":        back3_random,
         "back3_lift":          back3_rate / back3_random if back3_random else 0.0,
         "avg_unique_back3":    round(avg_unique_back3, 1),
+        "paired_halves_available": paired_halves_available,
+        "avg_front3_hit_rank":  round(sum(front3_hit_ranks) / len(front3_hit_ranks), 1) if front3_hit_ranks else None,
+        "avg_back3_hit_rank":   round(sum(back3_hit_ranks) / len(back3_hit_ranks), 1) if back3_hit_ranks else None,
+        "avg_combined_hit_rank": round(sum(combined_hit_ranks) / len(combined_hit_ranks), 1) if combined_hit_ranks else None,
         "algorithm":           "ultimate",
         "errors":              errors,
     }
