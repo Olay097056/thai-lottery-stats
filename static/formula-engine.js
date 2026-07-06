@@ -1113,6 +1113,16 @@ function _codexDateParts(row, fallbackIso=''){
 
 const CODEX_DEFAULT_COEFFS={sameDay:14,sameMonth:4,count:1.4,f80:4,f24:5,overdue:0.18,lastNumDecay:0.7};
 
+// Preset coefficient sets for backtest comparison only (ISSUE-4) — the live
+// "ทำนาย" tab / _codexCards always use CODEX_DEFAULT_COEFFS (baseline), never these.
+const CODEX_COEFF_PRESETS=[
+  {key:'baseline',label:'X1 Codex Sharp',coeffs:CODEX_DEFAULT_COEFFS},
+  {key:'recency_heavy',label:'X10 Codex Recency-heavy',coeffs:{sameDay:10,sameMonth:3,count:1.0,f80:8,f24:10,overdue:0.10,lastNumDecay:0.7}},
+  {key:'sameday_heavy',label:'X11 Codex Sameday-heavy',coeffs:{sameDay:24,sameMonth:8,count:1.0,f80:3,f24:3,overdue:0.12,lastNumDecay:0.7}},
+  {key:'overdue_heavy',label:'X12 Codex Overdue-heavy',coeffs:{sameDay:10,sameMonth:3,count:1.0,f80:3,f24:3,overdue:0.5,lastNumDecay:0.7}},
+  {key:'balanced',label:'X13 Codex Balanced',coeffs:{sameDay:6,sameMonth:6,count:2,f80:5,f24:5,overdue:0.3,lastNumDecay:0.85}},
+];
+
 function _codexPool(rows, col, width, targetIso, topN, coeffs){
   const c=coeffs||CODEX_DEFAULT_COEFFS;
   const target=_codexDateParts(null,targetIso);
@@ -1768,6 +1778,12 @@ function _computeFormulasBatch(prev, nextDateStr, historyCtx=[]){
     results.push({name:'X2 Codex Front · หน้า3',preds:_C.front3,field:'front3',baseline:_C.front3.length});
     results.push({name:'X3 Codex Back · ท้าย3',preds:_C.back3,field:'back3exact',baseline:_C.back3.length});
     results.push({name:'X4 Codex Prize Tail · ท้าย2รางวัลที่1',preds:_C.prize1Last2,field:'prize1_last2',baseline:_C.prize1Last2.length});
+    // ค่า coefficient presets สำหรับเทียบ edge ใน backtest เท่านั้น (ทำนายจริงใช้ baseline เสมอ)
+    for(const preset of CODEX_COEFF_PRESETS){
+      if(preset.key==='baseline')continue; // ซ้ำกับ X1 Codex Sharp
+      const presetPool=_codexPool(codexRows,'bottom2',2,nextDateStr,10,preset.coeffs);
+      results.push({name:`${preset.label} · ท้ายคม`,preds:presetPool,field:'bottom2',baseline:presetPool.length});
+    }
   }catch(e){}
 
   // ══ F. Pattern Link — train/test derived transition links (ไม่มองอนาคต) ══
@@ -2466,6 +2482,11 @@ function _fableMetricMini(m){
   if(!m)return '-';
   return `T2 ${_fableEdgeHtml(m.tail2?.edge)} · T3 ${_fableEdgeHtml(m.tail3?.edge)}`;
 }
+function _fableRollingMini(rolling,key){
+  const w=rolling&&rolling[key];
+  if(!w||w.n==null)return '<span style="color:var(--text3)">-</span>';
+  return `T2 ${_fableEdgeHtml(w.tail2_edge)} · T3 ${_fableEdgeHtml(w.tail3_edge)}`;
+}
 function _fableExperimentRowsHtml(rows){
   return rows.map((r,i)=>{
     const cfg=r.config||{},w=cfg.weights||{};
@@ -2478,6 +2499,9 @@ function _fableExperimentRowsHtml(rows){
       <td style="text-align:right">${_fableEdgeHtml(r.holdout?.score)}</td>
       <td style="text-align:right">${_fableEdgeHtml(r.overfit_gap)}</td>
       <td>${stable}</td>
+      <td>${_fableRollingMini(r.rolling,'w50')}</td>
+      <td>${_fableRollingMini(r.rolling,'w100')}</td>
+      <td>${_fableRollingMini(r.rolling,'w200')}</td>
       <td style="text-align:right"><button class="dc-mini-btn" onclick="applyFableExperimentConfig(${i})">ใช้ config นี้</button></td>
     </tr>`;
   }).join('');
@@ -2505,9 +2529,10 @@ async function loadFableExperiments(){
         <span class="fable-pill">holdout ${r.holdout_draws} งวด</span>
         <span class="fable-pill">${_formulaEsc(r.score_formula||'tail2_edge + 2*tail3_edge')}</span>
         <span class="fable-pill">best train: ${_formulaEsc(best.name||'-')}</span>
+        <span class="fable-pill">${_formulaEsc(r.rolling_compare_rule||'')}</span>
       </div>
       <div class="tbl-wrap"><table class="fable-exp-table">
-        <thead><tr><th>Config</th><th>Train edge</th><th>Holdout edge</th><th style="text-align:right">Train score</th><th style="text-align:right">Holdout score</th><th style="text-align:right">Gap</th><th>State</th><th></th></tr></thead>
+        <thead><tr><th>Config</th><th>Train edge</th><th>Holdout edge</th><th style="text-align:right">Train score</th><th style="text-align:right">Holdout score</th><th style="text-align:right">Gap</th><th>State</th><th>W50</th><th>W100</th><th>W200</th><th></th></tr></thead>
         <tbody>${_fableExperimentRowsHtml(_fableLastGridResults)}</tbody>
       </table></div>
     </div>`;

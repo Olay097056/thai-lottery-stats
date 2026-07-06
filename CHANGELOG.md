@@ -2,6 +2,14 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-07-06 — FABLE grid-search top-5 rolling compare + Group F coefficient presets
+
+**ISSUE-1/2 (FABLE):** แยก `fable_rolling_windows()` ออกจาก `fable_backtest()` ให้ reuse ได้ (ผ่าน `_prepared` context กัน prep ซ้ำ) แล้วต่อยอดใน `fable_grid_search()`: หลัง evaluate 20 configs ด้วย train/holdout ตามเดิม เลือก **top 5 ตาม holdout score** (ไม่ใช่ `stable` flag เพราะวันที่ไม่มี config ไหนผ่านเลยก็ยังต้องเห็นตารางเทียบ) แล้วรัน rolling W50/W100/W200 เฉพาะกลุ่มนั้นผ่าน engine เดียวกับ `/api/fable-backtest?gate=true` (verify แล้วว่าตัวเลขตรงกันเป๊ะ ไม่มี logic สองชุด) ไม่มีการ persist ผลข้าม session ตามที่ตกลง
+
+**ISSUE-3/4 (Formula Group F):** parameterize coefficient ของ `_codexPool`/`_codexFormulas` (เดิม hardcode 7 ค่า) เป็น `CODEX_DEFAULT_COEFFS` + เพิ่ม `CODEX_COEFF_PRESETS` 5 ชุด (baseline, recency-heavy, sameday-heavy, overdue-heavy, balanced) โผล่เป็นแถว `X10-X13` แยกในตาราง backtest หลัก (กลุ่ม D และสูตรพื้นบ้านอื่นไม่แตะ เพราะเป็นเลขคณิตตายตัว tune ไม่ได้จริง) หน้า "ทำนาย" ยังใช้ baseline อย่างเดียวเสมอ — ยืนยันด้วย `_codexCards`/`_codexFormulas` เส้นทาง predict ไม่อ้าง `CODEX_COEFF_PRESETS` เลย
+
+**หมายเหตุ dev:** เจอ server ที่รันอยู่ (PID เก่า) ไม่มี `--reload` เลยเสิร์ฟโค้ดเก่าตอน verify ในเบราว์เซอร์ — ต้อง restart ผ่าน `.claude/launch.json`; และเจอ browser cache ค้าง static JS แม้ restart แล้ว ต้อง bump cache-busting query string ใน `index.html` (`?v=codex-presets1`)
+
 ## 2026-07-06 — แยกไฟล์ frontend + จัดระเบียบ path project
 
 **แยก static/index.html (3006 บรรทัด) ออกเป็น 3 ไฟล์:**

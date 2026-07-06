@@ -855,8 +855,12 @@ def _candidate_configs() -> list[dict]:
     ]
 
 
+TOP_N_ROLLING_COMPARE = 5
+
+
 def fable_grid_search(df: pd.DataFrame, n_draws: int = 160, holdout_draws: int = 50,
-                      top2: int = 10, top3: int = 15, max_configs: int = 12) -> dict:
+                      top2: int = 10, top3: int = 15, max_configs: int = 12,
+                      rolling_n_draws: int = 200) -> dict:
     rows = _sanook_rows(df).reset_index(drop=True)
     if len(rows) < 80:
         return {"error": "ข้อมูลไม่พอสำหรับ grid search"}
@@ -947,6 +951,27 @@ def fable_grid_search(df: pd.DataFrame, n_draws: int = 160, holdout_draws: int =
             "stable": holdout_report["tail2"]["edge"] > 0 and holdout_report["tail3"]["edge"] >= 0,
         })
 
+    # top-N by holdout score (not `stable`) get re-evaluated across rolling W50/W100/W200 —
+    # selection must still produce a comparison even when zero configs are currently stable
+    def _flatten_window(win: dict) -> dict:
+        return {
+            "n": win.get("tail2", {}).get("n"),
+            "tail2_edge": win.get("tail2", {}).get("edge"),
+            "tail3_edge": win.get("tail3", {}).get("edge"),
+        }
+
+    by_holdout = sorted(results, key=lambda x: x["holdout"]["score"], reverse=True)
+    for row in by_holdout[:TOP_N_ROLLING_COMPARE]:
+        cfg_lookup = next(c for c in configs if c["name"] == row["name"])
+        rw = fable_rolling_windows(df, n_draws=rolling_n_draws, top2=top2, top3=top3,
+                                   window=cfg_lookup["window"], weights=cfg_lookup["weights"])
+        if "error" not in rw:
+            row["rolling"] = {
+                "w50": _flatten_window(rw["rolling"].get("W50", {})),
+                "w100": _flatten_window(rw["rolling"].get("W100", {})),
+                "w200": _flatten_window(rw["rolling"].get("W200", {})),
+            }
+
     ranked = sorted(results, key=lambda x: (x["train"]["score"], x["holdout"]["score"]), reverse=True)
     for rank, row in enumerate(ranked, start=1):
         row["rank"] = rank
@@ -961,6 +986,7 @@ def fable_grid_search(df: pd.DataFrame, n_draws: int = 160, holdout_draws: int =
         "configs_tested": len(configs),
         "selection_rule": "rank by train score; inspect holdout to avoid overfit",
         "score_formula": "tail2_edge + 2*tail3_edge",
+        "rolling_compare_rule": f"top {TOP_N_ROLLING_COMPARE} configs by holdout score get W50/W100/W200 rolling edge",
         "best_train": best_train,
         "best_holdout": best_holdout,
         "results": ranked,

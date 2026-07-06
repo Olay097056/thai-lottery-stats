@@ -28,7 +28,7 @@ if (!coeffsMatch) throw new Error('CODEX_DEFAULT_COEFFS not found in formula-eng
 const code = [
   extract('_codexDateParts'),
   extract('_freqMap'),
-  'const CODEX_DEFAULT_COEFFS=' + coeffsMatch[1] + ';',
+  'var CODEX_DEFAULT_COEFFS=' + coeffsMatch[1] + ';',
   extract('_codexPool'),
 ].join('\n\n');
 
