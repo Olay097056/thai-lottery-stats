@@ -390,20 +390,6 @@ function dcSecondarySignalsHtml(signals){
   </div>`;
 }
 
-function dcFableExperimentalHtml(fable){
-  if(!fable||fable.error){
-    return `<div class="dc-signal-sub">ยังไม่มีข้อมูล FABLE สำหรับงวดนี้${fable&&fable.error?` (${escHtml(fable.error)})`:''}</div>`;
-  }
-  const openFableLab=`showPage('formula');setTimeout(()=>{if(typeof switchFormulaTab==='function')switchFormulaTab('FB')},60);return false`;
-  const tail3=(fable.tail3||[]).slice(0,8).map(x=>x.number);
-  const tail2=(fable.tail2||[]).slice(0,6).map(x=>x.number);
-  const chip=n=>`<span class="num-badge" style="opacity:.65;border-style:dashed" title="🧪 สูตรทดลอง — ไม่ผ่าน Promotion Gate จึงไม่รวมในคะแนน Decision Center">${escHtml(n)}</span>`;
-  return `<div>
-    <div class="dc-signal-sub" style="margin-bottom:8px">จาก pool รางวัล 1-5 (Sanook) · ${fable.n_history||0} งวดย้อนหลัง · <b style="color:#f59e0b">ยังไม่ผ่าน Promotion Gate → ไม่นับรวมในคะแนน</b> · <a href="#" onclick="${openFableLab}">เปิด FABLE Lab</a></div>
-    <div class="dc-row">${tail3.length?tail3.map(chip).join(''):'<span class="dash-empty">-</span>'}</div>
-    <div class="dc-row" style="margin-top:6px">${tail2.length?tail2.map(chip).join(''):'<span class="dash-empty">-</span>'}</div>
-  </div>`;
-}
 function dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,secondarySignals}){
   const map=new Map();
   const btMap=new Map((btRows||[]).map(r=>[r.name,r]));
@@ -769,11 +755,10 @@ async function loadDecisionCenter(){
   const next=dateEl?.value||nextDrawInfo().iso;
   const mode=document.getElementById('dc-mode')?.value||'balanced';
   try{
-    const [summary,pred,hist,fable]=await Promise.all([
+    const [summary,pred,hist]=await Promise.all([
       api('summary'),
       api(`predict/all?top_n=10&date=${next}&beam_width=500&k_back=100&preset=optimized`),
-      api('prize-history?n=260'),
-      api(`fable?date=${next}&top2=6&top3=8`)
+      api('prize-history?n=260')
     ]);
     const cats=pred.categories||{};
     const p1=(cats.prize1?.numbers||[]).slice(0,5);
@@ -784,9 +769,9 @@ async function loadDecisionCenter(){
     const latest=summary.latest||{};
     const healthStatus=latest.prize1?'good':'bad';
     const healthText=latest.prize1?'พร้อมใช้':'ข้อมูลยังไม่พร้อม';
-    const formulaResults=dcComputeFormulaResults(hist.data,next).filter(fr=>!String(fr.name||'').startsWith('FB'));
+    const formulaResults=dcComputeFormulaResults(hist.data,next);
     const formulaMatches=dcBuildPredictFormulaMatches(cats,formulaResults);
-    const btRows=dcFormulaBacktestRows(hist.data,80).filter(r=>!String(r.name||'').startsWith('FB'));
+    const btRows=dcFormulaBacktestRows(hist.data,80);
     const secondarySignals=dcSecondaryPrizeSignals(hist.data,10);
     const scored=dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,secondarySignals});
     const formulaMatchHtml=dcFormulaMatchHtml(formulaMatches);
@@ -828,7 +813,6 @@ async function loadDecisionCenter(){
       <div class="dc-card"><div class="dc-label">หน้า 3 เด่น</div><div class="dc-row">${[...new Set(front)].slice(0,10).map(numChip).join('')||'<span class="dash-empty">-</span>'}</div></div>
       <div class="dc-card dc-card-wide"><div class="dc-label">Predict × สูตรคำนวณ ตรงกัน</div><div class="dc-row">${formulaMatchHtml}</div></div>
       <div class="dc-card dc-card-wide"><div class="dc-label">สัญญาณจากรางวัลรอง 10 งวดล่าสุด</div>${dcSecondarySignalsHtml(secondarySignals)}</div>
-      <div class="dc-card dc-card-wide" style="border-style:dashed;opacity:.85"><div class="dc-label">🧪 FABLE (รางวัล 1-5) — สูตรทดลอง</div>${dcFableExperimentalHtml(fable)}</div>
       <div class="dc-card"><div class="dc-label">ตัดเลขเสี่ยง</div><div class="dc-row">${dcRiskHtml(scored.risks)}</div></div>
       <div class="dc-card"><div class="dc-label">Snapshot งวด</div><div id="dc-snapshot-list" class="dc-row">${dcSnapshotHtml()}</div></div>
       <div class="dc-card"><div class="dc-label">Next Actions</div>
@@ -965,7 +949,7 @@ async function loadDashboardFormulaPicks(){
     const rows=Array.isArray(h.data)?h.data:[];
     if(rows.length<30){root.innerHTML='<div class="dash-empty">ข้อมูลย้อนหลังยังไม่พอสำหรับจัดอันดับสูตร</div>';return;}
     const btRows=dcFormulaBacktestRows(rows,200)
-      .filter(r=>!String(r.name||'').startsWith('FB')&&r.total>=50&&r.edge>-5)
+      .filter(r=>r.total>=50&&r.edge>-5)
       .slice(0,3);
     const formulaResults=dcComputeFormulaResults(rows,date);
     const byName=new Map(formulaResults.map(fr=>[fr.name,fr]));
@@ -1636,7 +1620,7 @@ function _renderBtTable(){
   };
   const thead=`<thead><tr>${th('Formula','name')}${th('Type','typeLabel')}${th('Draws','total','right')}${th('Hits','hits','right')}${th('Hit %','pct','right')}<th style="text-align:right;white-space:nowrap">95% CI</th>${th('Random baseline','baseP','right')}${th('Edge','edge','right')}<th style="text-align:right;white-space:nowrap">Rolling edge</th>${th('ถูกรอง','subPct','right')}<th style="text-align:center">Result</th></tr></thead>`;
   const btSummary=typeof _formulaBtSummaryHtml==='function'?_formulaBtSummaryHtml(sorted):'';
-  const boardOrder=['2-digit exact','3-digit exact','Run / digit','Prize1 tail','FABLE (pool 1-5)','Other'];
+  const boardOrder=['2-digit exact','3-digit exact','Run / digit','Prize1 tail','Pool 1-5','Other'];
   const boardTables=boardOrder.map(board=>{
     const rows=sorted.filter(r=>r.board===board);
     if(!rows.length)return '';

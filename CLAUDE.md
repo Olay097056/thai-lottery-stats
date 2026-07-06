@@ -5,7 +5,7 @@
 A Thai lottery statistics and prediction dashboard, macOS-dark-themed, desktop-first.
 - **Backend**: FastAPI (`main.py`, port 8509)
 - **Frontend**: Single-page HTML (`static/index.html`) + `static/formula-engine.js`
-- **Prediction engine**: `analyzer.py` (statistical), `fable_formula.py` (FABLE experimental formula)
+- **Prediction engine**: `analyzer.py` (statistical)
 - **ML layer**: `ml_predictor.py` — endpoints kept as reference, not shown in UI
 - **Data**: `scraper.py` (myhora.com, prize1/top3/top2/front3/back3/bottom2) + `sanook_scraper.py` (near1/prize2/prize3/prize4/prize5), cached in `lottery_cache.csv`
 
@@ -26,7 +26,6 @@ Open `http://localhost:8509`. On Windows, prefer the venv at `%LOCALAPPDATA%\lot
 |------|---------|
 | `main.py` | FastAPI app, endpoints, data loading via `get_df()` |
 | `analyzer.py` | Statistical prediction functions (predict_numbers, hot_cold, beam search, etc.) |
-| `fable_formula.py` | FABLE experimental formula — pool-based scoring across prize 1–5, promotion gate logic |
 | `ml_predictor.py` | GBM training/prediction — endpoints kept, not exposed in current UI |
 | `scraper.py` | `load_data()`, `incremental_update()`, `get_cache_info()`, myhora.com scraping |
 | `sanook_scraper.py` | Scrapes near1/prize2/prize3/prize4/prize5 from news.sanook.com JSON-LD |
@@ -35,7 +34,7 @@ Open `http://localhost:8509`. On Windows, prefer the venv at `%LOCALAPPDATA%\lot
 | `static/index.html` | SPA shell markup only — 5 pages; styles and script now split out (no build step) |
 | `static/app.css` | All CSS — macOS dark palette, layout, component styles |
 | `static/app.js` | Core JS — init, api(), showPage/switchPredTab, loadXxx page loaders, Chart.js wiring. Loaded after `formula-engine.js` (its `init()` call at the bottom relies on formula-engine being defined first) |
-| `static/formula-engine.js` | Formula calculators (A–H groups), backtest engine, FABLE Lab UI |
+| `static/formula-engine.js` | Formula calculators (A–H groups), backtest engine |
 
 Dev/debug/one-off scripts (not imported by production code) live in `scripts/`: `debug.py`, `sweep.py`, `_rebuild_analyzer.py`, `test_scrape.py`, `test_multi_year.py`, `scrape_all.py`. Run them from the project root, e.g. `python scripts/debug.py` — they add the project root to `sys.path` themselves.
 
@@ -65,7 +64,7 @@ Sanook columns only populated for ~456/777 draws (data available back to ~2549).
 
 A (กูชอบ) · B (ลอตโตพลัส) · C (พิชิตโชค) · D (Claude) · F (Codex, rolling stats) · G (แม่นขั้นเทพ) · H (มิสเตอร์ซี) · E (สายมู) — all use only the previous single draw as input.
 
-**FB (FABLE)** — the exception: uses the full prize 1–5 pool across a rolling history window instead of one prior draw. Experimental status — see DEVELOPMENT_PLAN.md for promotion gate criteria. Never promote to "recommended" or feed into Decision Center scoring until the gate passes (enforced by filtering config names starting with `FB` in `dcBuildScoreRows()`).
+FABLE (a rolling-history, prize-1–5-pool formula) was retired 2026-07-06 after failing its promotion gate — see DEVELOPMENT_PLAN.md and CHANGELOG.md for history. The `pool6`/`pool_tail3` backtest field types it introduced (hit = candidate matches anything in the previous draw's combined prize 1–5 pool) were kept, since they're reusable by any future formula group targeting prizes 1–5, not FABLE-specific.
 
 ## API Endpoints
 
@@ -80,9 +79,6 @@ Notable ones under `/api/`:
 | `GET /api/history?n=` | Raw draw history |
 | `GET /api/prize-history?n=` | History including near1/prize2/prize3/prize4/prize5 |
 | `GET /api/prize-freq?prize=` | Frequency table for prize2/3/4/5 |
-| `GET /api/fable?date=&...weights` | FABLE prediction for a target draw date |
-| `GET /api/fable-backtest?n_draws=&gate=&validation_draws=&live_draws=` | FABLE backtest; `gate=true` adds validation/live windows |
-| `GET /api/fable-grid-search`, `/api/fable-holdout-report` | FABLE config experimentation |
 | `GET /api/backtest?n_draws=&top_n=&beam_width=&k_back=` | Prize1 backtest |
 
 ## Prediction Architecture
@@ -93,22 +89,18 @@ Composite score from 9 signals: same day+month freq, same day-of-month, same mon
 ### Prize1 Beam Search (`_beam_front3_v4`)
 Decomposes 6-digit prize1 into front3 × back3, 3 weight configs, per-position score normalization, merged via harmonic mean ranking.
 
-### FABLE (`fable_formula.py`)
-Scores 3-digit head/tail slices from the prize 1–5 pool across a rolling window using: recency-weighted cross-frequency, digit-position joint probability, momentum (6 vs 24 draws), anti-lag penalty, near-miss carry (±1 and duplicates), slice transition (cross-draw pattern), draw-day affinity (target date's day-slot/month), and a diversity penalty on final picks. Generates 6-digit numbers by pairing top-scoring heads × tails. All walk-forward — never uses future data.
-
 ## Data Flow
 
 ```
 scraper.py (myhora) ──┐
                        ├──► lottery_cache.csv ──► get_df() (main.py)
 sanook_scraper.py ─────┘                              │
-                                    ┌──────────────────┼──────────────────┐
-                                    ▼                  ▼                  ▼
-                              analyzer.py      fable_formula.py    ml_predictor.py (unused in UI)
-                                    │                  │
-                                    └────────┬─────────┘
-                                             ▼
-                                     FastAPI endpoints ──► static/index.html (SPA)
+                                    ┌──────────────────┴──────────────────┐
+                                    ▼                                     ▼
+                              analyzer.py                    ml_predictor.py (unused in UI)
+                                    │
+                                    ▼
+                            FastAPI endpoints ──► static/index.html (SPA)
 ```
 
 ## Development Notes

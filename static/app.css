@@ -459,38 +459,6 @@ select:focus-visible,input:focus-visible,button:focus-visible,.ftab-btn:focus-vi
 .ftab-nav{gap:4px;border-bottom:1px solid var(--border2);padding:0 0 8px;flex-wrap:wrap}
 .ftab-btn{padding:8px 13px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);border-bottom:1px solid var(--border2);margin-bottom:0;font-size:.8rem}
 .formula-tab-empty{display:none;text-align:center;padding:34px;color:var(--text3);border:1px dashed var(--border2);border-radius:8px;background:var(--surface)}
-.fable-control-board{border:1px solid var(--border2);border-radius:8px;background:var(--surface);padding:12px;margin-bottom:14px;max-width:100%;box-sizing:border-box}
-.fable-control-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
-.fable-control-title{font-weight:800;color:var(--text);font-size:.9rem}
-.fable-target-label{font-size:.76rem;color:var(--text3);border:1px solid var(--border2);border-radius:999px;padding:4px 10px;background:var(--surface2)}
-.fable-config-controls{display:grid;grid-template-columns:repeat(4,minmax(128px,1fr));gap:10px;align-items:end;margin-bottom:10px}
-.fable-config-controls input{width:100%;min-width:0;height:38px}
-.fable-action-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
-.fable-action-row .btn{white-space:nowrap}
-.fable-lab{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin-bottom:14px;max-width:100%}
-.fable-lab-card{background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:14px;min-width:0;overflow:hidden}
-.fable-lab-card.wide{grid-column:1/-1}
-.fable-lab-title{font-size:.82rem;font-weight:800;color:var(--text);margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.fable-kv{display:grid;grid-template-columns:128px minmax(0,1fr);gap:7px 12px;font-size:.76rem;color:var(--text2)}
-.fable-kv b{color:var(--text3);font-weight:600}
-.fable-pill{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border2);background:var(--surface2);border-radius:999px;padding:3px 8px;font-size:.68rem;color:var(--text2);white-space:nowrap}
-.fable-pass{color:var(--green);border-color:rgba(61,214,140,.45);background:rgba(61,214,140,.1)}
-.fable-fail{color:#f59e0b;border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.1)}
-.fable-edge-pos{color:var(--green);font-weight:800}
-.fable-edge-neg{color:var(--red);font-weight:800}
-.fable-criteria{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.fable-criterion{border:1px solid var(--border2);border-radius:7px;padding:8px;background:rgba(255,255,255,.014);font-size:.74rem;color:var(--text2)}
-.fable-criterion.ok{border-color:rgba(61,214,140,.35);background:rgba(61,214,140,.06)}
-.fable-criterion.no{border-color:rgba(245,158,11,.38);background:rgba(245,158,11,.06)}
-.fable-exp-controls{display:grid;grid-template-columns:repeat(5,minmax(128px,1fr));gap:10px;align-items:end;margin:10px 0 0}
-.fable-exp-controls .ctrl-group{min-width:0}
-.fable-exp-controls .btn{width:100%;min-height:38px}
-.fable-exp-table{min-width:1120px}
-.fable-exp-table td,.fable-exp-table th{white-space:nowrap}
-.fable-exp-name{font-weight:800;color:var(--text)}
-.fable-snapshot-list{display:flex;flex-direction:column;gap:8px}
-.fable-snapshot-item{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--border2);border-radius:8px;background:rgba(255,255,255,.014);padding:9px 10px}
-.fable-snapshot-meta{font-size:.72rem;color:var(--text3);line-height:1.45}
 .formula-card{border-top:3px solid var(--accent);padding:14px}
 .formula-card[data-group="A"]{--formula-color:var(--gold)}
 .formula-card[data-group="B"]{--formula-color:#4d9de0}

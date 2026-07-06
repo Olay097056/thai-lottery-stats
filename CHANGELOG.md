@@ -2,6 +2,18 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-07-06 — ลบ FABLE ทั้งหมด (ISSUE-5)
+
+FABLE ไม่ผ่าน promotion gate หลังจากพยายาม tune หลายรอบ (grid search, rolling W50/W100/W200, validation/live) — ตัดสินใจยกเลิกทั้งหมดแทนที่จะพัฒนาต่อ (ดู DEVELOPMENT_PLAN.md Phase 4)
+
+**ลบ:** `fable_formula.py` ทั้งไฟล์ · 4 endpoints (`/api/fable`, `/api/fable-backtest`, `/api/fable-grid-search`, `/api/fable-holdout-report`) จาก `main.py` · ~600 บรรทัดของ FABLE UI/state/Lab ใน `static/formula-engine.js` · markup ของ FABLE tab ใน `static/index.html` · CSS ของ FABLE ใน `static/app.css` · การผูก FABLE เข้า Decision Center ใน `static/app.js` (API call, การ์ดแสดงผล, filter `startsWith('FB')` 2 จุดที่ไม่จำเป็นอีกต่อไป) · scripts ที่ทดสอบ FABLE (`scripts/test_fable_rolling_windows.py`, `scripts/test_fable_grid_search_rolling.py`)
+
+**เก็บไว้ (ไม่ใช่ของ FABLE โดยเฉพาะ):** กลไก backtest ที่เทียบว่าเลขที่ทายตรงกับ pool รางวัล 1-5 ของงวดนั้นไหม — เปลี่ยนชื่อ field type จาก `fable6`/`fable_pool3` เป็น `pool6`/`pool_tail3` (และ `fablePool`/`fablePoolT3` เป็น `pool6Set`/`poolTail3Set`) ยืนยันด้วย regression test (`scripts/test_pool_field_rename.js`) ว่า baseline formula และ hit-check logic เหมือนเดิมทุกประการ ไม่มีผลกระทบต่อ backtest ที่มีอยู่
+
+**อัปเดตเอกสาร:** CLAUDE.md และ DEVELOPMENT_PLAN.md ลบการอ้างอิง FABLE ที่ยัง active ออก แทนที่ด้วยบันทึกการยกเลิก + ชี้ไปยัง Phase 5 (จักรพรรดิ/จักรพรรดิทองคำ — ดู PRD-replace-fable-with-imperial-formulas.md)
+
+**ยืนยันแล้ว:** app โหลดผ่าน, ไม่มี console error, ไม่มี "fable" หลงเหลือในโค้ด (`grep` ทั้ง repo), backtest table ยังทำงานปกติ (38 แถว A-H ครบ), Decision Center โหลดได้ปกติ
+
 ## 2026-07-06 — FABLE grid-search top-5 rolling compare + Group F coefficient presets
 
 **ISSUE-1/2 (FABLE):** แยก `fable_rolling_windows()` ออกจาก `fable_backtest()` ให้ reuse ได้ (ผ่าน `_prepared` context กัน prep ซ้ำ) แล้วต่อยอดใน `fable_grid_search()`: หลัง evaluate 20 configs ด้วย train/holdout ตามเดิม เลือก **top 5 ตาม holdout score** (ไม่ใช่ `stable` flag เพราะวันที่ไม่มี config ไหนผ่านเลยก็ยังต้องเห็นตารางเทียบ) แล้วรัน rolling W50/W100/W200 เฉพาะกลุ่มนั้นผ่าน engine เดียวกับ `/api/fable-backtest?gate=true` (verify แล้วว่าตัวเลขตรงกันเป๊ะ ไม่มี logic สองชุด) ไม่มีการ persist ผลข้าม session ตามที่ตกลง

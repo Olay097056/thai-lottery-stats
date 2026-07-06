@@ -415,7 +415,6 @@
       <option value="H">H · มิสเตอร์ซี</option>
       <option value="E">E · สายมู/ความเชื่อ</option>
     </select>
-    <button id="ftab-btn-FB" class="ftab-btn" role="tab" aria-selected="false" aria-controls="formula-results-FB" data-color="gold" data-ftab="FB" onclick="switchFormulaTab('FB')">✨ FABLE</button>
     <button id="ftab-btn-BT" class="ftab-btn" role="tab" aria-selected="false" aria-controls="formula-results-BT" data-color="orange" data-ftab="BT" onclick="switchFormulaTab('BT')">Backtest</button>
   </div>
 
@@ -435,7 +434,6 @@
       <button class="btn" style="padding:5px 12px;font-size:.75rem;background:var(--surface2);color:var(--text1);border:1px solid var(--border2);border-radius:6px;cursor:pointer" onclick="searchLuckyNews('เลขดัง พระ เจ้าแม่')">🛕 ค้นเลขดัง/เลขพระ</button>
     </div>
   </div>
-  <div id="ftab-desc-FB" class="ftab-info hidden" data-color="gold">สูตร FABLE — ทายเลขท้าย 2/3 ตัวจาก pool รางวัลที่ 1-5 รวม (~168 เลข/งวด) พร้อมสัญญาณทดลอง near-miss, transition และ diversity</div>
   <div id="ftab-desc-BT" class="ftab-info hidden" data-color="orange">ทดสอบความแม่นของแต่ละสูตรย้อนหลัง — ใช้ผลงวดจริงจาก DB เปรียบเทียบ</div>
 
   <!-- Results per tab -->
@@ -448,50 +446,6 @@
   <div id="formula-results-G" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-G"></div>
   <div id="formula-results-H" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-H"></div>
   <div id="formula-results-E" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-E"></div>
-  <div id="formula-results-FB" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-FB">
-    <div class="fable-control-board">
-      <div class="fable-control-head">
-        <div>
-          <div class="fable-control-title">FABLE ตามงวดที่เลือก</div>
-          <div id="fable-target-label" class="fable-target-label">งวดเป้าหมาย -</div>
-        </div>
-        <span id="fable-status-badge"></span>
-      </div>
-      <div class="fable-config-controls">
-        <div class="ctrl-group"><label class="ctrl-label" for="fable-window">Window</label><input id="fable-window" type="number" value="100" min="30" max="200" step="10"></div>
-        <div class="ctrl-group"><label class="ctrl-label" for="fable-cross-w">cross</label><input id="fable-cross-w" type="number" value="0.45" min="0" max="2" step="0.05"></div>
-        <div class="ctrl-group"><label class="ctrl-label" for="fable-digit-w">digit</label><input id="fable-digit-w" type="number" value="0.20" min="0" max="2" step="0.05"></div>
-        <div class="ctrl-group"><label class="ctrl-label" for="fable-momentum-w">momentum</label><input id="fable-momentum-w" type="number" value="0.20" min="0" max="2" step="0.05"></div>
-        <div class="ctrl-group"><label class="ctrl-label" for="fable-lag-penalty">lag penalty</label><input id="fable-lag-penalty" type="number" value="0.25" min="0" max="0.95" step="0.05"></div>
-        <div class="ctrl-group"><label class="ctrl-label" for="fable-near-w">near</label><input id="fable-near-w" type="number" value="0" min="0" max="2" step="0.05"></div>
-        <div class="ctrl-group"><label class="ctrl-label" for="fable-transition-w">transition</label><input id="fable-transition-w" type="number" value="0" min="0" max="2" step="0.05"></div>
-        <div class="ctrl-group"><label class="ctrl-label" for="fable-diversity-penalty">diversity</label><input id="fable-diversity-penalty" type="number" value="0" min="0" max="0.95" step="0.05"></div>
-        <div class="ctrl-group"><label class="ctrl-label" for="fable-drawday-w">draw_day</label><input id="fable-drawday-w" type="number" value="0.25" min="0" max="2" step="0.05"></div>
-      </div>
-      <div class="fable-action-row">
-        <button class="btn btn-primary" onclick="loadFable()">คำนวณตามงวดที่เลือก</button>
-        <button class="btn btn-secondary" onclick="resetFableConfig()">รีเซ็ต config</button>
-        <button id="fable-bt-btn" class="btn btn-secondary" onclick="loadFableBacktest()">FABLE Lab / Backtest</button>
-        <button class="btn btn-secondary" onclick="saveFableSnapshot()">บันทึก Snapshot</button>
-        <button class="btn btn-secondary" onclick="exportFableSnapshots('json')">Export JSON</button>
-        <button class="btn btn-secondary" onclick="exportFableSnapshots('csv')">Export CSV</button>
-      </div>
-      <div class="fable-exp-controls">
-        <div class="ctrl-group"><label class="ctrl-label" for="fable-grid-n">Grid draws</label><select id="fable-grid-n"><option value="80" selected>80</option><option value="120">120</option><option value="160">160</option></select></div>
-        <div class="ctrl-group"><label class="ctrl-label" for="fable-grid-holdout">Holdout</label><select id="fable-grid-holdout"><option value="30" selected>30</option><option value="40">40</option><option value="50">50</option></select></div>
-        <div class="ctrl-group"><label class="ctrl-label" for="fable-grid-max">Configs</label><select id="fable-grid-max"><option value="6" selected>6</option><option value="9">9</option><option value="12">12</option></select></div>
-        <button id="fable-grid-btn" class="btn btn-secondary" onclick="loadFableExperiments()">Grid Search</button>
-        <button id="fable-holdout-btn" class="btn btn-secondary" onclick="loadFableHoldoutReport()">Holdout / Live</button>
-      </div>
-    </div>
-    <div id="fable-warning" style="display:none;background:rgba(245,158,11,.12);border:1px solid #f59e0b55;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:.8rem;color:var(--text2)"></div>
-    <div id="fable-lab"></div>
-    <div id="fable-results"></div>
-    <div id="fable-exp-results" style="margin-top:16px"></div>
-    <div id="fable-holdout-results" style="margin-top:16px"></div>
-    <div id="fable-snapshot-results" style="margin-top:16px"></div>
-    <div id="fable-bt-results" style="margin-top:16px"></div>
-  </div>
   <div id="formula-results-BT" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-BT">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
       <div class="ctrl-group"><label class="ctrl-label" for="bt-formula-n">จำนวนงวดย้อนหลัง</label><select id="bt-formula-n"><option value="20">20 งวด</option><option value="50" selected>50 งวด</option><option value="100">100 งวด</option><option value="200">200 งวด</option></select></div>
@@ -561,7 +515,7 @@
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script src="/static/formula-engine.js?v=codex-presets1"></script>
+<script src="/static/formula-engine.js?v=pool-field-rename1"></script>
 <script src="/static/app.js"></script>
 
 </body>
