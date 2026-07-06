@@ -64,7 +64,9 @@ Sanook columns only populated for ~456/777 draws (data available back to ~2549).
 
 A (กูชอบ) · B (ลอตโตพลัส) · C (พิชิตโชค) · D (Claude) · F (Codex, rolling stats) · G (แม่นขั้นเทพ) · H (มิสเตอร์ซี) · E (สายมู) — all use only the previous single draw as input.
 
-FABLE (a rolling-history, prize-1–5-pool formula) was retired 2026-07-06 after failing its promotion gate — see DEVELOPMENT_PLAN.md and CHANGELOG.md for history. The `pool6`/`pool_tail3` backtest field types it introduced (hit = candidate matches anything in the previous draw's combined prize 1–5 pool) were kept, since they're reusable by any future formula group targeting prizes 1–5, not FABLE-specific.
+**I (จักรพรรดิ)** — also uses only the previous single draw, but targets the combined prize 1–5 pool (near1 + prize2 + prize3 + prize4 + prize5, ~168 numbers) instead of prize1 alone: counts digit frequency per position across that pool, takes the top-2 digit per position, and combines them into ~10 six-digit candidates (`_buildPrize1to5Pool` + `_digitPosFreq` + `_imperialFormula` in `formula-engine.js`). Hit-checked against `pool6` in the backtest table. Ships as a regular (non-experimental) formula from day one — no promotion gate, unlike FABLE.
+
+FABLE (a rolling-history, prize-1–5-pool formula) was retired 2026-07-06 after failing its promotion gate — see DEVELOPMENT_PLAN.md and CHANGELOG.md for history. The `pool6`/`pool_tail3` backtest field types it introduced (hit = candidate matches anything in the previous draw's combined prize 1–5 pool) were kept and are now used by Group I above.
 
 ## API Endpoints
 

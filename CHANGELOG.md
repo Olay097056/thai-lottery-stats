@@ -2,6 +2,20 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-07-06 — เพิ่มสูตรจักรพรรดิ กลุ่ม I (ISSUE-6)
+
+**เพิ่ม 3 ฟังก์ชันใน `static/formula-engine.js`:** `_buildPrize1to5Pool(row)` (สร้าง pool จาก near1+prize2-5 ของงวดก่อนหน้าเดียว, ไม่รวม prize1) · `_digitPosFreq(pool6)` (นับความถี่เลขแต่ละหลัก 1-6 จาก pool, ranking พร้อม tie-break แบบเรียงเลขน้อยไปมาก — reusable, ISSUE-7 จะใช้ต่อ) · `_imperialFormula(prevRow, topN)` (เลือก 2 อันดับแรกต่อหลัก, ผสม cartesian ทั้ง 6 หลัก, คัดคะแนนรวมสูงสุด ~10 ชุด, คืนค่าว่างถ้าไม่มีข้อมูล pool)
+
+**Wiring ครบทั้ง 2 จุด:** backtest table (แถว "I1 จักรพรรดิ" field `pool6` badge "I · จักรพรรดิ" สี `#c084fc`) และหน้า "ทำนาย" (dropdown กลุ่มสูตรใหม่ตัว I, panel `formula-results-I`, นับรวมในสรุปยอดสูตรทั้งหมด)
+
+**บั๊กที่พบระหว่าง implement (คนละ workflow phase เจอเอง แก้เอง):** `String(v||'').padStart(6,'0')` ทำให้ field ว่างเปล่ากลายเป็น `"000000"` ปลอมที่ผ่าน regex `/^\d{6}$/` — แก้โดยเช็ค `.trim()` ว่าง**ก่อน** pad เสมอ
+
+**Gap ที่พบตอน verify แล้วแก้เพิ่ม (main loop, หลัง workflow):** workflow เข้าใจผิดว่า wiring หน้า "ทำนาย" เสร็จแล้ว (เพราะเรียก `_computeFormulasBatch` ตรงๆ ทดสอบ) แต่จริงๆ ฟังก์ชันนั้นใช้แค่ฝั่ง backtest — หน้า "ทำนาย" จริงสร้างการ์ดเองแยกต่างหากผ่าน `runAllFormulas()`/`_codexCards`-style function คนละเส้นทาง เพิ่ม `_imperialCards(prevRow)` ตามแพทเทิร์นเดียวกับ `_codexCards` แล้ว wire เข้า `runAllFormulas()` จริง — พบว่าหน้า "ทำนาย" เดิมโหลดจาก `/api/history` (ไม่มีคอลัมน์ Sanook) เปลี่ยนเป็น `/api/prize-history` (superset คอลัมน์เดิมครบ + near1/prize2-5) แทน ไม่ต้องเพิ่ม fetch ใหม่
+
+**ยืนยันแล้ว:** ทุก test script ผ่าน (`test_imperial_formula.js`, `test_codexpool_presets.js`, `test_codexpool_coeffs.js`, `test_pool_field_rename.js`), backtest table 39 แถว, หน้า "ทำนาย" กลุ่ม F/Codex ยังทำงานปกติหลังเปลี่ยน endpoint, ไม่มี console error
+
+**ยังไม่ทำ:** ISSUE-7 (จักรพรรดิทองคำ — ผสม `_digitPosFreq` เดิมกับเลขคณิตกลุ่ม D)
+
 ## 2026-07-06 — ลบ FABLE ทั้งหมด (ISSUE-5)
 
 FABLE ไม่ผ่าน promotion gate หลังจากพยายาม tune หลายรอบ (grid search, rolling W50/W100/W200, validation/live) — ตัดสินใจยกเลิกทั้งหมดแทนที่จะพัฒนาต่อ (ดู DEVELOPMENT_PLAN.md Phase 4)

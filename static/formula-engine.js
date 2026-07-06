@@ -278,7 +278,7 @@ function switchFormulaTab(tab){
   // sync dropdown กลุ่มสูตร: เลือกกลุ่ม → โชว์ค่านั้น + ไฮไลต์, เลือก ALL/BT → กลับ placeholder
   const groupSel=document.getElementById('ftab-group-select');
   if(groupSel){
-    const isGroup=['A','B','C','D','F','G','H','E'].includes(tab);
+    const isGroup=['A','B','C','D','F','G','H','E','I'].includes(tab);
     groupSel.value=isGroup?tab:'';
     groupSel.classList.toggle('ftab-select-active',isGroup);
   }
@@ -323,7 +323,9 @@ async function autoFillFormula(){
   let rows=[];
   setFormulaLoading('กำลังโหลดข้อมูลงวดก่อน...');
   try{
-    const h=await api('history?n=500');
+    // prize-history (ไม่ใช่ history) เพราะมีคอลัมน์เดียวกันครบ + near1/prize2-5
+    // เพิ่มเติม (จำเป็นสำหรับจักรพรรดิ กลุ่ม I ที่ใช้ pool รางวัล 1-5)
+    const h=await api('prize-history?n=500');
     rows=Array.isArray(h.data)?h.data:[];
   }catch(e){
     _clearFormulaResults('โหลดข้อมูลงวดไม่สำเร็จ ลองใหม่อีกครั้ง');
@@ -333,7 +335,7 @@ async function autoFillFormula(){
     _clearFormulaResults('ยังไม่มีประวัติงวดให้เติมอัตโนมัติ สามารถกรอกเลขเองแล้วคำนวณได้');
     return;
   }
-  _formulaHistory=rows; // cache for Claude formulas
+  _formulaHistory=rows; // cache for Claude/Codex/จักรพรรดิ formulas
 
   let prev=null;
   if(targetDateStr){
@@ -625,7 +627,7 @@ function _groupFormulaCards(cards){
   return groups;
 }
 
-function _renderFormulaSummary({grouped,codexCards,eCards,targetDate}){
+function _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,targetDate}){
   const el=document.getElementById('formula-summary');
   if(!el)return;
   const counts={
@@ -637,6 +639,7 @@ function _renderFormulaSummary({grouped,codexCards,eCards,targetDate}){
     H:grouped.H.length,
     F:codexCards.length,
     E:eCards.length,
+    I:(imperialCards||[]).length,
   };
   const total=Object.values(counts).reduce((a,b)=>a+b,0);
   const targetLabel=targetDate?(()=>{
@@ -648,6 +651,7 @@ function _renderFormulaSummary({grouped,codexCards,eCards,targetDate}){
     ['สูตรทั้งหมด',total,'รวมทุกหมวดที่คำนวณแล้ว'],
     ['สูตร 2 ตัว',counts.A+counts.B+counts.E,'พื้นบ้าน · Lottery+ · สายมู'],
     ['สูตร 3 ตัว/รางวัล',counts.C+counts.D+counts.F+counts.G+counts.H,'พิชิตโชค · Arithmetic · Rolling · แม่นขั้นเทพ · มิสเตอร์ซี'],
+    ['สูตร 6 ตัว (pool 1-5)',counts.I,'จักรพรรดิ'],
   ].map(([label,value,sub])=>`<div class="formula-summary-item"><div class="formula-summary-label">${label}</div><div class="formula-summary-value">${value}</div><div class="formula-summary-sub">${sub}</div></div>`).join('');
   el.classList.add('active');
 }
@@ -665,7 +669,7 @@ function _formulaEsc(v){
 function _formulaGroupLabel(group){
   return ({
     A:'A · พื้นบ้าน',B:'B · ล็อตเตอรี่พลัส',C:'C · พิชิตโชค',D:'D · Arithmetic',
-    E:'E · สายมู',F:'F · Rolling',G:'G · แม่นขั้นเทพ',H:'H · มิสเตอร์ซี'
+    E:'E · สายมู',F:'F · Rolling',G:'G · แม่นขั้นเทพ',H:'H · มิสเตอร์ซี',I:'I · จักรพรรดิ'
   })[group]||group||'-';
 }
 
@@ -1118,6 +1122,69 @@ const CODEX_COEFF_PRESETS=[
   {key:'balanced',label:'X13 Codex Balanced',coeffs:{sameDay:6,sameMonth:6,count:2,f80:5,f24:5,overdue:0.3,lastNumDecay:0.85}},
 ];
 
+// ─── I. จักรพรรดิ — digit-position frequency scorer (ISSUE-6) ─────────────────
+// Builds the previous draw's combined prize 1-5 pool (near1 + prize2 + prize3 +
+// prize4 + prize5 — same pool the pool6/pool_tail3 field types match against).
+// Excludes prize1 itself since จักรพรรดิ only looks at the "secondary" prizes.
+function _buildPrize1to5Pool(row){
+  const pool=[];
+  ['near1_1','near1_2','prize2_1','prize2_2','prize2_3','prize2_4','prize2_5',
+   'prize3_1','prize3_2','prize3_3','prize3_4','prize3_5','prize3_6','prize3_7','prize3_8','prize3_9','prize3_10'
+  ].forEach(k=>{
+    const raw=String(row?.[k]||'').trim();
+    if(!raw)return; // blank field → not real data, skip (don't let padStart manufacture "000000")
+    const v=raw.padStart(6,'0');
+    if(/^\d{6}$/.test(v))pool.push(v);
+  });
+  ['prize4','prize5'].forEach(k=>{
+    for(const tok of String(row?.[k]||'').trim().split(/\s+/)){if(/^\d{6}$/.test(tok))pool.push(tok);}
+  });
+  return pool; // near1+prize2-5 pool; excludes prize1 itself
+}
+
+// Reusable digit-position frequency scorer — counts digit occurrences per
+// position (0-5) across a pool of 6-digit numbers, ranks digits per position
+// by frequency (ties broken by ascending digit value). Reused by จักรพรรดิ and
+// any future formula targeting the same pool (e.g. ISSUE-7's จักรพรรดิทองคำ).
+function _digitPosFreq(pool6){
+  if(!Array.isArray(pool6)||pool6.length===0)return null;
+  const counts=Array.from({length:6},()=>new Array(10).fill(0));
+  for(const num of pool6){
+    if(!/^\d{6}$/.test(num))continue;
+    for(let pos=0;pos<6;pos++)counts[pos][Number(num[pos])]++;
+  }
+  return counts.map(posCounts=>
+    posCounts.map((count,digit)=>({digit:String(digit),count}))
+      .sort((a,b)=>b.count-a.count || Number(a.digit)-Number(b.digit))
+  );
+}
+
+// จักรพรรดิ — takes the top-2 highest-frequency digit per position, combines
+// them across all 6 positions (bounded cartesian expansion, max 64 candidates),
+// ranks by summed position-frequency score, returns top-N (default 10).
+function _imperialFormula(prevRow, topN=10){
+  const pool=_buildPrize1to5Pool(prevRow);
+  if(pool.length===0)return [];
+  const ranked=_digitPosFreq(pool);
+  if(!ranked)return [];
+  const top2=ranked.map(posRanked=>posRanked.slice(0,2));
+  let candidates=[{digits:'',score:0}];
+  for(let pos=0;pos<6;pos++){
+    const next=[];
+    for(const cand of candidates)
+      for(const {digit,count} of top2[pos])
+        next.push({digits:cand.digits+digit, score:cand.score+count});
+    candidates=next;
+  }
+  const seen=new Map();
+  for(const c of candidates){
+    if(!seen.has(c.digits)||seen.get(c.digits).score<c.score)seen.set(c.digits,c);
+  }
+  return [...seen.values()]
+    .sort((a,b)=>b.score-a.score || (a.digits<b.digits?-1:a.digits>b.digits?1:0))
+    .slice(0,topN).map(c=>c.digits);
+}
+
 function _codexPool(rows, col, width, targetIso, topN, coeffs){
   const c=coeffs||CODEX_DEFAULT_COEFFS;
   const target=_codexDateParts(null,targetIso);
@@ -1313,6 +1380,22 @@ function _codexCards(rows, targetIso){
        'เป็นวิธีที่ตรงกว่าเอาเลข 6 หลักมาบวกกันแบบล้วน ๆ',
        `Fair match กับ Claude D4: ทาย ${C.prize1Last2.length} เลขเท่ากัน`],
       [],numRow(C.prize1Last2)
+    ),
+  ];
+}
+
+// ─── I. จักรพรรดิ — digit-position frequency จาก pool รางวัล 1-5 ของงวดก่อนหน้าเดียว ───
+function _imperialCards(prevRow){
+  const preds=_imperialFormula(prevRow,10);
+  if(!preds.length)return [];
+  const numRow=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(192,132,252,.10);border:1px solid #c084fc66;color:#c084fc;padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
+  return [
+    _mkFormulaCard(
+      'I1 จักรพรรดิ · เลขเต็ม6หลัก','I. จักรพรรดิ',
+      ['นับความถี่เลขแต่ละหลัก (1-6) จาก pool รางวัลที่ 1-5 ของงวดก่อนหน้าเดียว (near1+prize2-5, ~168 เลข)',
+       'เลือกเลข 2 อันดับแรกต่อหลัก แล้วผสมข้ามหลักแบบ cartesian คัดคะแนนรวมสูงสุด',
+       `เกณฑ์ถูก (backtest): เลขตรงกับตัวใดตัวหนึ่งใน pool รางวัล 1-5 ของงวดนั้น (${preds.length} ชุด)`],
+      [],numRow(preds)
     ),
   ];
 }
@@ -1590,6 +1673,8 @@ function runAllFormulas(){
   const patternCards=_patternLinkCards({prize1,top3,bottom2,front3_1:front31,front3_2:front32,back3_1:back31,back3_2:back32},predDateStr);
   const thepCards=_maenKhanThepCards({p6:prize1,t3:top3,b2:bottom2,f31:front31,f32:front32,bk1:back31,bk2:back32});
   const misterCCards=_misterCCards({p6:prize1,t3:top3,b2:bottom2,f31:front31,bk1:back31,bk2:back32});
+  const imperialPrevRow=_codexHistoryForTarget(predDateStr)[0]||null;
+  const imperialCards=imperialPrevRow?_imperialCards(imperialPrevRow):[];
 
   // กระจายการ์ดเข้า container ตามกลุ่ม
   const grouped=_groupFormulaCards(cards.concat(thepCards,misterCCards));
@@ -1600,8 +1685,9 @@ function runAllFormulas(){
   const groupG=grouped.G.join('');
   const groupH=grouped.H.join('');
   const groupF=codexCards.concat(patternCards).join('');
-  const groupAll=cards.concat(codexCards,patternCards,thepCards,misterCCards,eCards).join('');
-  _renderFormulaSummary({grouped,codexCards,eCards,targetDate:predDateStr});
+  const groupI=imperialCards.join('');
+  const groupAll=cards.concat(codexCards,patternCards,thepCards,misterCCards,eCards,imperialCards).join('');
+  _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,targetDate:predDateStr});
 
   document.getElementById('formula-results-A').innerHTML=_formulaPanelHtml(groupA,'A');
   document.getElementById('formula-results-B').innerHTML=_formulaPanelHtml(groupB,'B');
@@ -1611,6 +1697,7 @@ function runAllFormulas(){
   document.getElementById('formula-results-G').innerHTML=_formulaPanelHtml(groupG,'แม่นขั้นเทพ');
   document.getElementById('formula-results-H').innerHTML=_formulaPanelHtml(groupH,'มิสเตอร์ซี');
   document.getElementById('formula-results-E').innerHTML=_formulaPanelHtml(eCards.join(''),'สายมู');
+  document.getElementById('formula-results-I').innerHTML=_formulaPanelHtml(groupI,'จักรพรรดิ');
   document.getElementById('formula-results-ALL').innerHTML=_formulaPanelHtml(groupAll,'รวมทุกสูตร');
   document.getElementById('formula-empty').style.display='none';
   _formulaHasRun=true;
@@ -1762,6 +1849,12 @@ function _computeFormulasBatch(prev, nextDateStr, historyCtx=[]){
     }
   }catch(e){}
 
+  // ══ I. จักรพรรดิ — digit-position frequency across near1+prize2-5 pool ══
+  try{
+    const _I=_imperialFormula(prev,10);
+    results.push({name:'I1 จักรพรรดิ · เลขเต็ม6หลัก',preds:_I,field:'pool6',baseline:_I.length||1});
+  }catch(e){}
+
   // ══ F. Pattern Link — train/test derived transition links (ไม่มองอนาคต) ══
   try{
     const _P=_patternLinkFormulas({date:prev.date,prize1:p6,top3:t3,bottom2:b2,front3_1:f31,front3_2:f32,back3_1:bk1,back3_2:bk2},nextDateStr);
@@ -1879,7 +1972,7 @@ async function runFormulaBacktest(){
       const wpct=ws.total?ws.hits/ws.total*100:null;
       rolling[w]={hits:ws.hits,total:ws.total,pct:wpct,edge:wpct==null?null:wpct-baseP};
     });
-    const _GRP={'A':['A · กูชอบ','var(--gold)'],'B':['B · ลอตโตพลัส','#4d9de0'],'C':['C · พิชิตโชค','#a855f7'],'D':['D · Claude','#22d3ee'],'X':['F · Codex','#a3e635'],'G':['G · แม่นขั้นเทพ','#f05454'],'H':['H · มิสเตอร์ซี','#f59e0b'],'E':['E · สายมู','#ec4899']};
+    const _GRP={'A':['A · กูชอบ','var(--gold)'],'B':['B · ลอตโตพลัส','#4d9de0'],'C':['C · พิชิตโชค','#a855f7'],'D':['D · Claude','#22d3ee'],'X':['F · Codex','#a3e635'],'G':['G · แม่นขั้นเทพ','#f05454'],'H':['H · มิสเตอร์ซี','#f59e0b'],'E':['E · สายมู','#ec4899'],'I':['I · จักรพรรดิ','#c084fc']};
     const [group,groupColor]=_GRP[name[0]]||[name[0],'var(--text3)'];
     const subPct=s.subTotal>0?s.subHits/s.subTotal*100:null;
     const edge50=rolling[50]?.edge??null,edge100=rolling[100]?.edge??null,edge200=rolling[200]?.edge??null;

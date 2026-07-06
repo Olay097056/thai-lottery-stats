@@ -414,6 +414,7 @@
       <option value="G">G · แม่นขั้นเทพ</option>
       <option value="H">H · มิสเตอร์ซี</option>
       <option value="E">E · สายมู/ความเชื่อ</option>
+      <option value="I">I · จักรพรรดิ</option>
     </select>
     <button id="ftab-btn-BT" class="ftab-btn" role="tab" aria-selected="false" aria-controls="formula-results-BT" data-color="orange" data-ftab="BT" onclick="switchFormulaTab('BT')">Backtest</button>
   </div>
@@ -434,6 +435,7 @@
       <button class="btn" style="padding:5px 12px;font-size:.75rem;background:var(--surface2);color:var(--text1);border:1px solid var(--border2);border-radius:6px;cursor:pointer" onclick="searchLuckyNews('เลขดัง พระ เจ้าแม่')">🛕 ค้นเลขดัง/เลขพระ</button>
     </div>
   </div>
+  <div id="ftab-desc-I" class="ftab-info hidden" data-color="violet">จักรพรรดิ — นับความถี่เลขแต่ละหลักจาก pool รางวัลที่ 1-5 ของงวดก่อนหน้าเดียว (near1+prize2-5, ~168 เลข) แล้วประกอบเลข 6 หลักจาก 2 อันดับแรกต่อหลัก เกณฑ์ถูก: ตรงกับตัวใดตัวหนึ่งใน pool รางวัล 1-5</div>
   <div id="ftab-desc-BT" class="ftab-info hidden" data-color="orange">ทดสอบความแม่นของแต่ละสูตรย้อนหลัง — ใช้ผลงวดจริงจาก DB เปรียบเทียบ</div>
 
   <!-- Results per tab -->
@@ -446,6 +448,7 @@
   <div id="formula-results-G" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-G"></div>
   <div id="formula-results-H" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-H"></div>
   <div id="formula-results-E" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-E"></div>
+  <div id="formula-results-I" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-I"></div>
   <div id="formula-results-BT" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-BT">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
       <div class="ctrl-group"><label class="ctrl-label" for="bt-formula-n">จำนวนงวดย้อนหลัง</label><select id="bt-formula-n"><option value="20">20 งวด</option><option value="50" selected>50 งวด</option><option value="100">100 งวด</option><option value="200">200 งวด</option></select></div>
@@ -515,7 +518,7 @@
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script src="/static/formula-engine.js?v=pool-field-rename1"></script>
+<script src="/static/formula-engine.js?v=imperial-formula2"></script>
 <script src="/static/app.js"></script>
 
 </body>
