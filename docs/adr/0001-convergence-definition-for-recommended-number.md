@@ -1,0 +1,7 @@
+# เลขแนะนำ convergence rule: exact field-type match, cross-group only
+
+**Status:** accepted
+
+We define เลขแนะนำ agreement strictly: two formulas only "agree" if they target the exact same field type (not just equal digit length) AND come from different top-level formula groups (A–I), not different sub-formulas of the same group. We considered merging same-length field types (as `dcConsensusCandidates` already does internally for the "หลักเด่น" strips) and considered letting sub-formulas like I1/I2 count as independent, but rejected both — same-length-merging would count a `front3` guess and a `back3exact` guess of the same digits as "the same recommendation" despite being different prize slots, and sub-formula agreement (e.g. I1+I2) reflects one underlying method blended two ways, not genuinely different calculation approaches.
+
+**Consequence (deliberate, not a bug):** `pool6` (Group I only), `back3` (C only), `prize1_last4_digits` (C only), and `bottom2_unit` (Group A only) each have exactly one producing group, so they can **never** generate a เลขแนะนำ under this rule. Only `bottom2` (6 groups), `top3` (3 groups), `front3`/`back3exact`/`prize1_last2` (D + F/Codex, 2 groups each) are structurally eligible. If a future formula group is added targeting one of the currently-single-producer field types, it becomes eligible for convergence automatically — no rule change needed, just a second contributor.

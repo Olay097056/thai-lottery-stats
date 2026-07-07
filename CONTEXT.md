@@ -26,3 +26,14 @@ _Avoid_: snapshot save, manual snapshot (removed as a user-triggered action — 
 
 **Hit-rate trend**:
 A chart of the % of auto-snapshotted Picks that turned out to be Hits, over the recent history of draws — answers "is this system getting more or less accurate," as opposed to any single draw's score.
+
+**เลขแนะนำ** (Recommended Number):
+A number surfaced because 2 or more *different top-level formula groups* (A–I) independently produced the exact same number for the exact same field type (e.g. two groups both said `bottom2 = "23"`). Distinct from Pick: a Pick is a Final-Confidence-Score blend of Predict + formula + secondary signals; เลขแนะนำ is a raw formula-vs-formula agreement signal only, computed and shown separately. When multiple numbers qualify within one field type, ranked by (1) number of agreeing groups, (2) tie-break on combined Edge of the agreeing groups — top 1 shown per field type, rest viewable on demand. Tracked in the same Track Record (Auto-snapshot, Hit, Hit-rate trend) as Picks, with its own Edge computed against its own baseline (not exempt from backtest fairness).
+_Avoid_: convergence pick, consensus number (use "เลขแนะนำ" consistently as the UI-facing term; "convergence"/"consensus" are fine as internal/engineering shorthand for the mechanism)
+
+**Formula group** (for เลขแนะนำ purposes):
+The top-level letter (A, B, C, D, E, F/Codex, G, H, I) — not the individual sub-formula (e.g. D1–D4, I1/I2). Two sub-formulas from the *same* letter group agreeing does not count as เลขแนะนำ agreement, since they share the same underlying method.
+
+**Field type**:
+The exact prize-slot shape a formula's output is checked against in backtest — `bottom2`, `bottom2_unit`, `top3`, `front3`, `back3`, `back3exact`, `prize1_last2`, `prize1_last4_digits`, `pool6`. เลขแนะนำ agreement requires an exact field-type match, not just equal digit-length (e.g. a `front3` guess and a `back3exact` guess of the same digits do NOT count as agreeing, even though Hit tracking for ordinary 3-digit Picks already treats all five 3-digit slots as interchangeable).
+_Avoid_: field, format (use "field type" for this specific backtest-comparability tag)
