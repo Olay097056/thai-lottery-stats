@@ -386,18 +386,25 @@ function dcSnapshotResult(snapshot,rows){
   return {status:hits>0?'hit':'miss',hits,total:picks.length};
 }
 
-function dcHitRateTrend(snapshots,rows,window=5,take=20){
-  const resolved=(snapshots||[])
-    .map(s=>({date:s.date,...dcSnapshotResult(s,rows)}))
-    .filter(r=>r.status!=='pending')
-    .sort((a,b)=>a.date.localeCompare(b.date));
-  const recent=resolved.slice(-take);
+// Shared rolling-hit-rate tail for both trend series (Pick + เลขแนะนำ): takes ascending-date
+// {date,status:'hit'|'miss'} rows, keeps the most recent `take`, and emits a rolling-window
+// % series. The two trends differ only in how they resolve rounds into hit/miss upstream.
+function dcRollingRate(resolved,window=5,take=20){
+  const recent=(resolved||[]).slice(-take);
   return recent.map((r,i)=>{
     const start=Math.max(0,i-window+1);
     const win=recent.slice(start,i+1);
     const hitCount=win.filter(w=>w.status==='hit').length;
     return {date:r.date,value:+(hitCount/win.length*100).toFixed(1)};
   });
+}
+
+function dcHitRateTrend(snapshots,rows,window=5,take=20){
+  const resolved=(snapshots||[])
+    .map(s=>({date:s.date,...dcSnapshotResult(s,rows)}))
+    .filter(r=>r.status!=='pending')
+    .sort((a,b)=>a.date.localeCompare(b.date));
+  return dcRollingRate(resolved,window,take);
 }
 
 function dcSecondaryPrizeSignals(rows,limit=10){
@@ -888,21 +895,15 @@ function dcRecoHitRateTrend(snapshots,rows,window=5,take=20){
     .map(s=>{
       const actual=dcActualForDate(rows,s.date);
       if(!actual)return null;
-      const hit=(s.reco||[]).some(r=>dcCheckHit(r.num,actual)==='hit');
+      const hit=s.reco.some(r=>dcCheckHit(r.num,actual)==='hit');
       return {date:s.date,status:hit?'hit':'miss'};
     })
     .filter(Boolean)
     .sort((a,b)=>a.date.localeCompare(b.date));
-  const recent=resolved.slice(-take);
-  return recent.map((r,i)=>{
-    const start=Math.max(0,i-window+1);
-    const win=recent.slice(start,i+1);
-    const hitCount=win.filter(w=>w.status==='hit').length;
-    return {date:r.date,value:+(hitCount/win.length*100).toFixed(1)};
-  });
+  return dcRollingRate(resolved,window,take);
 }
 
-function dcRecoExplainHtml(candidate){
+function dcRecoExplainText(candidate){
   if(!candidate)return '';
   // Map to display labels (X->F) BEFORE sorting, so the shown order is alphabetical by
   // DISPLAYED group (e.g. F + G + H), not by raw key (which would show G + H + F).
@@ -922,12 +923,12 @@ function dcRecoCardHtml(field,label,candidates){
   const rest=list.slice(1);
   const moreHtml=rest.length?`<details class="dc-reco-more">
       <summary>ดูอีก ${rest.length} เลขที่เข้าเกณฑ์</summary>
-      <div class="dc-reco-more-row">${rest.map(c=>`<span class="dc-reco-more-chip" title="${escHtml(dcRecoExplainHtml(c))}">${escHtml(c.num)}</span>`).join('')}</div>
+      <div class="dc-reco-more-row">${rest.map(c=>`<span class="dc-reco-more-chip" title="${escHtml(dcRecoExplainText(c))}">${escHtml(c.num)}</span>`).join('')}</div>
     </details>`:'';
   return `<div class="dc-reco-card has-num">
     <div class="dc-reco-field-label">${escHtml(label)}</div>
     <div class="dc-reco-num">${escHtml(top.num)}</div>
-    <div class="dc-reco-explain">${escHtml(dcRecoExplainHtml(top))}</div>
+    <div class="dc-reco-explain">${escHtml(dcRecoExplainText(top))}</div>
     ${moreHtml}
   </div>`;
 }
@@ -961,9 +962,13 @@ function dcRecoTopOverall(reco){
   DC_RECO_FIELDS.forEach(([field,label])=>{
     const top=(reco?.[field]||[])[0];
     if(!top)return;
+    // Full comparator identical to the within-field rule (dcRecommendedNumbers): group count
+    // desc → combined Edge desc → num asc, so a complete tie resolves deterministically by
+    // number rather than by DC_RECO_FIELDS ordering.
     if(!best
       ||top.groups.length>best.groups.length
-      ||(top.groups.length===best.groups.length&&top.combinedEdge>best.combinedEdge)){
+      ||(top.groups.length===best.groups.length&&top.combinedEdge>best.combinedEdge)
+      ||(top.groups.length===best.groups.length&&top.combinedEdge===best.combinedEdge&&top.num.localeCompare(best.num)<0)){
       best={field,label,num:top.num,groups:top.groups,combinedEdge:top.combinedEdge};
     }
   });
@@ -980,7 +985,7 @@ function dcRecoCompareStripHtml(topReco,bestPick){
     ?'<span class="dc-status good">สองสัญญาณชี้เลขเดียวกัน</span>'
     :'<span class="dc-status warn">สองสัญญาณชี้คนละเลข</span>';
   const recoSide=topReco
-    ?`<div class="dc-compare-num">${escHtml(topReco.num)}</div><div class="dc-compare-sub">${escHtml(topReco.label)} · ${escHtml(dcRecoExplainHtml(topReco))}</div>`
+    ?`<div class="dc-compare-num">${escHtml(topReco.num)}</div><div class="dc-compare-sub">${escHtml(topReco.label)} · ${escHtml(dcRecoExplainText(topReco))}</div>`
     :'<div class="dc-compare-empty">ไม่มีเลขแนะนำงวดนี้</div>';
   const pickSide=bestPick&&bestPick.num
     ?`<div class="dc-compare-num">${escHtml(bestPick.num)}</div><div class="dc-compare-sub">Final Confidence ${bestPick.score}/100</div>`

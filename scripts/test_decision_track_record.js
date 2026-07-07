@@ -46,6 +46,7 @@ const code = [
   extract('dcBtActual3'),
   extract('dcCheckHit'),
   extract('dcSnapshotResult'),
+  extract('dcRollingRate'),
   extract('dcHitRateTrend'),
   extract('dcBuildScoreRows'),
   // ISSUE-10: เลขแนะนำ Track Record + Edge

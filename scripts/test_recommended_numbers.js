@@ -27,7 +27,7 @@ function extract(name) {
   return src.slice(m.index, i);
 }
 
-// dcRecoExplainHtml depends on dcRecoGroupLabel + the DC_RECO_GROUP_DISPLAY const, so
+// dcRecoExplainText depends on dcRecoGroupLabel + the DC_RECO_GROUP_DISPLAY const, so
 // pull those in too. extract() only grabs functions, so add the const line separately.
 function extractConst(name) {
   const re = new RegExp('const ' + name + '=[^;]*;', 'm');
@@ -41,13 +41,13 @@ const code = [
   extractConst('DC_RECO_FIELDS'),
   extractConst('DC_RECO_GROUP_DISPLAY'),
   extract('dcRecoGroupLabel'),
-  extract('dcRecoExplainHtml'),
+  extract('dcRecoExplainText'),
   extract('dcRecoTopOverall'),
 ].join('\n\n');
 const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(code, sandbox);
-const { dcRecommendedNumbers, dcRecoExplainHtml, dcRecoTopOverall } = sandbox;
+const { dcRecommendedNumbers, dcRecoExplainText, dcRecoTopOverall } = sandbox;
 
 let passed = 0;
 function check(label, cond) {
@@ -159,10 +159,10 @@ const btMap = new Map([
   // Codex 'X' displays as 'F'; when it co-occurs with G and H, the shown order must be
   // alphabetical by DISPLAYED label (F + G + H), not by raw key (which would give G + H + F).
   check('explainer maps X->F and sorts by displayed label (F + G + H, not G + H + F)',
-    dcRecoExplainHtml({ num: '123', groups: ['G', 'H', 'X'], combinedEdge: 0 }) === 'F + G + H เห็นตรงกัน');
+    dcRecoExplainText({ num: '123', groups: ['G', 'H', 'X'], combinedEdge: 0 }) === 'F + G + H เห็นตรงกัน');
   check('explainer of a plain 2-group agreement reads correctly',
-    dcRecoExplainHtml({ num: '23', groups: ['A', 'D'], combinedEdge: 0 }) === 'A + D เห็นตรงกัน');
-  check('explainer of null candidate is empty', dcRecoExplainHtml(null) === '');
+    dcRecoExplainText({ num: '23', groups: ['A', 'D'], combinedEdge: 0 }) === 'A + D เห็นตรงกัน');
+  check('explainer of null candidate is empty', dcRecoExplainText(null) === '');
 }
 
 // --- 7. dcRecoTopOverall — #1 เลขแนะนำ across all field types (ISSUE-12) ---
@@ -188,6 +188,15 @@ const btMap = new Map([
   check('empty/missing reco object -> null, no throw', dcRecoTopOverall(undefined) === null);
   check('only the TOP candidate per field competes (rank-2 candidates never outrank a field winner)',
     dcRecoTopOverall({ bottom2: [{ num: '11', groups: ['A', 'B'], combinedEdge: 1 }, { num: '99', groups: ['A', 'B', 'C', 'D'], combinedEdge: 99 }] }).num === '11');
+
+  // Full tie on group count AND combined Edge -> resolved by num asc (same third key as the
+  // within-field comparator), not by DC_RECO_FIELDS ordering. '471' < '95' lexicographically.
+  const topFullTie = dcRecoTopOverall({
+    bottom2: [{ num: '95', groups: ['A', 'D'], combinedEdge: 10 }],
+    front3: [{ num: '471', groups: ['D', 'X'], combinedEdge: 10 }],
+  });
+  check('complete tie resolved by num asc (471 beats 95 lexicographically), not field order',
+    topFullTie.num === '471' && topFullTie.field === 'front3');
 }
 
 console.log(`OK: ${passed} checks passed`);
