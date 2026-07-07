@@ -824,9 +824,14 @@ function dcRecommendedNumbers(formulaResults,btMap){
 const DC_RECO_FIELDS=[['bottom2','2 ตัวล่าง'],['top3','3 ตัวบน'],['front3','3 ตัวหน้า'],['back3exact','3 ตัวหลัง'],['prize1_last2','ท้าย 2 รางวัลที่ 1']];
 // Known count of DISTINCT top-level producing groups per field type (see ADR-0001 and the
 // tripwire above). Drives the group-count-aware เลขแนะนำ baseline in dcRecoBaseline. Keep in
-// sync with formula-engine.js: bottom2←A,B,C,D,F/X,G · top3←G,H,F/X · front3←D,F/X ·
-// back3exact←D,F/X · prize1_last2←D,F/X. Add here too if a new group targets one of these.
-const DC_RECO_PRODUCER_GROUPS={bottom2:6,top3:3,front3:2,back3exact:2,prize1_last2:2};
+// sync with formula-engine.js:
+//   bottom2 ← A,B,C,D,E,G,F/X (7) — note E (สายมู belief) emits bottom2 via a dynamic
+//             loop (name f.name+'…'), so a literal grep of `field:'bottom2'` UNDERCOUNTS it;
+//   top3 ← G,H,F/X (3) · front3 ← D,F/X (2) · back3exact ← D,F/X (2) · prize1_last2 ← D,F/X (2).
+// These values are cross-checked against the real engine output by
+// scripts/test_reco_producer_groups.js (which runs _computeFormulasBatch and counts distinct
+// name[0] per field), so drift here fails a test rather than silently skewing the baseline.
+const DC_RECO_PRODUCER_GROUPS={bottom2:7,top3:3,front3:2,back3exact:2,prize1_last2:2};
 const DC_RECO_GROUP_DISPLAY={X:'F'};
 function dcRecoGroupLabel(key){ return DC_RECO_GROUP_DISPLAY[key]||key; }
 
