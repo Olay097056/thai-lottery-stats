@@ -1159,6 +1159,26 @@ function _digitPosFreq(pool6){
   );
 }
 
+// เกณฑ์ร่วมของกลุ่ม I — รวมเลข 2 อันดับแรกต่อหลักแบบ cartesian (สูงสุด 64 ชุด) แล้ว
+// dedupe เหลือชุดไม่ซ้ำพร้อมคะแนนความถี่รวม (freqScore) การจัดอันดับ/ตัดท็อปเป็นหน้าที่
+// ของแต่ละสูตร (จักรพรรดิ ใช้ freqScore ล้วน, จักรพรรดิทองคำ ผสมสัญญาณเลขคณิตเพิ่ม)
+function _imperialCandidates(ranked){
+  const top2=ranked.map(posRanked=>posRanked.slice(0,2));
+  let candidates=[{digits:'',freqScore:0}];
+  for(let pos=0;pos<6;pos++){
+    const next=[];
+    for(const cand of candidates)
+      for(const {digit,count} of top2[pos])
+        next.push({digits:cand.digits+digit, freqScore:cand.freqScore+count});
+    candidates=next;
+  }
+  const seen=new Map();
+  for(const c of candidates){
+    if(!seen.has(c.digits)||seen.get(c.digits).freqScore<c.freqScore)seen.set(c.digits,c);
+  }
+  return [...seen.values()];
+}
+
 // จักรพรรดิ — takes the top-2 highest-frequency digit per position, combines
 // them across all 6 positions (bounded cartesian expansion, max 64 candidates),
 // ranks by summed position-frequency score, returns top-N (default 10).
@@ -1167,21 +1187,37 @@ function _imperialFormula(prevRow, topN=10){
   if(pool.length===0)return [];
   const ranked=_digitPosFreq(pool);
   if(!ranked)return [];
-  const top2=ranked.map(posRanked=>posRanked.slice(0,2));
-  let candidates=[{digits:'',score:0}];
-  for(let pos=0;pos<6;pos++){
-    const next=[];
-    for(const cand of candidates)
-      for(const {digit,count} of top2[pos])
-        next.push({digits:cand.digits+digit, score:cand.score+count});
-    candidates=next;
-  }
-  const seen=new Map();
-  for(const c of candidates){
-    if(!seen.has(c.digits)||seen.get(c.digits).score<c.score)seen.set(c.digits,c);
-  }
-  return [...seen.values()]
-    .sort((a,b)=>b.score-a.score || (a.digits<b.digits?-1:a.digits>b.digits?1:0))
+  return _imperialCandidates(ranked)
+    .sort((a,b)=>b.freqScore-a.freqScore || (a.digits<b.digits?-1:a.digits>b.digits?1:0))
+    .slice(0,topN).map(c=>c.digits);
+}
+
+// จักรพรรดิทองคำ (ISSUE-7) — ใช้ _digitPosFreq/_imperialCandidates ชุดเดียวกับจักรพรรดิ
+// แต่คะแนนสุดท้ายของแต่ละชุดผสม 80% freqScore (normalize ด้วยคะแนนสูงสุดที่เป็นไปได้)
+// + 20% ความใกล้เคียงกับเลขคณิต (รางวัลที่1 + วัน×เดือน×ปี ของงวดถัดไป) mod 1,000,000
+//
+// ความใกล้เคียงต่อหลัก = 9-|เลขชุด−เลขเป้าหมาย| (0=ห่างสุด เช่น 0 กับ 9, 9=ตรงเป๊ะ) ไม่ใช่
+// exact-match ธรรมดา (0/1) เพราะผู้สมัคร (candidate) มาจาก digit 2 อันดับแรกของความถี่เท่านั้น
+// (สูงสุด 2 ตัวต่อหลัก จาก 10 ตัว) โอกาสที่เลขเป้าหมายจะตรงเป๊ะกับ 1 ใน 2 ตัวนั้นต่ำมาก —
+// ทดสอบกับข้อมูลจริงพบว่า exact-match ทำให้ closeness=0 ทุกชุดเสมอ (เพราะโอกาสตรงเป๊ะน้อย)
+// ทำให้ blended score ตกไปเป็นแค่ freqScore ล้วนๆ เหมือนจักรพรรดิทุกประการ (ไม่ใช่ผสมจริง) —
+// ใช้ระยะห่างเชิงตัวเลขแทนจึงทำให้ 20% นี้มีผลจริงกับการจัดอันดับในข้อมูลจริงเสมอ
+function _imperialGoldFormula(prevRow, nextDay, nextMonth, nextYear2, topN=10){
+  const pool=_buildPrize1to5Pool(prevRow);
+  if(pool.length===0)return [];
+  const ranked=_digitPosFreq(pool);
+  if(!ranked)return [];
+  const candidates=_imperialCandidates(ranked);
+  const maxFreq=ranked.reduce((sum,posRanked)=>sum+(posRanked[0]?.count||0),0)||1;
+  const P=parseInt(String(prevRow?.prize1||''))||0;
+  const target=String(((Math.round(P+nextDay*nextMonth*nextYear2)%1000000)+1000000)%1000000).padStart(6,'0');
+  return candidates
+    .map(c=>{
+      const closeness=[...c.digits].reduce((n,d,i)=>n+(9-Math.abs(Number(d)-Number(target[i]))),0);
+      const blended=0.8*(c.freqScore/maxFreq)+0.2*(closeness/54);
+      return {...c,blended};
+    })
+    .sort((a,b)=>b.blended-a.blended || (a.digits<b.digits?-1:a.digits>b.digits?1:0))
     .slice(0,topN).map(c=>c.digits);
 }
 
@@ -1385,19 +1421,30 @@ function _codexCards(rows, targetIso){
 }
 
 // ─── I. จักรพรรดิ — digit-position frequency จาก pool รางวัล 1-5 ของงวดก่อนหน้าเดียว ───
-function _imperialCards(prevRow){
-  const preds=_imperialFormula(prevRow,10);
-  if(!preds.length)return [];
+function _imperialCards(prevRow,nextDay,nextMonth,nextYear2){
   const numRow=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(192,132,252,.10);border:1px solid #c084fc66;color:#c084fc;padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
-  return [
-    _mkFormulaCard(
+  const cards=[];
+  const preds=_imperialFormula(prevRow,10);
+  if(preds.length){
+    cards.push(_mkFormulaCard(
       'I1 จักรพรรดิ · เลขเต็ม6หลัก','I. จักรพรรดิ',
       ['นับความถี่เลขแต่ละหลัก (1-6) จาก pool รางวัลที่ 1-5 ของงวดก่อนหน้าเดียว (near1+prize2-5, ~168 เลข)',
        'เลือกเลข 2 อันดับแรกต่อหลัก แล้วผสมข้ามหลักแบบ cartesian คัดคะแนนรวมสูงสุด',
        `เกณฑ์ถูก (backtest): เลขตรงกับตัวใดตัวหนึ่งใน pool รางวัล 1-5 ของงวดนั้น (${preds.length} ชุด)`],
       [],numRow(preds)
-    ),
-  ];
+    ));
+  }
+  const predsGold=_imperialGoldFormula(prevRow,nextDay,nextMonth,nextYear2,10);
+  if(predsGold.length){
+    cards.push(_mkFormulaCard(
+      'I2 จักรพรรดิทองคำ · เลขเต็ม6หลัก','I. จักรพรรดิ',
+      ['ใช้ความถี่ต่อหลักชุดเดียวกับจักรพรรดิ ผสม 80% คะแนนความถี่ + 20% ความใกล้เคียงเลขคณิต',
+       'เลขคณิต = (รางวัลที่1 + วัน×เดือน×ปี ของงวดถัดไป) mod 1,000,000 (สูตรเดียวกับกลุ่ม D)',
+       `เกณฑ์ถูก (backtest): เลขตรงกับตัวใดตัวหนึ่งใน pool รางวัล 1-5 ของงวดนั้น (${predsGold.length} ชุด)`],
+      [],numRow(predsGold)
+    ));
+  }
+  return cards;
 }
 
 function runAllFormulas(){
@@ -1674,7 +1721,7 @@ function runAllFormulas(){
   const thepCards=_maenKhanThepCards({p6:prize1,t3:top3,b2:bottom2,f31:front31,f32:front32,bk1:back31,bk2:back32});
   const misterCCards=_misterCCards({p6:prize1,t3:top3,b2:bottom2,f31:front31,bk1:back31,bk2:back32});
   const imperialPrevRow=_codexHistoryForTarget(predDateStr)[0]||null;
-  const imperialCards=imperialPrevRow?_imperialCards(imperialPrevRow):[];
+  const imperialCards=imperialPrevRow?_imperialCards(imperialPrevRow,nextDay,nextMonth,nextYear2):[];
 
   // กระจายการ์ดเข้า container ตามกลุ่ม
   const grouped=_groupFormulaCards(cards.concat(thepCards,misterCCards));
@@ -1853,6 +1900,10 @@ function _computeFormulasBatch(prev, nextDateStr, historyCtx=[]){
   try{
     const _I=_imperialFormula(prev,10);
     results.push({name:'I1 จักรพรรดิ · เลขเต็ม6หลัก',preds:_I,field:'pool6',baseline:_I.length||1});
+  }catch(e){}
+  try{
+    const _IG=_imperialGoldFormula(prev,nextDay,nextMonth,nextYear2,10);
+    results.push({name:'I2 จักรพรรดิทองคำ · เลขเต็ม6หลัก',preds:_IG,field:'pool6',baseline:_IG.length||1});
   }catch(e){}
 
   // ══ F. Pattern Link — train/test derived transition links (ไม่มองอนาคต) ══

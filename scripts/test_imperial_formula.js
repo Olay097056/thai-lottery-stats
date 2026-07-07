@@ -1,5 +1,5 @@
-// Regression check for จักรพรรดิ (Group I) digit-position frequency scorer (ISSUE-6).
-// Run with: node scripts/test_imperial_formula.js
+// Regression check for จักรพรรดิ / จักรพรรดิทองคำ (Group I) digit-position frequency
+// scorer (ISSUE-6 + ISSUE-7). Run with: node scripts/test_imperial_formula.js
 // Verifies:
 // 1. The reusable scorer (_digitPosFreq) produces a known ranked-digit-per-position
 //    result for a fixed synthetic pool array.
@@ -8,6 +8,13 @@
 //    (_buildPrize1to5Pool) + scorer.
 // 3. จักรพรรดิ produces no output for a previous-draw row with empty prize-pool
 //    fields (matching the Sanook-dependent-formula skip behavior).
+// 4. จักรพรรดิทองคำ (_imperialGoldFormula) reuses the same scorer/candidate
+//    generation (no duplicated frequency logic), and its blended score (80%
+//    freqScore + 20% arithmetic closeness) is independently verifiable.
+// 5. จักรพรรดิ and จักรพรรดิทองคำ produce genuinely different top-ranked candidates
+//    for the same fixture + a target date chosen so the arithmetic signal flips
+//    the ranking (proving the blend changes behavior, not just cosmetically).
+// 6. จักรพรรดิทองคำ produces no output for an empty-pool previous draw, same as จักรพรรดิ.
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -30,13 +37,15 @@ function extract(name) {
 const code = [
   extract('_buildPrize1to5Pool'),
   extract('_digitPosFreq'),
+  extract('_imperialCandidates'),
   extract('_imperialFormula'),
+  extract('_imperialGoldFormula'),
 ].join('\n\n');
 
 const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(code, sandbox);
-const { _buildPrize1to5Pool, _digitPosFreq, _imperialFormula } = sandbox;
+const { _buildPrize1to5Pool, _digitPosFreq, _imperialCandidates, _imperialFormula, _imperialGoldFormula } = sandbox;
 
 // --- 1. scorer produces a known ranked-digit-per-position result for a fixed pool ---
 // Pool chosen so each position has an unambiguous frequency winner, plus one
@@ -150,3 +159,77 @@ if (missingCandidates.length !== 0) {
   throw new Error(`FAIL: expected no candidates when Sanook keys are entirely absent, got ${JSON.stringify(missingCandidates)}`);
 }
 console.log('OK: จักรพรรดิ produces no output when Sanook fields are entirely absent from the row');
+
+// --- 4. จักรพรรดิทองคำ reuses _imperialCandidates/_digitPosFreq and its blend is verifiable ---
+const goldFixtureRow = { ...fixtureRow, prize1: '999999' };
+const nextDay = 1, nextMonth = 9, nextYear2 = 68;
+const goldCandidates = _imperialGoldFormula(goldFixtureRow, nextDay, nextMonth, nextYear2, 10);
+if (!Array.isArray(goldCandidates) || goldCandidates.length < 8 || goldCandidates.length > 10) {
+  throw new Error(`FAIL: expected ~10 (8-10) gold candidates, got ${JSON.stringify(goldCandidates)}`);
+}
+if (!goldCandidates.every(c => /^\d{6}$/.test(c))) {
+  throw new Error(`FAIL: gold candidates must all be 6-digit strings, got ${JSON.stringify(goldCandidates)}`);
+}
+if (new Set(goldCandidates).size !== goldCandidates.length) {
+  throw new Error('FAIL: gold candidates contain duplicates');
+}
+// Independently recompute the 80/20 blend for every raw candidate (via the shared
+// _imperialCandidates + _digitPosFreq, proving no duplicated frequency logic) and
+// confirm the formula's own ranking matches this independent computation exactly.
+const goldPool = _buildPrize1to5Pool(goldFixtureRow);
+const goldRanked = _digitPosFreq(goldPool);
+const rawCandidates = _imperialCandidates(goldRanked);
+const maxFreq = goldRanked.reduce((sum, posRanked) => sum + posRanked[0].count, 0);
+const P = parseInt(goldFixtureRow.prize1, 10);
+const target = String(((P + nextDay * nextMonth * nextYear2) % 1000000 + 1000000) % 1000000).padStart(6, '0');
+const blendedOf = (digits) => {
+  // Distance-based closeness (9-|digit-targetDigit| per position, /54 max), not exact-match —
+  // candidates only ever contain the top-2 frequency digits per position, so an exact-match
+  // closeness is almost always 0 for every candidate against an arbitrary arithmetic target
+  // (verified against real production data), collapsing the blend to freqScore-only ranking.
+  const closeness = [...digits].reduce((n, d, i) => n + (9 - Math.abs(Number(d) - Number(target[i]))), 0);
+  const raw = rawCandidates.find(c => c.digits === digits);
+  return 0.8 * (raw.freqScore / maxFreq) + 0.2 * (closeness / 54);
+};
+const blendedScores = goldCandidates.map(blendedOf);
+for (let i = 1; i < blendedScores.length; i++) {
+  if (blendedScores[i] > blendedScores[i - 1] + 1e-9) {
+    throw new Error(`FAIL: gold candidates not sorted by descending blended score at index ${i}: ${blendedScores[i - 1]} -> ${blendedScores[i]}`);
+  }
+}
+console.log(`OK: _imperialGoldFormula produced ${goldCandidates.length} unique candidates, blend independently verified`);
+
+// --- 5. จักรพรรดิ and จักรพรรดิทองคำ produce genuinely different top-ranked candidates ---
+// Uses a separate, less-peaked synthetic pool (deterministic LCG-generated, not hand-picked)
+// because the tiny hand-picked fixture above has huge freqScore gaps between candidates —
+// realistic enough that no arithmetic target can ever flip its top-1 ranking, which is
+// exactly the trap the original exact-match closeness design fell into (see comment on
+// _imperialGoldFormula): with candidates drawn only from the top-2 frequency digit per
+// position, an exact-digit-match closeness against an arbitrary target is 0 for nearly
+// every candidate on realistic data, silently collapsing the blend to freqScore-only
+// ranking. This fixture + target combo is confirmed (by direct search) to flip the top-1
+// ranking under the corrected distance-based closeness — proving the blend has a real,
+// non-cosmetic effect, not just on a fixture engineered to make the old broken formula pass.
+const realisticPoolRow = {
+  near1_1: '582307', near1_2: '519818',
+  prize2_1: '914939', prize2_2: '698715', prize2_3: '753081', prize2_4: '689433', prize2_5: '521116',
+  prize3_1: '151823', prize3_2: '049061', prize3_3: '226315', prize3_4: '287363', prize3_5: '997032',
+  prize3_6: '710403', prize3_7: '671381', prize3_8: '361886', prize3_9: '256329', prize3_10: '104572',
+  prize4: '899458 849824 839752',
+  prize5: '451212 281179',
+  prize1: '287184',
+};
+const realisticNextDay = 1, realisticNextMonth = 1, realisticNextYear2 = 65;
+const jakRealistic = _imperialFormula(realisticPoolRow, 10);
+const goldRealistic = _imperialGoldFormula(realisticPoolRow, realisticNextDay, realisticNextMonth, realisticNextYear2, 10);
+if (jakRealistic[0] === goldRealistic[0]) {
+  throw new Error(`FAIL: expected จักรพรรดิ and จักรพรรดิทองคำ to disagree on the top candidate for this realistic fixture, both got "${jakRealistic[0]}"`);
+}
+console.log(`OK: จักรพรรดิ (top: ${jakRealistic[0]}) and จักรพรรดิทองคำ (top: ${goldRealistic[0]}) genuinely disagree on realistic data — blend changes ranking`);
+
+// --- 6. จักรพรรดิทองคำ produces no output for a previous draw with empty prize 1-5 pool fields ---
+const goldEmptyCandidates = _imperialGoldFormula(emptyRow, nextDay, nextMonth, nextYear2, 10);
+if (!Array.isArray(goldEmptyCandidates) || goldEmptyCandidates.length !== 0) {
+  throw new Error(`FAIL: expected no gold candidates for a previous draw with empty prize 1-5 pool data, got ${JSON.stringify(goldEmptyCandidates)}`);
+}
+console.log('OK: จักรพรรดิทองคำ produces no output for a previous draw with empty prize 1-5 pool fields');
