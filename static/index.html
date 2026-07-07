@@ -169,6 +169,7 @@
         <option value="predict">ทำนาย</option>
         <option value="formula">สูตรคำนวณ</option>
         <option value="decision">สรุปงวดนี้</option>
+        <option value="oldver">(OLD VER)</option>
       </select></div>
     </div>
     <div class="pred-shared-actions">
@@ -181,6 +182,7 @@
     <button id="pred-main-btn-predict" class="pred-main-tab-btn active" onclick="switchPredTab('predict')">🔮 ทำนาย</button>
     <button id="pred-main-btn-formula" class="pred-main-tab-btn" onclick="switchPredTab('formula')">🔢 สูตรคำนวณ</button>
     <button id="pred-main-btn-decision" class="pred-main-tab-btn" onclick="switchPredTab('decision')">🎯 สรุปงวดนี้</button>
+    <button id="pred-main-btn-oldver" class="pred-main-tab-btn" onclick="switchPredTab('oldver')">🗄️ (OLD VER)</button>
   </div>
   <!-- Tab panel: ทำนาย -->
   <div id="pred-main-tab-predict" class="pred-main-tab-panel">
@@ -474,6 +476,20 @@
   </div>
   <div id="dc-root" class="dc-loading">กำลังรวมสัญญาณงวดนี้...</div>
   </div><!-- /pred-main-tab-decision -->
+
+  <!-- Tab panel: (OLD VER) -->
+  <div id="pred-main-tab-oldver" class="pred-main-tab-panel" style="display:none">
+  <div class="card predict-toolbar" style="margin-top:14px">
+    <div class="predict-controls">
+      <div class="ctrl-group tab-local-date"><label class="ctrl-label" for="dc-date-old">งวดเป้าหมาย</label><select id="dc-date-old" onchange="loadDecisionCenterOld()"></select></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="dc-mode-old">โหมดคัดเลข</label><select id="dc-mode-old" onchange="loadDecisionCenterOld()"><option value="strict">ปลอดภัย</option><option value="balanced" selected>สมดุล</option><option value="coverage">ลุ้นสูง</option></select></div>
+    </div>
+    <div class="predict-actions">
+      <button class="btn btn-primary" onclick="loadDecisionCenterOld()">คำนวณสรุปงวดนี้</button>
+    </div>
+  </div>
+  <div id="dc-root-old" class="dc-loading">กำลังรวมสัญญาณงวดนี้...</div>
+  </div><!-- /pred-main-tab-oldver -->
 </div><!-- /page-predict -->
 
 <!-- HISTORY -->
@@ -518,7 +534,7 @@
 <div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
 <script src="/static/formula-engine.js?v=imperial-roundrobin1"></script>
-<script src="/static/app.js?v=dc-track-record2"></script>
+<script src="/static/app.js?v=dc-oldver-tab1"></script>
 
 </body>
 </html>
