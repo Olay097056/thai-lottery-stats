@@ -813,13 +813,23 @@ function dcRecommendedNumbers(formulaResults,btMap){
 // The 5 field types with 2+ historical producing groups — the only ones structurally
 // eligible for เลขแนะนำ (see docs/adr/0001-...). pool6/back3/prize1_last4_digits/
 // bottom2_unit are deliberately excluded from this list, not just absent from results.
+// MAINTENANCE TRIPWIRE: dcRecommendedNumbers computes convergence for ANY field type;
+// this list only controls which fields get a card + the coverage-badge denominator.
+// If a NEW formula group is ever added to formula-engine.js targeting a field not
+// listed here (e.g. a 2nd producer for pool6/back3/prize1_last4_digits/bottom2_unit),
+// that field becomes structurally eligible per ADR-0001 and MUST be added here too, or
+// its เลขแนะนำ will be computed but silently never rendered. There is no runtime error
+// for this — it is a quiet display gap, so update this list when adding such a group.
 const DC_RECO_FIELDS=[['bottom2','2 ตัวล่าง'],['top3','3 ตัวบน'],['front3','3 ตัวหน้า'],['back3exact','3 ตัวหลัง'],['prize1_last2','ท้าย 2 รางวัลที่ 1']];
 const DC_RECO_GROUP_DISPLAY={X:'F'};
 function dcRecoGroupLabel(key){ return DC_RECO_GROUP_DISPLAY[key]||key; }
 
 function dcRecoExplainHtml(candidate){
   if(!candidate)return '';
-  return `${candidate.groups.map(dcRecoGroupLabel).join(' + ')} เห็นตรงกัน`;
+  // Map to display labels (X->F) BEFORE sorting, so the shown order is alphabetical by
+  // DISPLAYED group (e.g. F + G + H), not by raw key (which would show G + H + F).
+  const shown=candidate.groups.map(dcRecoGroupLabel).sort();
+  return `${shown.join(' + ')} เห็นตรงกัน`;
 }
 
 function dcRecoCardHtml(field,label,candidates){

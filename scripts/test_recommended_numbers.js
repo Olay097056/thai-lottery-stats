@@ -27,11 +27,25 @@ function extract(name) {
   return src.slice(m.index, i);
 }
 
-const code = [extract('dcRecommendedNumbers')].join('\n\n');
+// dcRecoExplainHtml depends on dcRecoGroupLabel + the DC_RECO_GROUP_DISPLAY const, so
+// pull those in too. extract() only grabs functions, so add the const line separately.
+function extractConst(name) {
+  const re = new RegExp('const ' + name + '=[^;]*;', 'm');
+  const m = re.exec(src);
+  if (!m) throw new Error('not found const: ' + name);
+  return m[0];
+}
+
+const code = [
+  extract('dcRecommendedNumbers'),
+  extractConst('DC_RECO_GROUP_DISPLAY'),
+  extract('dcRecoGroupLabel'),
+  extract('dcRecoExplainHtml'),
+].join('\n\n');
 const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(code, sandbox);
-const { dcRecommendedNumbers } = sandbox;
+const { dcRecommendedNumbers, dcRecoExplainHtml } = sandbox;
 
 let passed = 0;
 function check(label, cond) {
@@ -136,6 +150,17 @@ const btMap = new Map([
     ], undefined);
     return reco.bottom2?.length === 1;
   })());
+}
+
+// --- 6. explainer display ordering (X->F mapped BEFORE sort, so shown alphabetically) ---
+{
+  // Codex 'X' displays as 'F'; when it co-occurs with G and H, the shown order must be
+  // alphabetical by DISPLAYED label (F + G + H), not by raw key (which would give G + H + F).
+  check('explainer maps X->F and sorts by displayed label (F + G + H, not G + H + F)',
+    dcRecoExplainHtml({ num: '123', groups: ['G', 'H', 'X'], combinedEdge: 0 }) === 'F + G + H เห็นตรงกัน');
+  check('explainer of a plain 2-group agreement reads correctly',
+    dcRecoExplainHtml({ num: '23', groups: ['A', 'D'], combinedEdge: 0 }) === 'A + D เห็นตรงกัน');
+  check('explainer of null candidate is empty', dcRecoExplainHtml(null) === '');
 }
 
 console.log(`OK: ${passed} checks passed`);
