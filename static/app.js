@@ -907,8 +907,10 @@ async function loadDecisionCenter(){
 // Byte-for-byte behavioral duplicate of the Decision Center above (ISSUE-8), kept
 // under its own tab so the rebrand in ISSUE-9 can freely modify the block above
 // without touching what ships here. Shares generic utilities (api, escHtml,
-// predNum, mkChart, etc.) and the 'lottery_dc_snapshots' localStorage key with
-// the block above on purpose — same underlying track record, different skin.
+// predNum, mkChart, etc.) with the block above on purpose, but its Track Record
+// storage ('lottery_dc_snapshots_old') is seeded once from the live tab's data
+// and then fully isolated — OLD VER's own delete/clear actions must never
+// mutate the live สรุปงวดนี้ tab's history.
 function dcAddSourceOld(map,num,kind,label,detail=''){
   const n=String(num||'').trim();
   if(!n)return;
@@ -1257,12 +1259,23 @@ function dcRiskHtmlOld(rows){
 let _dcLastSnapshotOld=null;
 let _dcHistRowsOld=[];
 function dcSnapshotsOld(){
-  try{return JSON.parse(localStorage.getItem('lottery_dc_snapshots')||'[]');}catch(e){return [];}
+  try{
+    if(!localStorage.getItem('lottery_dc_snapshots_old_seeded')){
+      // One-time-ever seed from the live tab's history so OLD VER shows today's
+      // existing Track Record on first visit. The seeded flag is separate from
+      // the data key itself so that clearing OLD VER's snapshots to empty later
+      // (dcClearSnapshotsOld) is respected and never silently reseeded.
+      const seed=localStorage.getItem('lottery_dc_snapshots')||'[]';
+      localStorage.setItem('lottery_dc_snapshots_old',seed);
+      localStorage.setItem('lottery_dc_snapshots_old_seeded','1');
+    }
+    return JSON.parse(localStorage.getItem('lottery_dc_snapshots_old')||'[]');
+  }catch(e){return [];}
 }
 function dcAutoSaveSnapshotOld(snapshot){
   const list=dcSnapshotsOld().filter(x=>x.date!==snapshot.date);
   list.unshift({...snapshot,savedAt:new Date().toISOString()});
-  localStorage.setItem('lottery_dc_snapshots',JSON.stringify(list.slice(0,60)));
+  localStorage.setItem('lottery_dc_snapshots_old',JSON.stringify(list.slice(0,60)));
 }
 function dcTrackStatusBadgeOld(status){
   if(status==='hit')return '<span class="dc-status good">ถูก</span>';
@@ -1273,7 +1286,7 @@ function dcSnapshotTrackHtmlOld(rows){
   const list=dcSnapshotsOld();
   if(!list.length)return '<div class="dash-empty">ยังไม่มี Snapshot</div>';
   const modeLabel=m=>m==='strict'?'ปลอดภัย':m==='coverage'?'ลุ้นสูง':'สมดุล';
-  return `<div class="dc-snapshot-list-old">${list.map((s,i)=>{
+  return `<div class="dc-snapshot-list">${list.map((s,i)=>{
     const result=dcSnapshotResultOld(s,rows);
     return `<details class="dc-snapshot-item" ${i===0?'open':''}>
     <summary><span>${fmtDate(s.date)} · ${modeLabel(s.mode)}</span><span style="display:flex;gap:6px;align-items:center"><span class="dc-status">${(s.picks||[]).length} เลข</span>${dcTrackStatusBadgeOld(result.status)}</span></summary>
@@ -1303,14 +1316,14 @@ function dcLoadSnapshotOld(date){
 
 function dcDeleteSnapshotOld(date){
   const list=dcSnapshotsOld().filter(x=>x.date!==date);
-  localStorage.setItem('lottery_dc_snapshots',JSON.stringify(list));
+  localStorage.setItem('lottery_dc_snapshots_old',JSON.stringify(list));
   const el=document.getElementById('dc-snapshot-list-old');
   if(el)el.innerHTML=dcSnapshotTrackHtmlOld(_dcHistRowsOld);
   toast('ลบ Snapshot แล้ว','success');
 }
 
 function dcClearSnapshotsOld(){
-  localStorage.removeItem('lottery_dc_snapshots');
+  localStorage.removeItem('lottery_dc_snapshots_old');
   const el=document.getElementById('dc-snapshot-list-old');
   if(el)el.innerHTML=dcSnapshotTrackHtmlOld(_dcHistRowsOld);
   toast('ลบ Snapshot ทั้งหมดแล้ว','success');
