@@ -1897,13 +1897,16 @@ function _computeFormulasBatch(prev, nextDateStr, historyCtx=[]){
   }catch(e){}
 
   // ══ I. จักรพรรดิ — digit-position frequency across near1+prize2-5 pool ══
+  // ข้าม push ผลลัพธ์ทั้งหมดถ้า preds ว่าง (งวดก่อนหน้าไม่มีข้อมูล Sanook) แทนที่จะ push
+  // ชุดว่างเข้า backtest — งวดที่ไม่มีข้อมูลไม่ควรถูกนับเข้า total เพราะทายไม่ได้ตั้งแต่แรก
+  // (ไม่ใช่ "ทายแล้วพลาด") ไม่งั้น total จะถูกเจือจางด้วยงวดที่ไม่มีทางถูกได้เลย
   try{
     const _I=_imperialFormula(prev,10);
-    results.push({name:'I1 จักรพรรดิ · เลขเต็ม6หลัก',preds:_I,field:'pool6',baseline:_I.length||1});
+    if(_I.length)results.push({name:'I1 จักรพรรดิ · เลขเต็ม6หลัก',preds:_I,field:'pool6',baseline:_I.length});
   }catch(e){}
   try{
     const _IG=_imperialGoldFormula(prev,nextDay,nextMonth,nextYear2,10);
-    results.push({name:'I2 จักรพรรดิทองคำ · เลขเต็ม6หลัก',preds:_IG,field:'pool6',baseline:_IG.length||1});
+    if(_IG.length)results.push({name:'I2 จักรพรรดิทองคำ · เลขเต็ม6หลัก',preds:_IG,field:'pool6',baseline:_IG.length});
   }catch(e){}
 
   // ══ F. Pattern Link — train/test derived transition links (ไม่มองอนาคต) ══
