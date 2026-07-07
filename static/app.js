@@ -767,6 +767,104 @@ function dcConsensusCandidates(formulaResults,btMap,len,limit){
   return [...map.values()].sort((a,b)=>b.score-a.score||b.sources-a.sources||a.num.localeCompare(b.num)).slice(0,limit);
 }
 
+// เลขแนะนำ (Recommended Number) convergence engine — ISSUE-9.
+// Independent of dcConsensusCandidates above (which merges same-length field types for
+// a different, already-shipped "หลักเด่น" purpose and must stay untouched). Requires an
+// EXACT field-type match, not just equal digit length, and requires 2+ DISTINCT
+// top-level formula groups (A-I, keyed by name[0] — Codex's X-prefixed sub-formulas all
+// count as one group 'X'), never two sub-formulas of the same group. Field types with
+// only one historical producing group (pool6, back3, prize1_last4_digits, bottom2_unit)
+// therefore never produce a result — a structural consequence of the group-count check
+// below, not special-cased. See docs/adr/0001-convergence-definition-for-recommended-number.md.
+function dcRecommendedNumbers(formulaResults,btMap){
+  const byField=new Map();
+  (formulaResults||[]).forEach(fr=>{
+    const field=fr?.field;
+    if(!field)return;
+    const groupKey=String(fr?.name||'')[0]||'?';
+    const bt=btMap&&typeof btMap.get==='function'?btMap.get(fr.name):undefined;
+    const edge=typeof bt?.edge==='number'?bt.edge:0;
+    (fr.preds||[]).forEach(n=>{
+      const num=String(n||'').trim();
+      if(!num)return;
+      if(!byField.has(field))byField.set(field,new Map());
+      const numMap=byField.get(field);
+      if(!numMap.has(num))numMap.set(num,new Map());
+      const groupMap=numMap.get(num);
+      const prevEdge=groupMap.get(groupKey);
+      if(prevEdge===undefined||edge>prevEdge)groupMap.set(groupKey,edge);
+    });
+  });
+  const result={};
+  for(const [field,numMap] of byField){
+    const list=[];
+    for(const [num,groupMap] of numMap){
+      if(groupMap.size<2)continue;
+      const groups=[...groupMap.keys()].sort();
+      const combinedEdge=[...groupMap.values()].reduce((a,b)=>a+b,0);
+      list.push({num,groups,combinedEdge});
+    }
+    list.sort((a,b)=>b.groups.length-a.groups.length||b.combinedEdge-a.combinedEdge||a.num.localeCompare(b.num));
+    result[field]=list;
+  }
+  return result;
+}
+
+// The 5 field types with 2+ historical producing groups — the only ones structurally
+// eligible for เลขแนะนำ (see docs/adr/0001-...). pool6/back3/prize1_last4_digits/
+// bottom2_unit are deliberately excluded from this list, not just absent from results.
+const DC_RECO_FIELDS=[['bottom2','2 ตัวล่าง'],['top3','3 ตัวบน'],['front3','3 ตัวหน้า'],['back3exact','3 ตัวหลัง'],['prize1_last2','ท้าย 2 รางวัลที่ 1']];
+const DC_RECO_GROUP_DISPLAY={X:'F'};
+function dcRecoGroupLabel(key){ return DC_RECO_GROUP_DISPLAY[key]||key; }
+
+function dcRecoExplainHtml(candidate){
+  if(!candidate)return '';
+  return `${candidate.groups.map(dcRecoGroupLabel).join(' + ')} เห็นตรงกัน`;
+}
+
+function dcRecoCardHtml(field,label,candidates){
+  const list=candidates||[];
+  if(!list.length){
+    return `<div class="dc-reco-card">
+      <div class="dc-reco-field-label">${escHtml(label)}</div>
+      <div class="dc-reco-empty">ยังไม่มีสูตรเห็นตรงกันในงวดนี้</div>
+    </div>`;
+  }
+  const top=list[0];
+  const rest=list.slice(1);
+  const moreHtml=rest.length?`<details class="dc-reco-more">
+      <summary>ดูอีก ${rest.length} เลขที่เข้าเกณฑ์</summary>
+      <div class="dc-reco-more-row">${rest.map(c=>`<span class="dc-reco-more-chip" title="${escHtml(dcRecoExplainHtml(c))}">${escHtml(c.num)}</span>`).join('')}</div>
+    </details>`:'';
+  return `<div class="dc-reco-card has-num">
+    <div class="dc-reco-field-label">${escHtml(label)}</div>
+    <div class="dc-reco-num">${escHtml(top.num)}</div>
+    <div class="dc-reco-explain">${escHtml(dcRecoExplainHtml(top))}</div>
+    ${moreHtml}
+  </div>`;
+}
+
+function dcRecoCoverageBadgeHtml(reco){
+  const total=DC_RECO_FIELDS.length;
+  const count=DC_RECO_FIELDS.filter(([field])=>(reco?.[field]||[]).length>0).length;
+  const cls=count>0?'good':'warn';
+  return `<span class="dc-status ${cls}">${count}/${total} มีเลขแนะนำ</span>`;
+}
+
+function dcRecoSectionHtml(reco){
+  const cards=DC_RECO_FIELDS.map(([field,label])=>dcRecoCardHtml(field,label,reco?.[field])).join('');
+  return `<div class="dc-reco-board">
+    <div class="dc-reco-head">
+      <div class="dc-reco-title-group">
+        <div class="dc-reco-kicker">Decision Center · Cross-Formula Convergence</div>
+        <div class="dc-reco-title">เลขแนะนำ</div>
+      </div>
+      ${dcRecoCoverageBadgeHtml(reco)}
+    </div>
+    <div class="dc-reco-grid">${cards}</div>
+  </div>`;
+}
+
 function dcBtActual3(row){
   return new Set([row.top3,row.front3_1,row.front3_2,row.back3_1,row.back3_2].map(x=>String(x||'').padStart(3,'0')).filter(x=>x.length===3));
 }
@@ -857,6 +955,8 @@ async function loadDecisionCenter(){
     const secondarySignals=dcSecondaryPrizeSignals(hist.data,10);
     const scored=dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,secondarySignals});
     const formulaMatchHtml=dcFormulaMatchHtml(formulaMatches);
+    const btMapForReco=new Map((btRows||[]).map(r=>[r.name,r]));
+    const recoHtml=dcRecoSectionHtml(dcRecommendedNumbers(formulaResults,btMapForReco));
     const lottoBoardHtml=dcLottoSummaryBoard({next,scored,formulaMatches,btRows,p1,bottom,front,cats,mode,support});
     _dcHistRows=hist.data||[];
     _dcLastSnapshot={
@@ -872,7 +972,8 @@ async function loadDecisionCenter(){
       ?`<div style="height:180px"><canvas id="dc-trend-chart" role="img" aria-label="กราฟแนวโน้มอัตราถูกของ Decision Center"></canvas></div>`
       :'<div class="dash-empty">ยังไม่มีงวดที่มีผลจริงพอจะคำนวณแนวโน้ม — auto-save จะสะสมทุกครั้งที่เปิดหน้านี้</div>';
     root.className='';
-    root.innerHTML=`${lottoBoardHtml}
+    root.innerHTML=`${recoHtml}
+    ${lottoBoardHtml}
     <div class="dc-grid">
       <div class="dc-card dc-card-wide"><div class="dc-label">Snapshot + Track Record</div><div class="dc-signal-sub" style="margin-bottom:8px">บันทึกอัตโนมัติทุกครั้งที่เปิดหน้านี้ · &quot;ถูก&quot; = มีเลขอย่างน้อย 1 ตัวในชุดที่ตรงผลจริง</div><div id="dc-snapshot-list" class="dc-row">${dcSnapshotTrackHtml(_dcHistRows)}</div></div>
       <div class="dc-card dc-card-wide"><div class="dc-label">แนวโน้มอัตราถูก (20 งวดล่าสุดที่มีผล · rolling 5 งวด)</div>${trendHtml}</div>
