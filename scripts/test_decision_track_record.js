@@ -34,6 +34,13 @@ function extract(name) {
   return src.slice(m.index, i);
 }
 
+function extractConst(name) {
+  const re = new RegExp('const ' + name + '=[^;]*;', 'm');
+  const m = re.exec(src);
+  if (!m) throw new Error('not found const: ' + name);
+  return m[0];
+}
+
 const code = [
   extract('dcActualForDate'),
   extract('dcBtActual3'),
@@ -41,12 +48,17 @@ const code = [
   extract('dcSnapshotResult'),
   extract('dcHitRateTrend'),
   extract('dcBuildScoreRows'),
+  // ISSUE-10: เลขแนะนำ Track Record + Edge
+  extractConst('DC_RECO_FIELDS'),
+  extractConst('DC_RECO_PRODUCER_GROUPS'),
+  extract('dcRecoBaseline'),
+  extract('dcRecoEdgeRows'),
 ].join('\n\n');
 
 const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(code, sandbox);
-const { dcActualForDate, dcCheckHit, dcSnapshotResult, dcHitRateTrend, dcBuildScoreRows } = sandbox;
+const { dcActualForDate, dcCheckHit, dcSnapshotResult, dcHitRateTrend, dcBuildScoreRows, dcRecoBaseline, dcRecoEdgeRows } = sandbox;
 
 let passed = 0;
 function check(label, cond) {
@@ -144,5 +156,42 @@ const row482 = scored.all.find(r => r.num === '482');
 const row12 = scored.all.find(r => r.num === '12');
 check('topEdge picks the max edge among supporting formulas', row482?.topEdge === 22);
 check('topEdge is set for a single-formula pick too', row12?.topEdge === 15.5);
+
+// --- 6. เลขแนะนำ Track Record + Edge (ISSUE-10) ---
+// Baseline model: C(G,2) * pRandom^2, where pRandom is the random single-guess hit prob
+// under dcCheckHit (2-digit fields = 1/100, 3-digit fields = 5/1000 ≈ 1/200). Group count
+// G raises the baseline (coincidental convergence is cheaper with more producing groups).
+check('baseline rises with producing-group count (bottom2 G=6 > prize1_last2 G=2, same pRandom)',
+  dcRecoBaseline('bottom2', 6) > dcRecoBaseline('prize1_last2', 2));
+check('baseline for a single-pair field (G=2) uses C(2,2)=1',
+  Math.abs(dcRecoBaseline('front3', 2) - (1 * 0.005 * 0.005 * 100)) < 1e-9);
+check('baseline for bottom2 (G=6, C(6,2)=15, pRandom=0.01) = 15*0.0001*100 = 0.15%',
+  Math.abs(dcRecoBaseline('bottom2', 6) - 0.15) < 1e-9);
+check('2-digit field has higher pRandom than 3-digit at equal group count',
+  dcRecoBaseline('prize1_last2', 2) > dcRecoBaseline('front3', 2));
+
+// dcRecoEdgeRows: unconditional per-field hit rate over RESOLVED snapshots, reusing dcCheckHit.
+const recoRows = [
+  { date: '16/07/2026', prize1: '884215', top3: '215', front3_1: '884', front3_2: '123', back3_1: '215', back3_2: '999', bottom2: '15' },
+  { date: '01/07/2026', prize1: '111111', top3: '111', front3_1: '111', front3_2: '222', back3_1: '333', back3_2: '444', bottom2: '11' },
+];
+const recoSnaps = [
+  // resolved (16/07): bottom2 reco "15" -> HIT (bottom2=15); front3 reco "884" -> HIT (front3_1)
+  { date: '2026-07-16', reco: [{ field: 'bottom2', num: '15' }, { field: 'front3', num: '884' }] },
+  // resolved (01/07): bottom2 reco "99" -> MISS (bottom2=11); no front3 reco this round (not shown)
+  { date: '2026-07-01', reco: [{ field: 'bottom2', num: '99' }] },
+  // pending (no matching row) -> excluded from totals entirely
+  { date: '2026-09-01', reco: [{ field: 'bottom2', num: '15' }] },
+];
+const edgeRows = dcRecoEdgeRows(recoSnaps, recoRows);
+const byField = Object.fromEntries(edgeRows.map(r => [r.field, r]));
+check('edge rows cover exactly the 5 structurally-eligible fields', edgeRows.length === 5);
+check('totalResolved excludes pending snapshots (2 resolved of 3)', byField.bottom2.totalResolved === 2);
+check('bottom2: shown twice, 1 hit -> hitRate 50% over 2 resolved', byField.bottom2.shown === 2 && byField.bottom2.hits === 1 && Math.abs(byField.bottom2.hitRate - 50) < 1e-9);
+check('front3: shown once (other round had no front3 reco), 1 hit -> hitRate 50% unconditional', byField.front3.shown === 1 && byField.front3.hits === 1 && Math.abs(byField.front3.hitRate - 50) < 1e-9);
+check('top3: never shown -> hitRate 0, shown 0', byField.top3.shown === 0 && byField.top3.hits === 0 && byField.top3.hitRate === 0);
+check('edge = hitRate - baseline for a shown field', Math.abs(byField.bottom2.edge - (byField.bottom2.hitRate - byField.bottom2.baseline)) < 1e-9);
+check('each edge row carries its producing-group count', byField.bottom2.groupCount === 6 && byField.front3.groupCount === 2);
+check('empty snapshots -> all fields 0 resolved, no throw', dcRecoEdgeRows([], recoRows).every(r => r.totalResolved === 0 && r.hitRate === 0));
 
 console.log(`OK: ${passed} checks passed`);

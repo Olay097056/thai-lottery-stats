@@ -563,6 +563,7 @@ function dcSnapshotTrackHtml(rows){
     <summary><span>${fmtDate(s.date)} · ${modeLabel(s.mode)}</span><span style="display:flex;gap:6px;align-items:center"><span class="dc-status">${(s.picks||[]).length} เลข</span>${dcTrackStatusBadge(result.status)}</span></summary>
     <div class="dc-snapshot-detail">
       <div class="dc-row">${(s.picks||[]).map(p=>`<span class="num-badge">${escHtml(p.num)}<span style="font-size:.62rem;margin-left:4px;color:var(--text3)">${p.score}/100</span></span>`).join('')||'<span class="dash-empty">ไม่มีเลข</span>'}</div>
+      ${dcRecoSnapshotBadgesHtml(s,rows)}
       ${(s.pattern||[]).length?`<div class="dc-signal-sub" style="margin-top:7px">Pattern Link: ${(s.pattern||[]).map(p=>`${escHtml(p.num)}(${p.score})`).join(' ')}</div>`:''}
       <div class="dc-signal-sub" style="margin-top:7px">Predict × สูตรตรงกัน ${s.matches??'-'} รายการ${result.status!=='pending'?` · ถูก ${result.hits}/${result.total}`:''} · บันทึก ${s.savedAt?new Date(s.savedAt).toLocaleString('th-TH'):'-'}</div>
       <div class="dc-snapshot-actions">
@@ -821,8 +822,55 @@ function dcRecommendedNumbers(formulaResults,btMap){
 // its เลขแนะนำ will be computed but silently never rendered. There is no runtime error
 // for this — it is a quiet display gap, so update this list when adding such a group.
 const DC_RECO_FIELDS=[['bottom2','2 ตัวล่าง'],['top3','3 ตัวบน'],['front3','3 ตัวหน้า'],['back3exact','3 ตัวหลัง'],['prize1_last2','ท้าย 2 รางวัลที่ 1']];
+// Known count of DISTINCT top-level producing groups per field type (see ADR-0001 and the
+// tripwire above). Drives the group-count-aware เลขแนะนำ baseline in dcRecoBaseline. Keep in
+// sync with formula-engine.js: bottom2←A,B,C,D,F/X,G · top3←G,H,F/X · front3←D,F/X ·
+// back3exact←D,F/X · prize1_last2←D,F/X. Add here too if a new group targets one of these.
+const DC_RECO_PRODUCER_GROUPS={bottom2:6,top3:3,front3:2,back3exact:2,prize1_last2:2};
 const DC_RECO_GROUP_DISPLAY={X:'F'};
 function dcRecoGroupLabel(key){ return DC_RECO_GROUP_DISPLAY[key]||key; }
+
+// เลขแนะนำ's own honest baseline (ADR-0002: no backtest exemption). This is the expected
+// per-round rate at which a coincidental 2-group convergence would ALSO hit, under a null
+// where each producing group emits ~1 random candidate: C(G,2) group-pairs × pRandom², where
+// pRandom is the random single-guess hit probability under dcCheckHit's own definition
+// (2-digit fields → exact 2 ตัวล่าง = 1/100; 3-digit fields → any of the ~5 three-digit
+// result slots = 5/1000 ≈ 1/200). The group count G enters via C(G,2): the more groups that
+// can produce a field type, the cheaper coincidental convergence is, so the higher the bar
+// เลขแนะนำ must clear there. This is a deliberately conservative order-of-magnitude estimate
+// (real per-group candidate sets are larger than 1, so true coincidence rates are somewhat
+// higher) — documented as such rather than presented as an exact probability.
+function dcRecoBaseline(field,groupCount){
+  const g=Math.max(2,Number(groupCount)||2);
+  const pRandom=['bottom2','prize1_last2'].includes(field)?0.01:0.005;
+  const pairs=g*(g-1)/2;
+  return pairs*pRandom*pRandom*100;
+}
+
+// Per-field-type เลขแนะนำ Track Record + Edge over RESOLVED auto-snapshots. Unconditional:
+// the denominator is every resolved round (a round where a field's เลขแนะนำ didn't converge
+// simply didn't hit that round), so the Edge is comparable to the group-count-aware baseline
+// above. Reuses dcActualForDate + dcCheckHit — no new hit logic. Snapshot shape (per round):
+// s.reco = [{field, num, groups}] for each field that had a top เลขแนะนำ.
+function dcRecoEdgeRows(snapshots,rows){
+  const resolved=(snapshots||[])
+    .map(s=>({s,actual:dcActualForDate(rows,s?.date)}))
+    .filter(x=>x.actual);
+  const totalResolved=resolved.length;
+  return DC_RECO_FIELDS.map(([field,label])=>{
+    const groupCount=DC_RECO_PRODUCER_GROUPS[field]||2;
+    let shown=0,hits=0;
+    resolved.forEach(({s,actual})=>{
+      const entry=(s.reco||[]).find(r=>r&&r.field===field);
+      if(!entry)return;
+      shown++;
+      if(dcCheckHit(entry.num,actual)==='hit')hits++;
+    });
+    const hitRate=totalResolved?hits/totalResolved*100:0;
+    const baseline=dcRecoBaseline(field,groupCount);
+    return {field,label,groupCount,totalResolved,shown,hits,hitRate,baseline,edge:hitRate-baseline};
+  });
+}
 
 function dcRecoExplainHtml(candidate){
   if(!candidate)return '';
@@ -873,6 +921,55 @@ function dcRecoSectionHtml(reco){
     </div>
     <div class="dc-reco-grid">${cards}</div>
   </div>`;
+}
+
+// เลขแนะนำ Edge card — its own labelled metric, never merged into a formula Edge or the
+// Final Confidence Score. Shows, per field type: producing-group count, how many resolved
+// rounds it was shown in, its unconditional hit rate, its own group-count-aware baseline,
+// and Edge = hitRate − baseline.
+function dcRecoEdgeCardHtml(edgeRows){
+  const anyResolved=(edgeRows||[]).some(r=>r.totalResolved>0);
+  if(!anyResolved){
+    return `<div class="dc-card dc-card-wide">
+      <div class="dc-label">เลขแนะนำ · Edge (จาก Track Record)</div>
+      <div class="dc-signal-sub" style="margin-bottom:8px">Edge = อัตราถูกจริง − baseline (บังเอิญตรงกันแล้วถูก) · baseline สูงขึ้นตามจำนวนกลุ่มที่ผลิต field นั้น</div>
+      <div class="dash-empty">ยังไม่มีงวดที่มีผลจริง — auto-save จะสะสมเลขแนะนำทุกงวดเพื่อวัด Edge อย่างซื่อสัตย์</div>
+    </div>`;
+  }
+  const total=edgeRows[0]?.totalResolved||0;
+  const rows=edgeRows.map(r=>{
+    const edgeCls=r.edge>0?'good':r.edge<0?'bad':'warn';
+    const shownNote=r.shown?`${r.shown}/${total} งวด · ถูก ${r.hits}`:'ยังไม่เคยเห็นตรงกันในงวดที่มีผล';
+    return `<div class="dc-reco-edge-row">
+      <div class="dc-reco-edge-field">${escHtml(r.label)} <span class="dc-reco-edge-groups">${r.groupCount} กลุ่มผลิต</span></div>
+      <div class="dc-reco-edge-stat">${shownNote}</div>
+      <div class="dc-reco-edge-nums">
+        <span class="dc-reco-edge-rate">${r.hitRate.toFixed(1)}%</span>
+        <span class="dc-reco-edge-base">base ${r.baseline.toFixed(2)}%</span>
+        <span class="dc-status ${edgeCls}">edge ${r.edge>=0?'+':''}${r.edge.toFixed(2)}%</span>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="dc-card dc-card-wide">
+    <div class="dc-label">เลขแนะนำ · Edge (จาก Track Record · ${total} งวดที่มีผล)</div>
+    <div class="dc-signal-sub" style="margin-bottom:8px">Edge = อัตราถูกจริง − baseline (บังเอิญตรงกันแล้วถูก) · baseline สูงขึ้นตามจำนวนกลุ่มที่ผลิต field นั้น (bottom2 มี 6 กลุ่ม convergence เกิดง่าย จึงต้องผ่านบาร์สูงกว่า)</div>
+    <div class="dc-reco-edge-list">${rows}</div>
+  </div>`;
+}
+
+// Per-round เลขแนะนำ hit/miss/pending badges for the snapshot Track Record list. Reuses
+// dcCheckHit — same coarse digit-length hit definition used for Picks.
+function dcRecoSnapshotBadgesHtml(snapshot,rows){
+  const reco=snapshot?.reco||[];
+  if(!reco.length)return '';
+  const actual=dcActualForDate(rows,snapshot?.date);
+  const chips=reco.map(r=>{
+    const status=dcCheckHit(r.num,actual);
+    const cls=status==='hit'?'good':status==='miss'?'bad':'warn';
+    const txt=status==='hit'?'ถูก':status==='miss'?'ไม่ถูก':'รอผล';
+    return `<span class="dc-status ${cls}" title="${escHtml(r.field)}">แนะนำ ${escHtml(r.num)} · ${txt}</span>`;
+  }).join('');
+  return `<div class="dc-reco-snap-badges" style="margin-top:7px">${chips}</div>`;
 }
 
 function dcBtActual3(row){
@@ -966,7 +1063,14 @@ async function loadDecisionCenter(){
     const scored=dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,secondarySignals});
     const formulaMatchHtml=dcFormulaMatchHtml(formulaMatches);
     const btMapForReco=new Map((btRows||[]).map(r=>[r.name,r]));
-    const recoHtml=dcRecoSectionHtml(dcRecommendedNumbers(formulaResults,btMapForReco));
+    const recoObj=dcRecommendedNumbers(formulaResults,btMapForReco);
+    const recoHtml=dcRecoSectionHtml(recoObj);
+    // Top เลขแนะนำ per field type — snapshotted so its honest Track Record + Edge can be
+    // measured once the target draw resolves (ISSUE-10, ADR-0002: no backtest exemption).
+    const recoTops=DC_RECO_FIELDS.map(([field])=>{
+      const list=recoObj[field]||[];
+      return list.length?{field,num:list[0].num,groups:list[0].groups}:null;
+    }).filter(Boolean);
     const lottoBoardHtml=dcLottoSummaryBoard({next,scored,formulaMatches,btRows,p1,bottom,front,cats,mode,support});
     _dcHistRows=hist.data||[];
     _dcLastSnapshot={
@@ -974,15 +1078,18 @@ async function loadDecisionCenter(){
       mode,
       picks:scored.picks.map(x=>({num:x.num,score:x.score,type:x.type,explain:dcExplainPick(x)})),
       pattern:scored.all.filter(x=>(x.sources||[]).some(s=>String(s).includes('Pattern Link'))).slice(0,5).map(x=>({num:x.num,score:x.score})),
+      reco:recoTops,
       matches:formulaMatches.length
     };
     dcAutoSaveSnapshot(_dcLastSnapshot);
+    const recoEdgeHtml=dcRecoEdgeCardHtml(dcRecoEdgeRows(dcSnapshots(),_dcHistRows));
     const trend=dcHitRateTrend(dcSnapshots(),_dcHistRows,5,20);
     const trendHtml=trend.length
       ?`<div style="height:180px"><canvas id="dc-trend-chart" role="img" aria-label="กราฟแนวโน้มอัตราถูกของ Decision Center"></canvas></div>`
       :'<div class="dash-empty">ยังไม่มีงวดที่มีผลจริงพอจะคำนวณแนวโน้ม — auto-save จะสะสมทุกครั้งที่เปิดหน้านี้</div>';
     root.className='';
     root.innerHTML=`${recoHtml}
+    <div class="dc-grid">${recoEdgeHtml}</div>
     ${lottoBoardHtml}
     <div class="dc-grid">
       <div class="dc-card dc-card-wide"><div class="dc-label">Snapshot + Track Record</div><div class="dc-signal-sub" style="margin-bottom:8px">บันทึกอัตโนมัติทุกครั้งที่เปิดหน้านี้ · &quot;ถูก&quot; = มีเลขอย่างน้อย 1 ตัวในชุดที่ตรงผลจริง</div><div id="dc-snapshot-list" class="dc-row">${dcSnapshotTrackHtml(_dcHistRows)}</div></div>
