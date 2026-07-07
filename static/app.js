@@ -368,10 +368,7 @@ function dcCheckHit(num,actual){
   const n=String(num||'').trim();
   const p=(v,w)=>String(v||'').padStart(w,'0');
   if(n.length===6)return n===p(actual.prize1,6)?'hit':'miss';
-  if(n.length===3){
-    const slots=[actual.top3,actual.front3_1,actual.front3_2,actual.back3_1,actual.back3_2].map(v=>p(v,3));
-    return slots.includes(n)?'hit':'miss';
-  }
+  if(n.length===3)return dcBtActual3(actual).has(n)?'hit':'miss';
   if(n.length===2)return n===p(actual.bottom2,2)?'hit':'miss';
   return 'miss';
 }

@@ -36,6 +36,7 @@ function extract(name) {
 
 const code = [
   extract('dcActualForDate'),
+  extract('dcBtActual3'),
   extract('dcCheckHit'),
   extract('dcSnapshotResult'),
   extract('dcHitRateTrend'),
