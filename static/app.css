@@ -146,6 +146,7 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans Thai','Syne',
 .dc-lotto-mini{padding:13px;border-bottom:1px solid var(--border2)}
 .dc-lotto-mini:last-child{border-bottom:none}
 .dc-lotto-row{display:flex;flex-wrap:wrap;gap:7px;align-items:center;justify-content:center}
+.dc-lotto-block{padding:13px 14px;border-top:1px solid var(--border2)}
 .dc-lotto-sections{display:grid;grid-template-columns:repeat(3,1fr)}
 .dc-lotto-section{padding:13px;border-right:1px solid var(--border2);text-align:center}
 .dc-lotto-section:last-child{border-right:none}
@@ -606,6 +607,7 @@ select,input[type=text],input[type=number],input[type=search]{
   box-shadow:inset 0 1px 2px rgba(0,0,0,.18);
 }
 select:focus,input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.28)}
+select option{background:var(--surface2,#2c2c30);color:var(--text,#fff)}
 select:focus-visible,input:focus-visible,button:focus-visible,.ftab-btn:focus-visible,.nav-item:focus-visible,[tabindex]:focus-visible{outline:2px solid rgba(10,132,255,.7);outline-offset:2px;border-color:var(--accent)}
 /* Main page tabs — macOS segmented control */
 .pred-page-tabs{

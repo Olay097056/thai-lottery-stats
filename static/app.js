@@ -351,6 +351,54 @@ function dcFormulaBacktestRows(rows,n=80){
   }).sort((a,b)=>b.edge-a.edge);
 }
 
+// ─── Decision Center track record (สรุปงวดนี้ auto-snapshot + hit-rate trend) ──────
+function dcActualForDate(rows,iso){
+  for(const row of rows||[]){
+    if(!row?.date)continue;
+    const [d,m,y]=String(row.date).split('/').map(Number);
+    if(!d||!m||!y)continue;
+    const rowIso=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if(rowIso===iso)return row;
+  }
+  return null;
+}
+
+function dcCheckHit(num,actual){
+  if(!actual)return 'pending';
+  const n=String(num||'').trim();
+  const p=(v,w)=>String(v||'').padStart(w,'0');
+  if(n.length===6)return n===p(actual.prize1,6)?'hit':'miss';
+  if(n.length===3){
+    const slots=[actual.top3,actual.front3_1,actual.front3_2,actual.back3_1,actual.back3_2].map(v=>p(v,3));
+    return slots.includes(n)?'hit':'miss';
+  }
+  if(n.length===2)return n===p(actual.bottom2,2)?'hit':'miss';
+  return 'miss';
+}
+
+function dcSnapshotResult(snapshot,rows){
+  const actual=dcActualForDate(rows,snapshot?.date);
+  const picks=snapshot?.picks||[];
+  if(!actual)return {status:'pending',hits:0,total:picks.length};
+  const results=picks.map(p=>dcCheckHit(p.num,actual));
+  const hits=results.filter(r=>r==='hit').length;
+  return {status:hits>0?'hit':'miss',hits,total:picks.length};
+}
+
+function dcHitRateTrend(snapshots,rows,window=5,take=20){
+  const resolved=(snapshots||[])
+    .map(s=>({date:s.date,...dcSnapshotResult(s,rows)}))
+    .filter(r=>r.status!=='pending')
+    .sort((a,b)=>a.date.localeCompare(b.date));
+  const recent=resolved.slice(-take);
+  return recent.map((r,i)=>{
+    const start=Math.max(0,i-window+1);
+    const win=recent.slice(start,i+1);
+    const hitCount=win.filter(w=>w.status==='hit').length;
+    return {date:r.date,value:+(hitCount/win.length*100).toFixed(1)};
+  });
+}
+
 function dcSecondaryPrizeSignals(rows,limit=10){
   const cols=[
     'prize2_1','prize2_2','prize2_3','prize2_4','prize2_5',
@@ -396,13 +444,16 @@ function dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,second
   const cfg={strict:{min:58,limit:4},balanced:{min:42,limit:6},coverage:{min:26,limit:10}}[mode]||{min:42,limit:6};
   const add=(num,type,source,points,reason,meta={})=>{
     const n=String(num||'').trim(); if(!n)return;
-    const r=map.get(n)||{num:n,type,sources:[],score:0,reasons:[],warnings:[],formulaWeight:0,predictCount:0,formulaCount:0};
+    const r=map.get(n)||{num:n,type,sources:[],score:0,reasons:[],warnings:[],formulaWeight:0,predictCount:0,formulaCount:0,topEdge:null};
     r.type=r.type||type;
     r.score+=points;
     r.sources.push(source);
     if(reason)r.reasons.push(reason);
     if(meta.predict)r.predictCount++;
-    if(meta.formula){r.formulaCount++;r.formulaWeight+=meta.weight||1;}
+    if(meta.formula){
+      r.formulaCount++;r.formulaWeight+=meta.weight||1;
+      if(typeof meta.edge==='number')r.topEdge=r.topEdge==null?meta.edge:Math.max(r.topEdge,meta.edge);
+    }
     map.set(n,r);
   };
   (cats.prize1?.numbers||[]).slice(0,12).forEach((r,i)=>{
@@ -428,7 +479,7 @@ function dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,second
     (fr.preds||[]).forEach(n=>{
       const len=String(n||'').length;
       if(![2,3,6].includes(len))return;
-      add(n,`${len} หลัก`,fr.name,5*w,`สูตร ${fr.name} ให้เลขนี้โดยตรง${bt?` (edge ${edge>=0?'+':''}${edge.toFixed(1)}%)`:''}`,{formula:true,weight:w});
+      add(n,`${len} หลัก`,fr.name,5*w,`สูตร ${fr.name} ให้เลขนี้โดยตรง${bt?` (edge ${edge>=0?'+':''}${edge.toFixed(1)}%)`:''}`,{formula:true,weight:w,edge:bt?bt.edge:undefined});
     });
   });
   (formulaMatches||[]).forEach(m=>{
@@ -436,7 +487,7 @@ function dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,second
       const bt=btMap.get(f.label);
       const w=bt?.weight||1;
       const edge=bt?`backtest edge ${bt.edge>=0?'+':''}${bt.edge.toFixed(1)}%`:'ยังไม่มี backtest weight';
-      add(m.num,String(m.num).length+' หลัก',f.label,10*w,`สูตร ${f.label} สนับสนุน (${edge})`,{formula:true,weight:w});
+      add(m.num,String(m.num).length+' หลัก',f.label,10*w,`สูตร ${f.label} สนับสนุน (${edge})`,{formula:true,weight:w,edge:bt?.edge});
     });
   });
   for(const r of map.values()){
@@ -451,13 +502,19 @@ function dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,second
   return {all,picks:all.filter(r=>r.score>=cfg.min).slice(0,cfg.limit),risks:all.filter(r=>r.warnings.length).slice(0,6)};
 }
 
+function dcEdgeBadge(topEdge){
+  if(topEdge==null)return '';
+  const cls=topEdge>0?'good':topEdge<0?'bad':'warn';
+  return `<span class="dc-status ${cls}">edge ${topEdge>=0?'+':''}${topEdge.toFixed(1)}%</span>`;
+}
+
 function dcScoreHtml(rows){
   if(!rows?.length)return '<div class="dash-empty">ยังไม่มีเลขที่ผ่านโหมดคัดเลขนี้</div>';
   return `<div class="dc-decision-list">${rows.map((r,i)=>`
     <details class="dc-pick ${i===0?'top':''}" ${i===0?'open':''}>
       <summary class="dc-pick-head">
         <span class="dc-pick-num">${escHtml(r.num)}</span>
-        <span class="dc-score">${r.score}/100</span>
+        <span style="display:flex;align-items:center;gap:6px"><span class="dc-score">${r.score}/100</span>${dcEdgeBadge(r.topEdge)}</span>
       </summary>
       <div class="dc-meter"><div class="dc-meter-fill" style="width:${r.score}%"></div></div>
       <div class="dc-explain">${escHtml(dcExplainPick(r))}</div>
@@ -481,34 +538,39 @@ function dcRiskHtml(rows){
 }
 
 let _dcLastSnapshot=null;
+let _dcHistRows=[];
 function dcSnapshots(){
   try{return JSON.parse(localStorage.getItem('lottery_dc_snapshots')||'[]');}catch(e){return [];}
 }
-function dcSaveSnapshot(){
-  if(!_dcLastSnapshot){toast('ยังไม่มีข้อมูลสรุปให้บันทึก','error');return;}
-  const list=dcSnapshots().filter(x=>x.date!==_dcLastSnapshot.date);
-  list.unshift({..._dcLastSnapshot,savedAt:new Date().toISOString()});
-  localStorage.setItem('lottery_dc_snapshots',JSON.stringify(list.slice(0,20)));
-  toast('บันทึก Snapshot แล้ว','success');
-  const el=document.getElementById('dc-snapshot-list');
-  if(el)el.innerHTML=dcSnapshotHtml();
+function dcAutoSaveSnapshot(snapshot){
+  const list=dcSnapshots().filter(x=>x.date!==snapshot.date);
+  list.unshift({...snapshot,savedAt:new Date().toISOString()});
+  localStorage.setItem('lottery_dc_snapshots',JSON.stringify(list.slice(0,60)));
 }
-function dcSnapshotHtml(){
+function dcTrackStatusBadge(status){
+  if(status==='hit')return '<span class="dc-status good">ถูก</span>';
+  if(status==='miss')return '<span class="dc-status bad">ไม่ถูก</span>';
+  return '<span class="dc-status warn">รอผล</span>';
+}
+function dcSnapshotTrackHtml(rows){
   const list=dcSnapshots();
   if(!list.length)return '<div class="dash-empty">ยังไม่มี Snapshot</div>';
   const modeLabel=m=>m==='strict'?'ปลอดภัย':m==='coverage'?'ลุ้นสูง':'สมดุล';
-  return `<div class="dc-snapshot-list">${list.map((s,i)=>`<details class="dc-snapshot-item" ${i===0?'open':''}>
-    <summary><span>${fmtDate(s.date)} · ${modeLabel(s.mode)}</span><span class="dc-status">${(s.picks||[]).length} เลข</span></summary>
+  return `<div class="dc-snapshot-list">${list.map((s,i)=>{
+    const result=dcSnapshotResult(s,rows);
+    return `<details class="dc-snapshot-item" ${i===0?'open':''}>
+    <summary><span>${fmtDate(s.date)} · ${modeLabel(s.mode)}</span><span style="display:flex;gap:6px;align-items:center"><span class="dc-status">${(s.picks||[]).length} เลข</span>${dcTrackStatusBadge(result.status)}</span></summary>
     <div class="dc-snapshot-detail">
       <div class="dc-row">${(s.picks||[]).map(p=>`<span class="num-badge">${escHtml(p.num)}<span style="font-size:.62rem;margin-left:4px;color:var(--text3)">${p.score}/100</span></span>`).join('')||'<span class="dash-empty">ไม่มีเลข</span>'}</div>
       ${(s.pattern||[]).length?`<div class="dc-signal-sub" style="margin-top:7px">Pattern Link: ${(s.pattern||[]).map(p=>`${escHtml(p.num)}(${p.score})`).join(' ')}</div>`:''}
-      <div class="dc-signal-sub" style="margin-top:7px">Predict × สูตรตรงกัน ${s.matches??'-'} รายการ · บันทึก ${s.savedAt?new Date(s.savedAt).toLocaleString('th-TH'):'-'}</div>
+      <div class="dc-signal-sub" style="margin-top:7px">Predict × สูตรตรงกัน ${s.matches??'-'} รายการ${result.status!=='pending'?` · ถูก ${result.hits}/${result.total}`:''} · บันทึก ${s.savedAt?new Date(s.savedAt).toLocaleString('th-TH'):'-'}</div>
       <div class="dc-snapshot-actions">
         <button class="dc-mini-btn" onclick="dcLoadSnapshot('${escHtml(s.date)}')">โหลดงวดนี้</button>
         <button class="dc-mini-btn" onclick="dcDeleteSnapshot('${escHtml(s.date)}')">ลบ</button>
       </div>
     </div>
-  </details>`).join('')}
+  </details>`;
+  }).join('')}
   ${list.length>1?'<button class="dc-mini-btn" onclick="dcClearSnapshots()">ลบ Snapshot ทั้งหมด</button>':''}</div>`;
 }
 
@@ -526,14 +588,14 @@ function dcDeleteSnapshot(date){
   const list=dcSnapshots().filter(x=>x.date!==date);
   localStorage.setItem('lottery_dc_snapshots',JSON.stringify(list));
   const el=document.getElementById('dc-snapshot-list');
-  if(el)el.innerHTML=dcSnapshotHtml();
+  if(el)el.innerHTML=dcSnapshotTrackHtml(_dcHistRows);
   toast('ลบ Snapshot แล้ว','success');
 }
 
 function dcClearSnapshots(){
   localStorage.removeItem('lottery_dc_snapshots');
   const el=document.getElementById('dc-snapshot-list');
-  if(el)el.innerHTML=dcSnapshotHtml();
+  if(el)el.innerHTML=dcSnapshotTrackHtml(_dcHistRows);
   toast('ลบ Snapshot ทั้งหมดแล้ว','success');
 }
 
@@ -596,13 +658,22 @@ function clearPageSnapshots(key){
   toast('ลบ Snapshot ทั้งหมดแล้ว','success');
 }
 
-function dcLottoSummaryBoard({next,scored,formulaMatches,btRows,p1,bottom,front,cats,mode}){
+function dcLottoSummaryBoard({next,scored,formulaMatches,btRows,p1,bottom,front,cats,mode,support}){
   const pickByLen=(len,n)=>scored.all.filter(x=>String(x.num).length===len).slice(0,n);
   const best=scored.picks[0]||scored.all[0]||{};
   const three=pickByLen(3,6).map(x=>x.num);
   const two=pickByLen(2,6).map(x=>x.num);
-  const p1Nums=(p1||[]).slice(0,3).map(predNum).filter(Boolean);
   const back=[...(cats.back3_1?.numbers||[]).slice(0,3),...(cats.back3_2?.numbers||[]).slice(0,3)].map(predNum).filter(Boolean);
+  const p1ScoreKey=predScoreKey(p1||[]);
+  const p1MaxScore=Math.max(1,...(p1||[]).map(x=>predScore(x,p1ScoreKey)));
+  const p1DetailHtml=(p1||[]).slice(0,3).map((r,i)=>predDetailHtml({
+    num:predNum(r),col:'prize1',row:r,rank:i+1,
+    score:predScore(r,p1ScoreKey),maxScore:p1MaxScore,
+    support:(support?.get(p1Front(r))?.count||0)+(support?.get(p1Back(r))?.count||0),
+    extra:[`หน้า ${p1Front(r)}`,`ท้าย ${p1Back(r)}`]
+  })).join('')||'<span class="dash-empty">-</span>';
+  const supportTop=[...(support?.values()||[])].filter(x=>x.count>1).sort((a,b)=>b.count-a.count||a.num.localeCompare(b.num)).slice(0,10);
+  const supportHtml=supportTop.map(x=>`<span class="num-badge agree predict-copy" onclick="copyPredNumber('${escHtml(x.num)}')">${escHtml(x.num)}<span style="font-size:.62rem;margin-left:4px;color:var(--text3)">x${x.count}</span></span>`).join('')||'<span class="dash-empty">-</span>';
   const bestFormula=(btRows||[]).slice(0,3);
   const formulaLead=(formulaMatches||[]).slice(0,3);
   const patternLead=(scored.all||[]).filter(x=>(x.sources||[]).some(s=>String(s).includes('Pattern Link'))).slice(0,2);
@@ -642,10 +713,18 @@ function dcLottoSummaryBoard({next,scored,formulaMatches,btRows,p1,bottom,front,
         </div>
       </div>
     </div>
+    <div class="dc-lotto-block">
+      <div class="dc-lotto-label">รางวัลที่ 1 จาก Predict</div>
+      <div class="dc-row" style="justify-content:center">${p1DetailHtml}</div>
+    </div>
     <div class="dc-lotto-sections">
-      <div class="dc-lotto-section"><div class="dc-lotto-label">รางวัลที่ 1 จาก Predict</div><div class="dc-lotto-row">${p1Nums.map(n=>numChip(n)).join('')||'<span class="dash-empty">-</span>'}</div></div>
       <div class="dc-lotto-section"><div class="dc-lotto-label">เลขหน้า 3 ตัว</div><div class="dc-lotto-row">${[...new Set(front)].slice(0,6).map(n=>numChip(n)).join('')||'<span class="dash-empty">-</span>'}</div></div>
       <div class="dc-lotto-section"><div class="dc-lotto-label">เลขท้าย 3 / 2 ตัว</div><div class="dc-lotto-row">${[...new Set([...back.slice(0,4),...(bottom||[]).slice(0,4).map(predNum)])].map(n=>numChip(n)).join('')||'<span class="dash-empty">-</span>'}</div></div>
+      <div class="dc-lotto-section"><div class="dc-lotto-label">เลขหนุนข้ามหมวด</div><div class="dc-lotto-row">${supportHtml}</div></div>
+    </div>
+    <div class="dc-lotto-block">
+      <div class="dc-lotto-label">Final Confidence Score · ${modeLabel}</div>
+      ${dcScoreHtml(scored.picks)}
     </div>
     ${patternStrip}
     <div class="dc-lotto-formula">
@@ -654,6 +733,9 @@ function dcLottoSummaryBoard({next,scored,formulaMatches,btRows,p1,bottom,front,
     <div class="dc-lotto-actions">
       <button class="btn btn-primary" onclick="dcRunDecisionBacktest()">Backtest เลขเด่นชุดนี้</button>
       <button class="btn btn-secondary" onclick="showPage('backtest')">Backtest รางวัลที่ 1</button>
+      <button class="btn btn-secondary" onclick="showPage('predict')">เปิดหน้าทำนาย</button>
+      <button class="btn btn-secondary" onclick="showPage('formula')">เปิดสูตรคำนวณ</button>
+      <button class="btn btn-secondary" onclick="copyPredNumber('${escHtml([...(p1||[]).map(predNum),...(bottom||[]).slice(0,4).map(predNum)].filter(Boolean).join(' '))}')">copy ชุดหลัก</button>
     </div>
   </div>`;
 }
@@ -765,7 +847,6 @@ async function loadDecisionCenter(){
     const bottom=(cats.bottom2?.numbers||[]).slice(0,8);
     const front=[...(cats.front3_1?.numbers||[]).slice(0,4),...(cats.front3_2?.numbers||[]).slice(0,4)].map(predNum).filter(Boolean);
     const support=predictionSupportMap(cats);
-    const supportTop=[...support.values()].filter(x=>x.count>1).sort((a,b)=>b.count-a.count||a.num.localeCompare(b.num)).slice(0,10);
     const latest=summary.latest||{};
     const healthStatus=latest.prize1?'good':'bad';
     const healthText=latest.prize1?'พร้อมใช้':'ข้อมูลยังไม่พร้อม';
@@ -775,7 +856,8 @@ async function loadDecisionCenter(){
     const secondarySignals=dcSecondaryPrizeSignals(hist.data,10);
     const scored=dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,secondarySignals});
     const formulaMatchHtml=dcFormulaMatchHtml(formulaMatches);
-    const lottoBoardHtml=dcLottoSummaryBoard({next,scored,formulaMatches,btRows,p1,bottom,front,cats,mode});
+    const lottoBoardHtml=dcLottoSummaryBoard({next,scored,formulaMatches,btRows,p1,bottom,front,cats,mode,support});
+    _dcHistRows=hist.data||[];
     _dcLastSnapshot={
       date:next,
       mode,
@@ -783,44 +865,37 @@ async function loadDecisionCenter(){
       pattern:scored.all.filter(x=>(x.sources||[]).some(s=>String(s).includes('Pattern Link'))).slice(0,5).map(x=>({num:x.num,score:x.score})),
       matches:formulaMatches.length
     };
+    dcAutoSaveSnapshot(_dcLastSnapshot);
+    const trend=dcHitRateTrend(dcSnapshots(),_dcHistRows,5,20);
+    const trendHtml=trend.length
+      ?`<div style="height:180px"><canvas id="dc-trend-chart" role="img" aria-label="กราฟแนวโน้มอัตราถูกของ Decision Center"></canvas></div>`
+      :'<div class="dash-empty">ยังไม่มีงวดที่มีผลจริงพอจะคำนวณแนวโน้ม — auto-save จะสะสมทุกครั้งที่เปิดหน้านี้</div>';
     root.className='';
-    root.innerHTML=`${lottoBoardHtml}<div id="dc-backtest-panel"></div><div class="dc-hero">
-      <div class="dc-panel">
-        <div class="dc-head">
-          <div><div class="dc-title">Decision Center</div><div class="dc-sub">งวดเป้าหมาย ${fmtDate(next)} · รวมจาก Prediction + สูตรคำนวณ + Backtest + ผลล่าสุด</div></div>
-          <span class="dc-status ${healthStatus}">${healthText}</span>
-        </div>
-        <div class="dc-grid">
-          <div class="dc-card"><div class="dc-label">Prize1 เน้นสุด</div><div class="dc-row">${p1.map((r,i)=>predDetailHtml({num:predNum(r),col:'prize1',row:r,rank:i+1,score:predScore(r,predScoreKey(p1)),maxScore:Math.max(1,...p1.map(x=>predScore(x,predScoreKey(p1)))),support:(support.get(p1Front(r))?.count||0)+(support.get(p1Back(r))?.count||0),extra:[`หน้า ${p1Front(r)}`,`ท้าย ${p1Back(r)}`]})).join('')||'<span class="dash-empty">-</span>'}</div></div>
-          <div class="dc-card"><div class="dc-label">2 ตัวล่าง</div><div class="dc-row">${bottom.slice(0,6).map(r=>numChip(predNum(r))).join('')||'<span class="dash-empty">-</span>'}</div></div>
-          <div class="dc-card"><div class="dc-label">เลขหนุนข้ามหมวด</div><div class="dc-row">${supportTop.map(x=>`<span class="num-badge agree predict-copy" onclick="copyPredNumber('${escHtml(x.num)}')">${escHtml(x.num)}<span style="font-size:.62rem;margin-left:4px;color:var(--text3)">x${x.count}</span></span>`).join('')||'<span class="dash-empty">-</span>'}</div></div>
-        </div>
-        <div class="dc-actions">
-          <button class="btn btn-primary" onclick="showPage('predict')">เปิดหน้าทำนาย</button>
-          <button class="btn btn-secondary" onclick="showPage('formula')">เปิดสูตรคำนวณ</button>
-          <button class="btn btn-secondary" onclick="copyPredNumber('${escHtml([...p1.map(predNum),...bottom.slice(0,4).map(predNum)].filter(Boolean).join(' '))}')">copy ชุดหลัก</button>
-        </div>
-      </div>
-      <div class="dc-panel">
-        <div class="dc-label">Data Health</div>
-        <div class="dc-signal"><div class="dc-signal-main"><div class="dc-signal-title">ผลงวดล่าสุด</div><div class="dc-signal-sub">${latest.date||'-'} · ${latest.prize1||'-'}</div></div><span class="dc-status ${healthStatus}">${healthText}</span></div>
-        <div class="dc-signal"><div class="dc-signal-main"><div class="dc-signal-title">จำนวนงวดในระบบ</div><div class="dc-signal-sub">${summary.total_draws||summary.total||'-'} งวด</div></div><span class="dc-status good">DATA</span></div>
-        <div class="dc-signal"><div class="dc-signal-main"><div class="dc-signal-title">สูตรคำนวณ</div><div class="dc-signal-sub">กดเปิดสูตรเพื่อ refresh Formula Final Picks</div></div><span class="dc-status warn">optional</span></div>
-      </div>
+    root.innerHTML=`${lottoBoardHtml}
+    <div class="dc-grid">
+      <div class="dc-card dc-card-wide"><div class="dc-label">Snapshot + Track Record</div><div class="dc-signal-sub" style="margin-bottom:8px">บันทึกอัตโนมัติทุกครั้งที่เปิดหน้านี้ · &quot;ถูก&quot; = มีเลขอย่างน้อย 1 ตัวในชุดที่ตรงผลจริง</div><div id="dc-snapshot-list" class="dc-row">${dcSnapshotTrackHtml(_dcHistRows)}</div></div>
+      <div class="dc-card dc-card-wide"><div class="dc-label">แนวโน้มอัตราถูก (20 งวดล่าสุดที่มีผล · rolling 5 งวด)</div>${trendHtml}</div>
+    </div>
+    <div id="dc-backtest-panel"></div>
+    <div class="dc-panel">
+      <div class="dc-label">Data Health</div>
+      <div class="dc-signal"><div class="dc-signal-main"><div class="dc-signal-title">ผลงวดล่าสุด</div><div class="dc-signal-sub">${latest.date||'-'} · ${latest.prize1||'-'}</div></div><span class="dc-status ${healthStatus}">${healthText}</span></div>
+      <div class="dc-signal"><div class="dc-signal-main"><div class="dc-signal-title">จำนวนงวดในระบบ</div><div class="dc-signal-sub">${summary.total_draws||summary.total||'-'} งวด</div></div><span class="dc-status good">DATA</span></div>
+      <div class="dc-signal"><div class="dc-signal-main"><div class="dc-signal-title">สูตรคำนวณ</div><div class="dc-signal-sub">กดเปิดสูตรเพื่อ refresh Formula Final Picks</div></div><span class="dc-status warn">optional</span></div>
     </div>
     <div class="dc-grid">
-      <div class="dc-card dc-card-wide"><div class="dc-label">Final Confidence Score · ${mode==='strict'?'ปลอดภัย':mode==='coverage'?'ลุ้นสูง':'สมดุล'}</div><div class="dc-row">${dcScoreHtml(scored.picks)}</div></div>
-      <div class="dc-card"><div class="dc-label">หน้า 3 เด่น</div><div class="dc-row">${[...new Set(front)].slice(0,10).map(numChip).join('')||'<span class="dash-empty">-</span>'}</div></div>
       <div class="dc-card dc-card-wide"><div class="dc-label">Predict × สูตรคำนวณ ตรงกัน</div><div class="dc-row">${formulaMatchHtml}</div></div>
       <div class="dc-card dc-card-wide"><div class="dc-label">สัญญาณจากรางวัลรอง 10 งวดล่าสุด</div>${dcSecondarySignalsHtml(secondarySignals)}</div>
       <div class="dc-card"><div class="dc-label">ตัดเลขเสี่ยง</div><div class="dc-row">${dcRiskHtml(scored.risks)}</div></div>
-      <div class="dc-card"><div class="dc-label">Snapshot งวด</div><div id="dc-snapshot-list" class="dc-row">${dcSnapshotHtml()}</div></div>
-      <div class="dc-card"><div class="dc-label">Next Actions</div>
-        <div class="dc-signal"><div class="dc-signal-main"><div class="dc-signal-title">1. ดู Final Decision</div><div class="dc-signal-sub">เริ่มจากเลขที่ติดหลายแหล่งก่อน</div></div></div>
-        <div class="dc-signal"><div class="dc-signal-main"><div class="dc-signal-title">2. รันสูตร</div><div class="dc-signal-sub">ให้ Formula Final Picks อัปเดต</div></div></div>
-        <div class="dc-signal"><div class="dc-signal-main"><div class="dc-signal-title">3. ตัดเลข noise</div><div class="dc-signal-sub">เลี่ยงเลขที่ไม่ติด support</div></div></div>
-      </div>
     </div>`;
+    if(trend.length){
+      const opts=chartOpts('% ถูก');
+      opts.scales.y.min=0;opts.scales.y.max=100;
+      mkChart('dc-trend-chart',{type:'line',data:{
+        labels:trend.map(t=>fmtDate(t.date)),
+        datasets:[{label:'% ถูก (rolling 5 งวด)',data:trend.map(t=>t.value),borderColor:'#3dd68c',backgroundColor:'rgba(61,214,140,.15)',tension:.3,fill:true,pointRadius:2}]
+      },options:opts});
+    }
   }catch(e){
     root.className='dc-loading';
     root.textContent='โหลด Decision Center ไม่สำเร็จ ลองใหม่อีกครั้ง';

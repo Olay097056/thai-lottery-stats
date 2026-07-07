@@ -2,6 +2,18 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-07-07 — ปรับปรุงหน้า "สรุปงวดนี้" (Decision Center): ตัดซ้ำซ้อน + track record + edge badge
+
+**ตัดข้อมูลซ้ำซ้อน** (ตกลงกับ user ผ่าน grilling session ก่อนเริ่มโค้ด): รวม hero board (การ์ดบนสุด) กับ "Final Confidence Score" เป็นก้อนเดียว (เดิมแยก 2 ที่คำนวณจาก `scored` ตัวเดียวกันแต่โชว์คนละ layout) · ย้ายการ์ด "Prize1 เน้นสุด"/"เลขหนุนข้ามหมวด" จาก panel "Decision Center" (ถูกลบทั้ง panel) เข้า hero แบบละเอียด (ใช้ `predDetailHtml` แทน chip ธรรมดา) · ลบการ์ด "หน้า 3 เด่น" แยก (ซ้ำเป๊ะกับ "เลขหน้า 3 ตัว" ใน hero) · ลบการ์ด "Next Actions" (ข้อความ static ไม่เปลี่ยนตามข้อมูลจริง)
+
+**เพิ่ม Track Record + กราฟแนวโน้มอัตราถูก:** เปลี่ยนปุ่ม "บันทึก Snapshot" (manual) เป็น **auto-save ทุกครั้งที่เปิดหน้า** (`dcAutoSaveSnapshot`, cap 20→60 รายการ, localStorage เดิม) · เพิ่ม `dcActualForDate`/`dcCheckHit`/`dcSnapshotResult` เช็คว่าเลขที่เคยแนะนำถูกผลจริงไหม (นิยาม: 6 หลักต้องตรง รางวัลที่ 1 เป๊ะ, 3 หลักถูกถ้าตรงกับ 1 ใน 5 ชุด 3 หลักที่ออกจริง (3บน/3หน้า×2/3หลัง×2), 2 หลักต้องตรง 2 ตัวล่างเป๊ะ, งวดที่ยังไม่ออกผล = "รอผล" ไม่นับรวมสถิติ) · รวม "Snapshot งวด" เดิมกับ track record เป็นการ์ดเดียว (แสดง badge ถูก/ไม่ถูก/รอผลต่อแถว) · เพิ่ม `dcHitRateTrend` (rolling 5 งวด, 20 งวดล่าสุดที่มีผล) วาดเป็น line chart ด้วย Chart.js ตัวเดิมที่มีอยู่แล้ว (`mkChart`)
+
+**เพิ่ม edge badge ต่อเลขที่แนะนำ:** `dcBuildScoreRows` เก็บ `r.topEdge` (backtest edge สูงสุดจากสูตรที่หนุนเลขนั้น) แสดงเป็น badge สีเขียว/แดงตามเครื่องหมายต่อจาก score/100 ทุกจุดที่ใช้ `dcScoreHtml`
+
+**ยืนยันแล้ว:** เขียนเทส TDD ก่อนแก้โค้ด (`scripts/test_decision_track_record.js`, 25 checks: `dcActualForDate`/`dcCheckHit`/`dcSnapshotResult`/`dcHitRateTrend` รวม edge case "รอผล" และ `take`-truncation, edge tracking ใน `dcBuildScoreRows`) ผ่านทั้งหมด พร้อม test เดิมทั้ง 4 ไฟล์ (`test_imperial_formula.js` ฯลฯ) ไม่มี regression · ตรวจใน browser จริงผ่าน preview tools: seed snapshot ย้อนหลังด้วยผลจริงจาก `/api/prize-history` verify ว่า hit-check ตรง (เช่น bottom2 งวด 16/06/2026 คือ "48" ตรงกับที่ทาย → ถูก, งวด 01/07/2026 bottom2 จริงคือ "62" ไม่ตรงกับที่ทาย → ไม่ถูก) และกราฟ rolling ให้ค่าตรงตามคำนวณมือ (100,100,100,100,80) · ไม่มี console error
+
+**บั๊ก dev ที่เจอระหว่าง verify (ไม่ใช่บั๊กโค้ด):** `static/app.js` โหลดแบบไม่มี cache-busting query string (ต่างจาก `formula-engine.js?v=...`) ทำให้ browser ใช้ JS เก่าจาก cache ค้างแม้ server จะ serve ไฟล์ใหม่แล้ว (`curl` ยืนยันไฟล์ถูกต้อง แต่ `typeof dcAutoSaveSnapshot` ในเบราว์เซอร์ยัง `undefined`) — แก้โดยเพิ่ม `?v=dc-track-record1` ต่อท้าย `app.js` ใน `index.html`
+
 ## 2026-07-07 — แก้ total ของจักรพรรดิ/จักรพรรดิทองคำ ไม่ให้นับงวดที่ทายไม่ได้
 
 **สาเหตุ:** ลองรัน backtest ด้วยข้อมูลย้อนหลังเยอะขึ้น (599 งวด แทน 200) เพื่อดูว่า edge ของจักรพรรดิ/จักรพรรดิทองคำ (ที่เท่ากันเป๊ะในผลก่อนหน้า) จะต่างกันไหมเมื่อมีข้อมูลมากขึ้น — พบว่า `total` ที่รายงาน (599) เจือจางด้วยงวดที่ไม่มีข้อมูล Sanook ในงวดก่อนหน้า (144 จาก 599 งวด) ซึ่งจักรพรรดิ/จักรพรรดิทองคำ**ทายไม่ได้ตั้งแต่แรก** (preds ว่างเปล่า) ไม่ใช่ "ทายแล้วพลาด" — แต่ `_computeFormulasBatch` เดิม push ผลลัพธ์เข้า backtest เสมอแม้ preds ว่าง ทำให้ถูกนับเป็น miss โดยอัตโนมัติ เจือจาง sample size ที่มีความหมายจริง

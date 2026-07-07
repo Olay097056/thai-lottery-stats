@@ -112,3 +112,4 @@ sanook_scraper.py ─────┘                              │
 - `.ml_cache/` and `watchlist.json` still created but unused by current UI
 - API endpoints validate `col` against known lottery columns; number inputs must match digit width for that column
 - Styling: `:root` CSS variables in `static/app.css` define the macOS dark palette (`--bg`, `--surface`, `--gold` for prize numbers, `--accent` = system blue). Skin rules live in a dedicated block near the end of the file — keep new component styles consistent with that palette rather than the original gold-heavy theme.
+- `static/app.js` and `static/formula-engine.js` are loaded with a `?v=...` cache-busting query string in `index.html` — bump it whenever you change either file, or the browser will keep executing the old cached script even after a hard reload (confirmed via `typeof someNewFunction` staying `undefined` in-browser while `curl` shows the new file on disk).

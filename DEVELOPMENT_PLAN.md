@@ -1,6 +1,6 @@
 # แผนพัฒนา — Thai Lottery Intelligence Dashboard
 
-> อัปเดตล่าสุด: 2026-07-07 · Phase 1–3.7 เสร็จสมบูรณ์ · Phase 4 (FABLE) ถูกยกเลิก · Phase 5 (จักรพรรดิ/จักรพรรดิทองคำ) เสร็จสมบูรณ์ · frontend แยกไฟล์ + จัดระเบียบ path เสร็จ — ดู [CHANGELOG.md](CHANGELOG.md) สำหรับประวัติละเอียด
+> อัปเดตล่าสุด: 2026-07-07 · Phase 1–3.7 เสร็จสมบูรณ์ · Phase 4 (FABLE) ถูกยกเลิก · Phase 5 (จักรพรรดิ/จักรพรรดิทองคำ) เสร็จสมบูรณ์ · frontend แยกไฟล์ + จัดระเบียบ path เสร็จ · หน้า "สรุปงวดนี้" (Decision Center) ปรับปรุงใหม่ (ตัดซ้ำซ้อน + track record + edge badge) เสร็จสมบูรณ์ — ดู [CHANGELOG.md](CHANGELOG.md) สำหรับประวัติละเอียด
 
 ## สถานะปัจจุบัน
 
