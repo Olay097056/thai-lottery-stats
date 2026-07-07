@@ -1,30 +1,34 @@
 // Regression check for จักรพรรดิ / จักรพรรดิทองคำ (Group I) digit-position frequency
-// scorer (ISSUE-6 + ISSUE-7). Run with: node scripts/test_imperial_formula.js
+// scorer + round-robin candidate construction. Run with: node scripts/test_imperial_formula.js
 // Verifies:
 // 1. The reusable scorer (_digitPosFreq) produces a known ranked-digit-per-position
 //    result for a fixed synthetic pool array.
-// 2. จักรพรรดิ (_imperialFormula) generates ~10 six-digit candidates from a fixed
-//    synthetic previous-draw row object, built from the shared pool builder
-//    (_buildPrize1to5Pool) + scorer.
+// 2. จักรพรรดิ (_imperialFormula) generates exactly 10 six-digit candidates from a fixed
+//    synthetic previous-draw row object, candidate 0 is the pure highest-frequency
+//    digit per position, and every position shows exactly 8 distinct digits across
+//    the 10 candidates (the per-position diversity guarantee).
 // 3. จักรพรรดิ produces no output for a previous-draw row with empty prize-pool
 //    fields (matching the Sanook-dependent-formula skip behavior).
-// 4. จักรพรรดิทองคำ (_imperialGoldFormula) reuses the same scorer/candidate
-//    generation (no duplicated frequency logic), and its blended score (80%
-//    freqScore + 20% arithmetic closeness) is independently verifiable.
+// 4. จักรพรรดิทองคำ (_imperialGoldFormula) re-ranks each position by its own 80%
+//    frequency + 20% arithmetic-closeness blend (not a whole-candidate blend), and
+//    candidate 0 matches that independently-recomputed per-position ranking exactly.
 // 5. จักรพรรดิ and จักรพรรดิทองคำ produce genuinely different top-ranked candidates
 //    for the same fixture + a target date chosen so the arithmetic signal flips
-//    the ranking (proving the blend changes behavior, not just cosmetically).
+//    the per-position ranking (proving the blend changes behavior, not just cosmetically).
 // 6. จักรพรรดิทองคำ produces no output for an empty-pool previous draw, same as จักรพรรดิ.
-// 7. _imperialDiverseSelect (candidate diversity fix): always keeps the top scorer,
-//    spreads the rest of the set out (higher average pairwise Hamming distance than
-//    naive top-N-by-score over the same input), relaxes minDist automatically rather
-//    than returning short of topN, and is genuinely wired into both _imperialFormula
-//    and _imperialGoldFormula (not just present but unused).
+// 7. _imperialRoundRobin (candidate diversity, round 2): candidate 0 always uses rank-0
+//    at every position, all topN candidates are unique, every position shows exactly K
+//    distinct digits, ranks below K never appear, the mechanism is collision-free even
+//    on an adversarial fixture where every position shares an identical ranking, and it
+//    degenerates correctly when topN <= K.
+// 8. _imperialCandidates / _imperialDiverseSelect (round-1 mechanism, superseded by
+//    _imperialRoundRobin) no longer exist anywhere in formula-engine.js.
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'static', 'formula-engine.js'), 'utf8');
+const ENGINE_PATH = path.join(__dirname, '..', 'static', 'formula-engine.js');
+const src = fs.readFileSync(ENGINE_PATH, 'utf8');
 
 function extract(name) {
   const re = new RegExp('function ' + name + '\\([^)]*\\)\\{', 'm');
@@ -42,8 +46,7 @@ function extract(name) {
 const code = [
   extract('_buildPrize1to5Pool'),
   extract('_digitPosFreq'),
-  extract('_imperialCandidates'),
-  extract('_imperialDiverseSelect'),
+  extract('_imperialRoundRobin'),
   extract('_imperialFormula'),
   extract('_imperialGoldFormula'),
 ].join('\n\n');
@@ -51,22 +54,12 @@ const code = [
 const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(code, sandbox);
-const { _buildPrize1to5Pool, _digitPosFreq, _imperialCandidates, _imperialDiverseSelect, _imperialFormula, _imperialGoldFormula } = sandbox;
+const { _buildPrize1to5Pool, _digitPosFreq, _imperialRoundRobin, _imperialFormula, _imperialGoldFormula } = sandbox;
 
-function hammingDistance(a, b) {
-  let d = 0;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d++;
-  return d;
-}
-function avgPairwiseDistance(digitsList) {
-  let sum = 0, pairs = 0;
-  for (let i = 0; i < digitsList.length; i++) {
-    for (let j = i + 1; j < digitsList.length; j++) {
-      sum += hammingDistance(digitsList[i], digitsList[j]);
-      pairs++;
-    }
-  }
-  return pairs ? sum / pairs : 0;
+function perPositionDistinctCounts(candidates) {
+  const sets = Array.from({ length: 6 }, () => new Set());
+  candidates.forEach(c => { for (let i = 0; i < 6; i++) sets[i].add(c[i]); });
+  return sets.map(s => s.size);
 }
 
 // --- 1. scorer produces a known ranked-digit-per-position result for a fixed pool ---
@@ -80,26 +73,21 @@ const ranked = _digitPosFreq(fixedPool);
 if (!Array.isArray(ranked) || ranked.length !== 6) {
   throw new Error(`FAIL: expected 6 position arrays, got ${JSON.stringify(ranked)}`);
 }
-// Position 0: '1' appears twice (123456, 123457), '2' appears once (223456) -> '1' ranks first.
 if (ranked[0][0].digit !== '1' || ranked[0][0].count !== 2) {
   throw new Error(`FAIL: position 0 top digit should be '1' (count 2), got ${JSON.stringify(ranked[0][0])}`);
 }
 if (ranked[0][1].digit !== '2' || ranked[0][1].count !== 1) {
   throw new Error(`FAIL: position 0 second digit should be '2' (count 1), got ${JSON.stringify(ranked[0][1])}`);
 }
-// Position 1: all three numbers have '2' -> count 3, clear winner.
 if (ranked[1][0].digit !== '2' || ranked[1][0].count !== 3) {
   throw new Error(`FAIL: position 1 top digit should be '2' (count 3), got ${JSON.stringify(ranked[1][0])}`);
 }
-// Position 5 (last digit): '6' appears twice (123456, 223456), '7' appears once (123457).
 if (ranked[5][0].digit !== '6' || ranked[5][0].count !== 2) {
   throw new Error(`FAIL: position 5 top digit should be '6' (count 2), got ${JSON.stringify(ranked[5][0])}`);
 }
 if (ranked[5][1].digit !== '7' || ranked[5][1].count !== 1) {
   throw new Error(`FAIL: position 5 second digit should be '7' (count 1), got ${JSON.stringify(ranked[5][1])}`);
 }
-// Tie-break check: among zero-count digits at position 0 ('0','3','4','5','6','7','8','9'),
-// ascending digit value must win — '0' should appear before '3' in the remainder of the ranking.
 const zeroCountDigitsPos0 = ranked[0].slice(2).map(d => d.digit);
 const sortedAscending = [...zeroCountDigitsPos0].sort((a, b) => Number(a) - Number(b));
 if (JSON.stringify(zeroCountDigitsPos0) !== JSON.stringify(sortedAscending)) {
@@ -107,7 +95,7 @@ if (JSON.stringify(zeroCountDigitsPos0) !== JSON.stringify(sortedAscending)) {
 }
 console.log('OK: _digitPosFreq produces known ranked-digit-per-position result for fixed synthetic pool');
 
-// --- 2. จักรพรรดิ generates ~10 six-digit candidates from a fixed synthetic previous-draw row ---
+// --- 2. จักรพรรดิ generates exactly 10 six-digit candidates, top scorer first, K=8 spread ---
 const fixtureRow = {
   near1_1: '111111', near1_2: '222222',
   prize2_1: '111112', prize2_2: '111113', prize2_3: '111114', prize2_4: '111115', prize2_5: '111116',
@@ -125,9 +113,8 @@ if (!pool15.every(n => /^\d{6}$/.test(n))) {
 }
 
 const candidates = _imperialFormula(fixtureRow, 10);
-if (!Array.isArray(candidates)) throw new Error('FAIL: _imperialFormula did not return an array');
-if (candidates.length < 8 || candidates.length > 10) {
-  throw new Error(`FAIL: expected ~10 (8-10) candidates, got ${candidates.length}: ${JSON.stringify(candidates)}`);
+if (!Array.isArray(candidates) || candidates.length !== 10) {
+  throw new Error(`FAIL: expected exactly 10 candidates, got ${JSON.stringify(candidates)}`);
 }
 if (!candidates.every(c => /^\d{6}$/.test(c))) {
   throw new Error(`FAIL: candidates must all be 6-digit strings, got ${JSON.stringify(candidates)}`);
@@ -135,25 +122,18 @@ if (!candidates.every(c => /^\d{6}$/.test(c))) {
 if (new Set(candidates).size !== candidates.length) {
   throw new Error('FAIL: candidates contain duplicates');
 }
-// Top-ranked candidate must be the position-wise highest-frequency digit string.
+// Candidate 0 must be the position-wise highest-frequency digit string.
 const rankedFixture = _digitPosFreq(pool15);
 const expectedTop = rankedFixture.map(posRanked => posRanked[0].digit).join('');
 if (candidates[0] !== expectedTop) {
   throw new Error(`FAIL: top candidate should be "${expectedTop}" (highest freq per position), got "${candidates[0]}"`);
 }
-// Candidates must be sorted by descending score (recomputed independently here).
-const scoreOf = (digits) => digits.split('').reduce((sum, d, pos) => {
-  const entry = rankedFixture[pos].find(e => e.digit === d);
-  return sum + (entry ? entry.count : 0);
-}, 0);
-const scores = candidates.map(scoreOf);
-for (let i = 1; i < scores.length; i++) {
-  if (scores[i] > scores[i - 1]) {
-    throw new Error(`FAIL: candidates not sorted by descending score at index ${i}: ${scores[i - 1]} -> ${scores[i]}`);
-  }
+const posSpread = perPositionDistinctCounts(candidates);
+if (posSpread.some(n => n !== 8)) {
+  throw new Error(`FAIL: expected exactly 8 distinct digits at every position, got ${JSON.stringify(posSpread)}`);
 }
-console.log(`OK: _imperialFormula produced ${candidates.length} unique 6-digit candidates, correctly ranked by score`);
-console.log(`  top candidates: ${candidates.slice(0, 5).join(' ')}`);
+console.log(`OK: _imperialFormula produced 10 unique 6-digit candidates, candidate 0 = "${candidates[0]}" (top freq per position), per-position spread ${JSON.stringify(posSpread)}`);
+console.log(`  candidates: ${candidates.join(' ')}`);
 
 // --- 3. จักรพรรดิ produces no output for a previous-draw row with empty prize-pool fields ---
 const emptyRow = {
@@ -174,7 +154,6 @@ if (!Array.isArray(emptyCandidates) || emptyCandidates.length !== 0) {
 }
 console.log('OK: จักรพรรดิ produces no output for a previous draw with empty prize 1-5 pool fields');
 
-// --- also check the fully-absent-row case (missing keys entirely, e.g. undefined) ---
 const missingKeysRow = { prize1: '287184' };
 const missingCandidates = _imperialFormula(missingKeysRow, 10);
 if (missingCandidates.length !== 0) {
@@ -182,12 +161,12 @@ if (missingCandidates.length !== 0) {
 }
 console.log('OK: จักรพรรดิ produces no output when Sanook fields are entirely absent from the row');
 
-// --- 4. จักรพรรดิทองคำ reuses _imperialCandidates/_digitPosFreq and its blend is verifiable ---
+// --- 4. จักรพรรดิทองคำ re-ranks per position by 80% freq + 20% arithmetic closeness ---
 const goldFixtureRow = { ...fixtureRow, prize1: '999999' };
 const nextDay = 1, nextMonth = 9, nextYear2 = 68;
 const goldCandidates = _imperialGoldFormula(goldFixtureRow, nextDay, nextMonth, nextYear2, 10);
-if (!Array.isArray(goldCandidates) || goldCandidates.length < 8 || goldCandidates.length > 10) {
-  throw new Error(`FAIL: expected ~10 (8-10) gold candidates, got ${JSON.stringify(goldCandidates)}`);
+if (!Array.isArray(goldCandidates) || goldCandidates.length !== 10) {
+  throw new Error(`FAIL: expected exactly 10 gold candidates, got ${JSON.stringify(goldCandidates)}`);
 }
 if (!goldCandidates.every(c => /^\d{6}$/.test(c))) {
   throw new Error(`FAIL: gold candidates must all be 6-digit strings, got ${JSON.stringify(goldCandidates)}`);
@@ -195,43 +174,33 @@ if (!goldCandidates.every(c => /^\d{6}$/.test(c))) {
 if (new Set(goldCandidates).size !== goldCandidates.length) {
   throw new Error('FAIL: gold candidates contain duplicates');
 }
-// Independently recompute the 80/20 blend for every raw candidate (via the shared
-// _imperialCandidates + _digitPosFreq, proving no duplicated frequency logic) and
-// confirm the formula's own ranking matches this independent computation exactly.
+const goldPosSpread = perPositionDistinctCounts(goldCandidates);
+if (goldPosSpread.some(n => n !== 8)) {
+  throw new Error(`FAIL: expected exactly 8 distinct digits at every position for gold, got ${JSON.stringify(goldPosSpread)}`);
+}
+// Independently recompute จักรพรรดิทองคำ's per-position blended ranking (0.8 freq + 0.2
+// per-digit arithmetic closeness, NOT a whole-candidate blend) and confirm candidate 0
+// matches this recomputation exactly, proving the per-position blend is genuinely wired in.
 const goldPool = _buildPrize1to5Pool(goldFixtureRow);
 const goldRanked = _digitPosFreq(goldPool);
-const rawCandidates = _imperialCandidates(goldRanked);
-const maxFreq = goldRanked.reduce((sum, posRanked) => sum + posRanked[0].count, 0);
 const P = parseInt(goldFixtureRow.prize1, 10);
 const target = String(((P + nextDay * nextMonth * nextYear2) % 1000000 + 1000000) % 1000000).padStart(6, '0');
-const blendedOf = (digits) => {
-  // Distance-based closeness (9-|digit-targetDigit| per position, /54 max), not exact-match —
-  // candidates only ever contain the top-2 frequency digits per position, so an exact-match
-  // closeness is almost always 0 for every candidate against an arbitrary arithmetic target
-  // (verified against real production data), collapsing the blend to freqScore-only ranking.
-  const closeness = [...digits].reduce((n, d, i) => n + (9 - Math.abs(Number(d) - Number(target[i]))), 0);
-  const raw = rawCandidates.find(c => c.digits === digits);
-  return 0.8 * (raw.freqScore / maxFreq) + 0.2 * (closeness / 54);
-};
-const blendedScores = goldCandidates.map(blendedOf);
-for (let i = 1; i < blendedScores.length; i++) {
-  if (blendedScores[i] > blendedScores[i - 1] + 1e-9) {
-    throw new Error(`FAIL: gold candidates not sorted by descending blended score at index ${i}: ${blendedScores[i - 1]} -> ${blendedScores[i]}`);
-  }
+const expectedGoldTop = goldRanked.map((posRanked, p) => {
+  const maxCount = posRanked[0].count || 1;
+  const targetDigit = Number(target[p]);
+  const blendedRanked = [...posRanked].map(e => ({
+    digit: e.digit,
+    count: e.count,
+    blended: 0.8 * (e.count / maxCount) + 0.2 * ((9 - Math.abs(Number(e.digit) - targetDigit)) / 9),
+  })).sort((a, b) => b.blended - a.blended || b.count - a.count || (a.digit < b.digit ? -1 : a.digit > b.digit ? 1 : 0));
+  return blendedRanked[0].digit;
+}).join('');
+if (goldCandidates[0] !== expectedGoldTop) {
+  throw new Error(`FAIL: gold candidate 0 should be "${expectedGoldTop}" (independently recomputed per-position blend), got "${goldCandidates[0]}"`);
 }
-console.log(`OK: _imperialGoldFormula produced ${goldCandidates.length} unique candidates, blend independently verified`);
+console.log(`OK: _imperialGoldFormula produced 10 unique candidates, per-position blend independently verified, spread ${JSON.stringify(goldPosSpread)}`);
 
 // --- 5. จักรพรรดิ and จักรพรรดิทองคำ produce genuinely different top-ranked candidates ---
-// Uses a separate, less-peaked synthetic pool (deterministic LCG-generated, not hand-picked)
-// because the tiny hand-picked fixture above has huge freqScore gaps between candidates —
-// realistic enough that no arithmetic target can ever flip its top-1 ranking, which is
-// exactly the trap the original exact-match closeness design fell into (see comment on
-// _imperialGoldFormula): with candidates drawn only from the top-2 frequency digit per
-// position, an exact-digit-match closeness against an arbitrary target is 0 for nearly
-// every candidate on realistic data, silently collapsing the blend to freqScore-only
-// ranking. This fixture + target combo is confirmed (by direct search) to flip the top-1
-// ranking under the corrected distance-based closeness — proving the blend has a real,
-// non-cosmetic effect, not just on a fixture engineered to make the old broken formula pass.
 const realisticPoolRow = {
   near1_1: '582307', near1_2: '519818',
   prize2_1: '914939', prize2_2: '698715', prize2_3: '753081', prize2_4: '689433', prize2_5: '521116',
@@ -247,7 +216,7 @@ const goldRealistic = _imperialGoldFormula(realisticPoolRow, realisticNextDay, r
 if (jakRealistic[0] === goldRealistic[0]) {
   throw new Error(`FAIL: expected จักรพรรดิ and จักรพรรดิทองคำ to disagree on the top candidate for this realistic fixture, both got "${jakRealistic[0]}"`);
 }
-console.log(`OK: จักรพรรดิ (top: ${jakRealistic[0]}) and จักรพรรดิทองคำ (top: ${goldRealistic[0]}) genuinely disagree on realistic data — blend changes ranking`);
+console.log(`OK: จักรพรรดิ (top: ${jakRealistic[0]}) and จักรพรรดิทองคำ (top: ${goldRealistic[0]}) genuinely disagree on realistic data — per-position blend changes ranking`);
 
 // --- 6. จักรพรรดิทองคำ produces no output for a previous draw with empty prize 1-5 pool fields ---
 const goldEmptyCandidates = _imperialGoldFormula(emptyRow, nextDay, nextMonth, nextYear2, 10);
@@ -256,66 +225,66 @@ if (!Array.isArray(goldEmptyCandidates) || goldEmptyCandidates.length !== 0) {
 }
 console.log('OK: จักรพรรดิทองคำ produces no output for a previous draw with empty prize 1-5 pool fields');
 
-// --- 7. _imperialDiverseSelect: diversity, top-scorer priority, minDist relaxation ---
+// --- 7. _imperialRoundRobin: construction correctness, K-spread guarantee, collision-free ---
 
-// (a) diversity: a base candidate plus 6 near-duplicates (each 1 digit off the base,
-// decreasing score) plus 4 genuinely distant candidates (much lower score, but spread
-// across the digit space). Diverse-select (minDist=2) should prefer the distant ones
-// over the near-duplicates once the base is taken, giving a higher average pairwise
-// distance than naive top-5-by-score over the same input.
-const diversityInput = [
-  { digits: '555555', score: 100 },
-  { digits: '555556', score: 99 },
-  { digits: '555565', score: 98 },
-  { digits: '555655', score: 97 },
-  { digits: '556555', score: 96 },
-  { digits: '565555', score: 95 },
-  { digits: '655555', score: 94 },
-  { digits: '012345', score: 50 },
-  { digits: '987654', score: 49 },
-  { digits: '246801', score: 48 },
-  { digits: '864213', score: 47 },
-];
-const diverse5 = _imperialDiverseSelect(diversityInput, 'score', 5, 2);
-if (!Array.isArray(diverse5) || diverse5.length !== 5) {
-  throw new Error(`FAIL: expected exactly 5 diverse candidates, got ${JSON.stringify(diverse5)}`);
+// (a) basic correctness on varied (non-identical) per-position rankings.
+const variedRanked = Array.from({ length: 6 }, (_, p) =>
+  Array.from({ length: 10 }, (_, r) => String((9 - r + p) % 10))
+);
+const rr10 = _imperialRoundRobin(variedRanked, 10, 8);
+if (!Array.isArray(rr10) || rr10.length !== 10) {
+  throw new Error(`FAIL: expected exactly 10 round-robin candidates, got ${JSON.stringify(rr10)}`);
 }
-if (diverse5[0].digits !== '555555') {
-  throw new Error(`FAIL: top scorer must always be admitted first, got ${JSON.stringify(diverse5[0])}`);
+if (new Set(rr10).size !== 10) {
+  throw new Error(`FAIL: round-robin candidates must all be unique, got ${JSON.stringify(rr10)}`);
 }
-const naive5 = [...diversityInput].sort((a, b) => b.score - a.score).slice(0, 5);
-const diverseAvgDist = avgPairwiseDistance(diverse5.map(c => c.digits));
-const naiveAvgDist = avgPairwiseDistance(naive5.map(c => c.digits));
-if (!(diverseAvgDist > naiveAvgDist)) {
-  throw new Error(`FAIL: expected diverse selection avg distance (${diverseAvgDist}) > naive top-N avg distance (${naiveAvgDist})`);
+const expectedRR0 = variedRanked.map(posRanked => posRanked[0]).join('');
+if (rr10[0] !== expectedRR0) {
+  throw new Error(`FAIL: round-robin candidate 0 should be "${expectedRR0}" (rank-0 at every position), got "${rr10[0]}"`);
 }
-console.log(`OK: _imperialDiverseSelect spreads candidates wider than naive top-N (diverse avg dist ${diverseAvgDist.toFixed(2)} vs naive ${naiveAvgDist.toFixed(2)}), always keeps the top scorer`);
+const rrSpread = perPositionDistinctCounts(rr10);
+if (rrSpread.some(n => n !== 8)) {
+  throw new Error(`FAIL: expected exactly 8 distinct digits per position, got ${JSON.stringify(rrSpread)}`);
+}
+// Ranks 8-9 (the bottom 2 of each position's ranking) must never appear in any candidate.
+for (let p = 0; p < 6; p++) {
+  const excluded = new Set([variedRanked[p][8], variedRanked[p][9]]);
+  if (rr10.some(c => excluded.has(c[p]))) {
+    throw new Error(`FAIL: position ${p} should never use rank-8/9 digits ${JSON.stringify([...excluded])}, got candidates ${JSON.stringify(rr10)}`);
+  }
+}
+console.log(`OK: _imperialRoundRobin produces 10 unique candidates, candidate 0 = rank-0 everywhere, exactly K=8 distinct digits per position, ranks 8-9 excluded`);
 
-// (b) minDist relaxation: 10 candidates that all differ from each other in exactly one
-// digit (only the last position varies) — no two can ever satisfy minDist=2, so the
-// first pass must relax to minDist=1 (where all pairs qualify) and still return exactly
-// topN, never fewer.
-const relaxInput = Array.from({ length: 10 }, (_, i) => ({ digits: `00000${i}`, score: 10 - i }));
-const relaxed = _imperialDiverseSelect(relaxInput, 'score', 5, 2);
-if (!Array.isArray(relaxed) || relaxed.length !== 5) {
-  throw new Error(`FAIL: expected minDist relaxation to still return exactly 5 candidates, got ${JSON.stringify(relaxed)}`);
+// (b) adversarial fixture: every position shares the identical ranking (worst case for
+// accidental row collisions, hand-derived during grilling to still produce 10 distinct rows).
+const identicalRanking = ['9', '8', '7', '6', '5', '4', '3', '2', '1', '0'];
+const identicalRanked = Array.from({ length: 6 }, () => [...identicalRanking]);
+const rrIdentical = _imperialRoundRobin(identicalRanked, 10, 8);
+const expectedIdentical = ['999999', '888888', '777777', '666666', '555555', '444444', '333333', '222222', '876543', '765432'];
+if (JSON.stringify(rrIdentical) !== JSON.stringify(expectedIdentical)) {
+  throw new Error(`FAIL: adversarial identical-ranking fixture should produce ${JSON.stringify(expectedIdentical)}, got ${JSON.stringify(rrIdentical)}`);
 }
-if (relaxed[0].digits !== '000000') {
-  throw new Error(`FAIL: top scorer must still be admitted first after relaxation, got ${JSON.stringify(relaxed[0])}`);
+if (new Set(rrIdentical).size !== 10) {
+  throw new Error(`FAIL: adversarial identical-ranking fixture produced duplicate rows: ${JSON.stringify(rrIdentical)}`);
 }
-console.log('OK: _imperialDiverseSelect relaxes minDist automatically rather than returning fewer than topN');
+console.log('OK: _imperialRoundRobin is collision-free even when every position shares an identical ranking');
 
-// (c) end-to-end wiring: on the realistic fixture already used above, จักรพรรดิ's actual
-// output must be measurably more spread out than naive top-10-by-freqScore over the exact
-// same raw candidate pool — proving _imperialDiverseSelect is genuinely wired in, not just
-// defined and unused.
-const realisticRankedForDiversity = _digitPosFreq(_buildPrize1to5Pool(realisticPoolRow));
-const realisticRawCandidates = _imperialCandidates(realisticRankedForDiversity);
-const naiveTop10 = [...realisticRawCandidates].sort((a, b) => b.freqScore - a.freqScore || (a.digits < b.digits ? -1 : a.digits > b.digits ? 1 : 0)).slice(0, 10);
-const actualTop10 = _imperialFormula(realisticPoolRow, 10);
-const naiveTop10AvgDist = avgPairwiseDistance(naiveTop10.map(c => c.digits));
-const actualAvgDist = avgPairwiseDistance(actualTop10);
-if (!(actualAvgDist > naiveTop10AvgDist)) {
-  throw new Error(`FAIL: expected _imperialFormula's actual output (avg dist ${actualAvgDist}) to be more spread out than naive top-10-by-score (avg dist ${naiveTop10AvgDist}) over the same candidate pool`);
+// (c) degenerate case: topN <= K (no lap/wraparound needed) — candidate i uses rank i everywhere.
+const rr5 = _imperialRoundRobin(variedRanked, 5, 8);
+if (rr5.length !== 5) throw new Error(`FAIL: expected 5 candidates for topN=5, got ${JSON.stringify(rr5)}`);
+for (let i = 0; i < 5; i++) {
+  const expected = variedRanked.map(posRanked => posRanked[i]).join('');
+  if (rr5[i] !== expected) {
+    throw new Error(`FAIL: topN<=K candidate ${i} should be "${expected}" (rank ${i} everywhere), got "${rr5[i]}"`);
+  }
 }
-console.log(`OK: _imperialFormula is genuinely wired to _imperialDiverseSelect (actual avg dist ${actualAvgDist.toFixed(2)} > naive ${naiveTop10AvgDist.toFixed(2)})`);
+console.log('OK: _imperialRoundRobin degenerates correctly when topN <= K (no wraparound needed)');
+
+// --- 8. round-1 mechanism (_imperialCandidates / _imperialDiverseSelect) fully removed ---
+if (/function _imperialCandidates\(/.test(src)) {
+  throw new Error('FAIL: _imperialCandidates should have been removed (superseded by _imperialRoundRobin)');
+}
+if (/function _imperialDiverseSelect\(/.test(src)) {
+  throw new Error('FAIL: _imperialDiverseSelect should have been removed (superseded by _imperialRoundRobin)');
+}
+console.log('OK: round-1 mechanism (_imperialCandidates / _imperialDiverseSelect) no longer present in formula-engine.js');

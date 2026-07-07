@@ -1159,90 +1159,66 @@ function _digitPosFreq(pool6){
   );
 }
 
-// เกณฑ์ร่วมของกลุ่ม I — รวมเลข 3 อันดับแรกต่อหลักแบบ cartesian (สูงสุด 729 ชุด) แล้ว
-// dedupe เหลือชุดไม่ซ้ำพร้อมคะแนนความถี่รวม (freqScore) การจัดอันดับ/ตัดท็อปเป็นหน้าที่
-// ของแต่ละสูตร (จักรพรรดิ ใช้ freqScore ล้วน, จักรพรรดิทองคำ ผสมสัญญาณเลขคณิตเพิ่ม) ผ่าน
-// _imperialDiverseSelect ด้านล่าง (เดิมใช้แค่ 2 อันดับแรกต่อหลัก แต่พบว่าการจัดอันดับด้วย
-// freqScore รวมทำให้ผลลัพธ์กระจุกใกล้จุดคะแนนสูงสุดจุดเดียว (candidate อันดับรองๆ ต่างจาก
-// อันดับ 1 แค่ 1-2 หลัก) ไม่กระจายเหมือนเลขจริงที่ออก — ขยายเป็น 3 อันดับให้มีวัตถุดิบกระจาย
-// กว่าเดิมสำหรับ diverse-select ด้านล่าง)
-function _imperialCandidates(ranked){
-  const top3=ranked.map(posRanked=>posRanked.slice(0,3));
-  let candidates=[{digits:'',freqScore:0}];
-  for(let pos=0;pos<6;pos++){
-    const next=[];
-    for(const cand of candidates)
-      for(const {digit,count} of top3[pos])
-        next.push({digits:cand.digits+digit, freqScore:cand.freqScore+count});
-    candidates=next;
-  }
-  const seen=new Map();
-  for(const c of candidates){
-    if(!seen.has(c.digits)||seen.get(c.digits).freqScore<c.freqScore)seen.set(c.digits,c);
-  }
-  return [...seen.values()];
-}
-
-// เลือก candidate สุดท้ายแบบกระจาย (candidate diversity fix) — ยังเรียงตามคะแนน (scoreKey)
-// เป็นหลัก แต่บังคับให้ทุกชุดที่เลือกห่างกันอย่างน้อย minDist หลัก (Hamming distance) จากชุด
-// ที่เลือกไปแล้วทุกชุด ตัวคะแนนสูงสุดถูกเลือกก่อนเสมอ ถ้าเดินจนหมดรายการแล้วยังไม่ครบ topN
-// จะผ่อน minDist ลงทีละ 1 แล้วเริ่มใหม่จากตัวคะแนนสูงสุด จนกว่าจะครบ topN เสมอ (ถ้ามี
-// candidate ไม่ซ้ำกันเพียงพอในอินพุต) — ไม่คืนค่าน้อยกว่า topN ที่ขอ
-function _imperialDiverseSelect(candidates, scoreKey, topN, minDist=2){
-  const sorted=[...candidates].sort((a,b)=>b[scoreKey]-a[scoreKey] || (a.digits<b.digits?-1:a.digits>b.digits?1:0));
-  if(sorted.length<=topN)return sorted;
-  const hammingDist=(a,b)=>{let d=0;for(let i=0;i<a.length;i++)if(a[i]!==b[i])d++;return d;};
-  for(let dist=minDist;dist>=0;dist--){
-    const picked=[sorted[0]];
-    for(let i=1;i<sorted.length&&picked.length<topN;i++){
-      const cand=sorted[i];
-      if(picked.every(p=>hammingDist(p.digits,cand.digits)>=dist))picked.push(cand);
+// สร้าง candidate สุดท้ายแบบ round-robin ต่อหลัก (candidate diversity fix รอบ 2 — เดิม
+// (round 1) สร้าง cartesian pool ใหญ่แล้วคัดด้วย Hamming distance ซึ่งวัดผิดมิติ: ระยะห่าง
+// รวมทั้งชุดขยับขึ้นจริงแต่ความหลากหลาย "ต่อหลัก" (ต่อคอลัมน์) ยังต่ำ แถมขยาย cap ต่อหลัก
+// เพื่อแก้ (top-8) จะทำให้ cartesian ระเบิดเป็น 8⁶=262,144 ชุดต่อการคำนวณ 1 ครั้ง — แก้ใหม่
+// โดยสร้างตรงจาก ranked list ต่อหลัก (ไม่ต้องมี cartesian pool เลย) การันตี K หลักไม่ซ้ำต่อ
+// ตำแหน่งแบบเป๊ะด้วยการสร้าง ไม่ใช่ fallback/relax:
+// - candidate i (0..topN-1), หลัก p ใช้ rankedPerPosition[p] อันดับที่ (r + lap*(p+1)) % K
+//   โดย lap=floor(i/K), r=i%K
+// - candidate 0 (lap=0,r=0) เป็นอันดับ 1 (เก่งสุด) ทุกตำแหน่งเสมอ — ตรงกับที่เคยรับประกันไว้
+// - candidate 0..K-1 (lap 0) แต่ละหลักใช้อันดับเดียวกันทุกตำแหน่ง (0,1,2,...,K-1 ตามลำดับ) —
+//   ครบ K หลักไม่ซ้ำต่อตำแหน่งอยู่แล้วจากแค่ K แถวแรกนี้
+// - candidate ที่เกิน K (lap>=1) หมุนอันดับแบบเยื้องต่อตำแหน่ง (offset (p+1)*lap) ไม่ให้ทั้งแถว
+//   ซ้ำกับแถวก่อนหน้าเป๊ะ (พิสูจน์ด้วยมือ+เทสกับกรณี worst-case ที่ทุกตำแหน่งมี ranking เดียวกัน)
+function _imperialRoundRobin(rankedPerPosition, topN=10, K=8){
+  const candidates=[];
+  for(let i=0;i<topN;i++){
+    const lap=Math.floor(i/K), r=i%K;
+    let digits='';
+    for(let p=0;p<rankedPerPosition.length;p++){
+      const idx=(r+lap*(p+1))%K;
+      digits+=rankedPerPosition[p][idx];
     }
-    if(picked.length>=topN)return picked;
+    candidates.push(digits);
   }
-  return sorted.slice(0,topN);
+  return candidates;
 }
 
-// จักรพรรดิ — takes the top-3 highest-frequency digit per position, combines
-// them across all 6 positions (bounded cartesian expansion, max 729 candidates),
-// ranks by summed position-frequency score, then picks top-N (default 10) via
-// _imperialDiverseSelect so the final set spreads across the digit space instead
-// of clustering around the single highest-scoring candidate.
+// จักรพรรดิ — จัดอันดับ 10 หลัก (0-9) ต่อตำแหน่งด้วยความถี่ล้วน (จาก _digitPosFreq) แล้วสร้าง
+// topN candidate ตรงผ่าน _imperialRoundRobin (K=8 ต่อหลัก) — ไม่มี cartesian pool อีกต่อไป
 function _imperialFormula(prevRow, topN=10){
   const pool=_buildPrize1to5Pool(prevRow);
   if(pool.length===0)return [];
   const ranked=_digitPosFreq(pool);
   if(!ranked)return [];
-  return _imperialDiverseSelect(_imperialCandidates(ranked),'freqScore',topN,2)
-    .map(c=>c.digits);
+  return _imperialRoundRobin(ranked.map(posRanked=>posRanked.map(e=>e.digit)),topN,8);
 }
 
-// จักรพรรดิทองคำ (ISSUE-7) — ใช้ _digitPosFreq/_imperialCandidates ชุดเดียวกับจักรพรรดิ
-// แต่คะแนนสุดท้ายของแต่ละชุดผสม 80% freqScore (normalize ด้วยคะแนนสูงสุดที่เป็นไปได้)
-// + 20% ความใกล้เคียงกับเลขคณิต (รางวัลที่1 + วัน×เดือน×ปี ของงวดถัดไป) mod 1,000,000
-//
-// ความใกล้เคียงต่อหลัก = 9-|เลขชุด−เลขเป้าหมาย| (0=ห่างสุด เช่น 0 กับ 9, 9=ตรงเป๊ะ) ไม่ใช่
-// exact-match ธรรมดา (0/1) เพราะผู้สมัคร (candidate) มาจาก digit 2 อันดับแรกของความถี่เท่านั้น
-// (สูงสุด 2 ตัวต่อหลัก จาก 10 ตัว) โอกาสที่เลขเป้าหมายจะตรงเป๊ะกับ 1 ใน 2 ตัวนั้นต่ำมาก —
-// ทดสอบกับข้อมูลจริงพบว่า exact-match ทำให้ closeness=0 ทุกชุดเสมอ (เพราะโอกาสตรงเป๊ะน้อย)
-// ทำให้ blended score ตกไปเป็นแค่ freqScore ล้วนๆ เหมือนจักรพรรดิทุกประการ (ไม่ใช่ผสมจริง) —
-// ใช้ระยะห่างเชิงตัวเลขแทนจึงทำให้ 20% นี้มีผลจริงกับการจัดอันดับในข้อมูลจริงเสมอ
+// จักรพรรดิทองคำ (ISSUE-7, ปรับ round 2) — เดิมผสม 80% freqScore + 20% ความใกล้เคียงเลขคณิต
+// ของ "ทั้งชุด 6 หลัก" ซึ่งใช้ไม่ได้กับสถาปัตยกรรม round-robin ที่สร้างทีละหลักอิสระต่อกัน —
+// ปรับเป็นผสม**ต่อหลัก**แทน: แต่ละหลัก จัดอันดับ 10 ตัวเลข (0-9) ใหม่ด้วย 0.8×(ความถี่ปรกติ
+// ด้วยความถี่สูงสุดของหลักนั้น) + 0.2×(ความใกล้เคียงกับหลักที่ตรงกันของเลขเป้าหมาย (รางวัลที่1
+// + วัน×เดือน×ปี ของงวดถัดไป) mod 1,000,000, normalize ด้วย 9) แล้วสร้าง candidate ผ่าน
+// _imperialRoundRobin เหมือนจักรพรรดิ — ยังคงให้ผลต่างจากจักรพรรดิจริง (จัดอันดับต่อหลักต่างกัน)
+// แค่เปลี่ยนหน่วยจาก "ทั้งชุด" เป็น "ต่อหลัก" ให้เข้ากับสถาปัตยกรรมใหม่
 function _imperialGoldFormula(prevRow, nextDay, nextMonth, nextYear2, topN=10){
   const pool=_buildPrize1to5Pool(prevRow);
   if(pool.length===0)return [];
   const ranked=_digitPosFreq(pool);
   if(!ranked)return [];
-  const candidates=_imperialCandidates(ranked);
-  const maxFreq=ranked.reduce((sum,posRanked)=>sum+(posRanked[0]?.count||0),0)||1;
   const P=parseInt(String(prevRow?.prize1||''))||0;
   const target=String(((Math.round(P+nextDay*nextMonth*nextYear2)%1000000)+1000000)%1000000).padStart(6,'0');
-  const blendedCandidates=candidates.map(c=>{
-    const closeness=[...c.digits].reduce((n,d,i)=>n+(9-Math.abs(Number(d)-Number(target[i]))),0);
-    const blended=0.8*(c.freqScore/maxFreq)+0.2*(closeness/54);
-    return {...c,blended};
+  const blendedRanked=ranked.map((posRanked,p)=>{
+    const maxCount=posRanked[0]?.count||1;
+    const targetDigit=Number(target[p]);
+    return [...posRanked]
+      .map(e=>({digit:e.digit,count:e.count,blended:0.8*(e.count/maxCount)+0.2*((9-Math.abs(Number(e.digit)-targetDigit))/9)}))
+      .sort((a,b)=>b.blended-a.blended || b.count-a.count || (a.digit<b.digit?-1:a.digit>b.digit?1:0))
+      .map(e=>e.digit);
   });
-  return _imperialDiverseSelect(blendedCandidates,'blended',topN,2)
-    .map(c=>c.digits);
+  return _imperialRoundRobin(blendedRanked,topN,8);
 }
 
 function _codexPool(rows, col, width, targetIso, topN, coeffs){
