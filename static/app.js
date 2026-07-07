@@ -877,6 +877,31 @@ function dcRecoEdgeRows(snapshots,rows){
   });
 }
 
+// เลขแนะนำ hit-rate trend (ISSUE-11) — same conventions as dcHitRateTrend for Picks
+// (resolved-only, last `take`, rolling `window`, ascending dates) but over each snapshot's
+// reco entries: a round is a hit if >=1 of its เลขแนะนำ hit; rounds with no reco entries are
+// excluded entirely (no เลขแนะนำ signal existed that round to judge). Kept as a genuinely
+// separate series from the Pick trend — never merged into the same line (spec requirement).
+function dcRecoHitRateTrend(snapshots,rows,window=5,take=20){
+  const resolved=(snapshots||[])
+    .filter(s=>(s?.reco||[]).length)
+    .map(s=>{
+      const actual=dcActualForDate(rows,s.date);
+      if(!actual)return null;
+      const hit=(s.reco||[]).some(r=>dcCheckHit(r.num,actual)==='hit');
+      return {date:s.date,status:hit?'hit':'miss'};
+    })
+    .filter(Boolean)
+    .sort((a,b)=>a.date.localeCompare(b.date));
+  const recent=resolved.slice(-take);
+  return recent.map((r,i)=>{
+    const start=Math.max(0,i-window+1);
+    const win=recent.slice(start,i+1);
+    const hitCount=win.filter(w=>w.status==='hit').length;
+    return {date:r.date,value:+(hitCount/win.length*100).toFixed(1)};
+  });
+}
+
 function dcRecoExplainHtml(candidate){
   if(!candidate)return '';
   // Map to display labels (X->F) BEFORE sorting, so the shown order is alphabetical by
@@ -925,6 +950,45 @@ function dcRecoSectionHtml(reco){
       ${dcRecoCoverageBadgeHtml(reco)}
     </div>
     <div class="dc-reco-grid">${cards}</div>
+  </div>`;
+}
+
+// #1 เลขแนะนำ across ALL field types (ISSUE-12) — each field's top candidate competes under
+// the same ranking rule used within a field: more agreeing groups wins, tie-break by combined
+// Edge. Returns {field,label,num,groups,combinedEdge} or null when nothing qualifies.
+function dcRecoTopOverall(reco){
+  let best=null;
+  DC_RECO_FIELDS.forEach(([field,label])=>{
+    const top=(reco?.[field]||[])[0];
+    if(!top)return;
+    if(!best
+      ||top.groups.length>best.groups.length
+      ||(top.groups.length===best.groups.length&&top.combinedEdge>best.combinedEdge)){
+      best={field,label,num:top.num,groups:top.groups,combinedEdge:top.combinedEdge};
+    }
+  });
+  return best;
+}
+
+// Comparison strip (ISSUE-12): this round's #1 เลขแนะนำ side by side with the #1 Pick from
+// the existing Final Confidence Score list. Reads only already-computed results — no new
+// fetch, no touch of dcBuildScoreRows. Visually distinguishes agree (same number) vs differ.
+function dcRecoCompareStripHtml(topReco,bestPick){
+  if(!topReco&&!bestPick)return '';
+  const agree=!!(topReco&&bestPick&&topReco.num===String(bestPick.num||''));
+  const verdict=agree
+    ?'<span class="dc-status good">สองสัญญาณชี้เลขเดียวกัน</span>'
+    :'<span class="dc-status warn">สองสัญญาณชี้คนละเลข</span>';
+  const recoSide=topReco
+    ?`<div class="dc-compare-num">${escHtml(topReco.num)}</div><div class="dc-compare-sub">${escHtml(topReco.label)} · ${escHtml(dcRecoExplainHtml(topReco))}</div>`
+    :'<div class="dc-compare-empty">ไม่มีเลขแนะนำงวดนี้</div>';
+  const pickSide=bestPick&&bestPick.num
+    ?`<div class="dc-compare-num">${escHtml(bestPick.num)}</div><div class="dc-compare-sub">Final Confidence ${bestPick.score}/100</div>`
+    :'<div class="dc-compare-empty">ไม่มี Pick ผ่านเกณฑ์งวดนี้</div>';
+  return `<div class="dc-compare-strip ${agree?'agree':''}">
+    <div class="dc-compare-col"><div class="dc-compare-label">เลขแนะนำ อันดับ 1</div>${recoSide}</div>
+    <div class="dc-compare-mid">${agree?'=':'≠'}<div>${verdict}</div></div>
+    <div class="dc-compare-col"><div class="dc-compare-label">Pick อันดับ 1</div>${pickSide}</div>
   </div>`;
 }
 
@@ -1088,17 +1152,27 @@ async function loadDecisionCenter(){
     };
     dcAutoSaveSnapshot(_dcLastSnapshot);
     const recoEdgeHtml=dcRecoEdgeCardHtml(dcRecoEdgeRows(dcSnapshots(),_dcHistRows));
+    // ISSUE-12: comparison strip — reads only already-computed results (recoObj + scored).
+    const compareHtml=dcRecoCompareStripHtml(dcRecoTopOverall(recoObj),scored.picks[0]||scored.all[0]||null);
     const trend=dcHitRateTrend(dcSnapshots(),_dcHistRows,5,20);
     const trendHtml=trend.length
       ?`<div style="height:180px"><canvas id="dc-trend-chart" role="img" aria-label="กราฟแนวโน้มอัตราถูกของ Decision Center"></canvas></div>`
       :'<div class="dash-empty">ยังไม่มีงวดที่มีผลจริงพอจะคำนวณแนวโน้ม — auto-save จะสะสมทุกครั้งที่เปิดหน้านี้</div>';
+    // ISSUE-11: เลขแนะนำ's own trend chart — a genuinely separate canvas from the Pick trend
+    // (its date axis differs: rounds without a เลขแนะนำ are excluded, not counted as misses).
+    const recoTrend=dcRecoHitRateTrend(dcSnapshots(),_dcHistRows,5,20);
+    const recoTrendHtml=recoTrend.length
+      ?`<div style="height:180px"><canvas id="dc-reco-trend-chart" role="img" aria-label="กราฟแนวโน้มอัตราถูกของเลขแนะนำ"></canvas></div>`
+      :'<div class="dash-empty">ยังไม่มีงวดที่มีผลจริงพร้อมเลขแนะนำ — สะสมจาก auto-save เพื่อเทียบกับ Pick ได้ตรงๆ</div>';
     root.className='';
     root.innerHTML=`${recoHtml}
+    ${compareHtml}
     <div class="dc-grid">${recoEdgeHtml}</div>
     ${lottoBoardHtml}
     <div class="dc-grid">
       <div class="dc-card dc-card-wide"><div class="dc-label">Snapshot + Track Record</div><div class="dc-signal-sub" style="margin-bottom:8px">บันทึกอัตโนมัติทุกครั้งที่เปิดหน้านี้ · &quot;ถูก&quot; = มีเลขอย่างน้อย 1 ตัวในชุดที่ตรงผลจริง</div><div id="dc-snapshot-list" class="dc-row">${dcSnapshotTrackHtml(_dcHistRows)}</div></div>
       <div class="dc-card dc-card-wide"><div class="dc-label">แนวโน้มอัตราถูก (20 งวดล่าสุดที่มีผล · rolling 5 งวด)</div>${trendHtml}</div>
+      <div class="dc-card dc-card-wide"><div class="dc-label">แนวโน้มอัตราถูกของเลขแนะนำ (20 งวดล่าสุดที่มีผล · rolling 5 งวด)</div><div class="dc-signal-sub" style="margin-bottom:8px">นับเฉพาะงวดที่มีเลขแนะนำ · ถูก = เลขแนะนำอย่างน้อย 1 ตัวตรงผลจริง · แยกจากกราฟ Pick ด้านบนเพื่อเทียบกันตรงๆ</div>${recoTrendHtml}</div>
     </div>
     <div id="dc-backtest-panel"></div>
     <div class="dc-panel">
@@ -1118,6 +1192,14 @@ async function loadDecisionCenter(){
       mkChart('dc-trend-chart',{type:'line',data:{
         labels:trend.map(t=>fmtDate(t.date)),
         datasets:[{label:'% ถูก (rolling 5 งวด)',data:trend.map(t=>t.value),borderColor:'#3dd68c',backgroundColor:'rgba(61,214,140,.15)',tension:.3,fill:true,pointRadius:2}]
+      },options:opts});
+    }
+    if(recoTrend.length){
+      const opts=chartOpts('% ถูก');
+      opts.scales.y.min=0;opts.scales.y.max=100;
+      mkChart('dc-reco-trend-chart',{type:'line',data:{
+        labels:recoTrend.map(t=>fmtDate(t.date)),
+        datasets:[{label:'เลขแนะนำ % ถูก (rolling 5 งวด)',data:recoTrend.map(t=>t.value),borderColor:'#f2ca73',backgroundColor:'rgba(233,182,77,.15)',tension:.3,fill:true,pointRadius:2}]
       },options:opts});
     }
   }catch(e){

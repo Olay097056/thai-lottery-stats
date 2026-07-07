@@ -53,12 +53,14 @@ const code = [
   extractConst('DC_RECO_PRODUCER_GROUPS'),
   extract('dcRecoBaseline'),
   extract('dcRecoEdgeRows'),
+  // ISSUE-11: เลขแนะนำ hit-rate trend
+  extract('dcRecoHitRateTrend'),
 ].join('\n\n');
 
 const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(code, sandbox);
-const { dcActualForDate, dcCheckHit, dcSnapshotResult, dcHitRateTrend, dcBuildScoreRows, dcRecoBaseline, dcRecoEdgeRows } = sandbox;
+const { dcActualForDate, dcCheckHit, dcSnapshotResult, dcHitRateTrend, dcBuildScoreRows, dcRecoBaseline, dcRecoEdgeRows, dcRecoHitRateTrend } = sandbox;
 
 let passed = 0;
 function check(label, cond) {
@@ -193,5 +195,33 @@ check('top3: never shown -> hitRate 0, shown 0', byField.top3.shown === 0 && byF
 check('edge = hitRate - baseline for a shown field', Math.abs(byField.bottom2.edge - (byField.bottom2.hitRate - byField.bottom2.baseline)) < 1e-9);
 check('each edge row carries its producing-group count', byField.bottom2.groupCount === 7 && byField.front3.groupCount === 2);
 check('empty snapshots -> all fields 0 resolved, no throw', dcRecoEdgeRows([], recoRows).every(r => r.totalResolved === 0 && r.hitRate === 0));
+
+// --- 7. เลขแนะนำ hit-rate trend (ISSUE-11) ---
+// Same conventions as dcHitRateTrend (resolved-only, last `take`, rolling `window`), but
+// over each snapshot's reco entries: a round is a hit if >=1 of its เลขแนะนำ hit, and rounds
+// with NO reco entries are excluded entirely (no เลขแนะนำ signal existed to judge).
+{
+  // Reuse trendRows (5 resolved draws, bottom2 = 01..05).
+  const recoTrendSnaps = [
+    { date: '2026-01-01', reco: [{ field: 'bottom2', num: '01' }] },                                  // hit
+    { date: '2026-01-02', reco: [{ field: 'bottom2', num: '99' }] },                                  // miss
+    { date: '2026-01-03', reco: [{ field: 'bottom2', num: '99' }, { field: 'top3', num: '003' }] },   // hit (>=1)
+    { date: '2026-01-04', reco: [] },                                                                 // no reco -> excluded
+    { date: '2026-01-05', picks: [{ num: '05' }] },                                                   // no reco key -> excluded
+    { date: '2026-06-01', reco: [{ field: 'bottom2', num: '01' }] },                                  // pending -> excluded
+  ];
+  const rt = dcRecoHitRateTrend(recoTrendSnaps, trendRows, 5, 20);
+  check('reco trend keeps only resolved rounds WITH reco entries (3 of 6)', rt.length === 3);
+  check('reco trend point 1 = 100 (hit)', rt[0].value === 100);
+  check('reco trend point 2 = 50 (hit,miss)', rt[1].value === 50);
+  check('reco trend point 3 = 66.7 (hit,miss,hit — >=1 reco hit counts the round)', Math.abs(rt[2].value - 66.7) < 0.1);
+  check('reco trend points carry dates in ascending order', rt[0].date === '2026-01-01' && rt[2].date === '2026-01-03');
+  check('empty snapshots -> empty trend, no throw', dcRecoHitRateTrend([], trendRows, 5, 20).length === 0);
+  // `take` truncation, mirroring the Pick trend's convention
+  const manyRecoSnaps = manySnaps.map((s, i) => ({ date: s.date, reco: [{ field: 'bottom2', num: s.picks[0].num }] }));
+  const rt20 = dcRecoHitRateTrend(manyRecoSnaps, manyRows, 5, 20);
+  check('reco trend take=20 truncates to 20 points', rt20.length === 20);
+  check('reco trend take truncation drops the oldest misses out of the window', rt20[0].value === 100);
+}
 
 console.log(`OK: ${passed} checks passed`);

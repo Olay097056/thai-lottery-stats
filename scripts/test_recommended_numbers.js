@@ -38,14 +38,16 @@ function extractConst(name) {
 
 const code = [
   extract('dcRecommendedNumbers'),
+  extractConst('DC_RECO_FIELDS'),
   extractConst('DC_RECO_GROUP_DISPLAY'),
   extract('dcRecoGroupLabel'),
   extract('dcRecoExplainHtml'),
+  extract('dcRecoTopOverall'),
 ].join('\n\n');
 const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(code, sandbox);
-const { dcRecommendedNumbers, dcRecoExplainHtml } = sandbox;
+const { dcRecommendedNumbers, dcRecoExplainHtml, dcRecoTopOverall } = sandbox;
 
 let passed = 0;
 function check(label, cond) {
@@ -161,6 +163,31 @@ const btMap = new Map([
   check('explainer of a plain 2-group agreement reads correctly',
     dcRecoExplainHtml({ num: '23', groups: ['A', 'D'], combinedEdge: 0 }) === 'A + D เห็นตรงกัน');
   check('explainer of null candidate is empty', dcRecoExplainHtml(null) === '');
+}
+
+// --- 7. dcRecoTopOverall — #1 เลขแนะนำ across all field types (ISSUE-12) ---
+// Same ranking rule as within a field type: more agreeing groups wins, tie-break by
+// combined Edge. Used by the comparison strip against the #1 Pick.
+{
+  const reco = {
+    bottom2: [{ num: '23', groups: ['A', 'D'], combinedEdge: 18 }],
+    top3: [{ num: '495', groups: ['G', 'H', 'X'], combinedEdge: 5 }],
+    front3: [{ num: '471', groups: ['D', 'X'], combinedEdge: 20 }],
+  };
+  const top = dcRecoTopOverall(reco);
+  check('3-group agreement wins across field types regardless of edge', top.num === '495' && top.field === 'top3');
+
+  const recoTie = {
+    bottom2: [{ num: '23', groups: ['A', 'D'], combinedEdge: 18 }],
+    front3: [{ num: '471', groups: ['D', 'X'], combinedEdge: 20 }],
+  };
+  const topTie = dcRecoTopOverall(recoTie);
+  check('equal group-count tie broken by combined Edge across field types', topTie.num === '471' && topTie.field === 'front3');
+
+  check('no qualifying number anywhere -> null', dcRecoTopOverall({ bottom2: [], top3: [] }) === null);
+  check('empty/missing reco object -> null, no throw', dcRecoTopOverall(undefined) === null);
+  check('only the TOP candidate per field competes (rank-2 candidates never outrank a field winner)',
+    dcRecoTopOverall({ bottom2: [{ num: '11', groups: ['A', 'B'], combinedEdge: 1 }, { num: '99', groups: ['A', 'B', 'C', 'D'], combinedEdge: 99 }] }).num === '11');
 }
 
 console.log(`OK: ${passed} checks passed`);
