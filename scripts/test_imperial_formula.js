@@ -15,6 +15,11 @@
 //    for the same fixture + a target date chosen so the arithmetic signal flips
 //    the ranking (proving the blend changes behavior, not just cosmetically).
 // 6. จักรพรรดิทองคำ produces no output for an empty-pool previous draw, same as จักรพรรดิ.
+// 7. _imperialDiverseSelect (candidate diversity fix): always keeps the top scorer,
+//    spreads the rest of the set out (higher average pairwise Hamming distance than
+//    naive top-N-by-score over the same input), relaxes minDist automatically rather
+//    than returning short of topN, and is genuinely wired into both _imperialFormula
+//    and _imperialGoldFormula (not just present but unused).
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -38,6 +43,7 @@ const code = [
   extract('_buildPrize1to5Pool'),
   extract('_digitPosFreq'),
   extract('_imperialCandidates'),
+  extract('_imperialDiverseSelect'),
   extract('_imperialFormula'),
   extract('_imperialGoldFormula'),
 ].join('\n\n');
@@ -45,7 +51,23 @@ const code = [
 const sandbox = {};
 vm.createContext(sandbox);
 vm.runInContext(code, sandbox);
-const { _buildPrize1to5Pool, _digitPosFreq, _imperialCandidates, _imperialFormula, _imperialGoldFormula } = sandbox;
+const { _buildPrize1to5Pool, _digitPosFreq, _imperialCandidates, _imperialDiverseSelect, _imperialFormula, _imperialGoldFormula } = sandbox;
+
+function hammingDistance(a, b) {
+  let d = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d++;
+  return d;
+}
+function avgPairwiseDistance(digitsList) {
+  let sum = 0, pairs = 0;
+  for (let i = 0; i < digitsList.length; i++) {
+    for (let j = i + 1; j < digitsList.length; j++) {
+      sum += hammingDistance(digitsList[i], digitsList[j]);
+      pairs++;
+    }
+  }
+  return pairs ? sum / pairs : 0;
+}
 
 // --- 1. scorer produces a known ranked-digit-per-position result for a fixed pool ---
 // Pool chosen so each position has an unambiguous frequency winner, plus one
@@ -233,3 +255,67 @@ if (!Array.isArray(goldEmptyCandidates) || goldEmptyCandidates.length !== 0) {
   throw new Error(`FAIL: expected no gold candidates for a previous draw with empty prize 1-5 pool data, got ${JSON.stringify(goldEmptyCandidates)}`);
 }
 console.log('OK: จักรพรรดิทองคำ produces no output for a previous draw with empty prize 1-5 pool fields');
+
+// --- 7. _imperialDiverseSelect: diversity, top-scorer priority, minDist relaxation ---
+
+// (a) diversity: a base candidate plus 6 near-duplicates (each 1 digit off the base,
+// decreasing score) plus 4 genuinely distant candidates (much lower score, but spread
+// across the digit space). Diverse-select (minDist=2) should prefer the distant ones
+// over the near-duplicates once the base is taken, giving a higher average pairwise
+// distance than naive top-5-by-score over the same input.
+const diversityInput = [
+  { digits: '555555', score: 100 },
+  { digits: '555556', score: 99 },
+  { digits: '555565', score: 98 },
+  { digits: '555655', score: 97 },
+  { digits: '556555', score: 96 },
+  { digits: '565555', score: 95 },
+  { digits: '655555', score: 94 },
+  { digits: '012345', score: 50 },
+  { digits: '987654', score: 49 },
+  { digits: '246801', score: 48 },
+  { digits: '864213', score: 47 },
+];
+const diverse5 = _imperialDiverseSelect(diversityInput, 'score', 5, 2);
+if (!Array.isArray(diverse5) || diverse5.length !== 5) {
+  throw new Error(`FAIL: expected exactly 5 diverse candidates, got ${JSON.stringify(diverse5)}`);
+}
+if (diverse5[0].digits !== '555555') {
+  throw new Error(`FAIL: top scorer must always be admitted first, got ${JSON.stringify(diverse5[0])}`);
+}
+const naive5 = [...diversityInput].sort((a, b) => b.score - a.score).slice(0, 5);
+const diverseAvgDist = avgPairwiseDistance(diverse5.map(c => c.digits));
+const naiveAvgDist = avgPairwiseDistance(naive5.map(c => c.digits));
+if (!(diverseAvgDist > naiveAvgDist)) {
+  throw new Error(`FAIL: expected diverse selection avg distance (${diverseAvgDist}) > naive top-N avg distance (${naiveAvgDist})`);
+}
+console.log(`OK: _imperialDiverseSelect spreads candidates wider than naive top-N (diverse avg dist ${diverseAvgDist.toFixed(2)} vs naive ${naiveAvgDist.toFixed(2)}), always keeps the top scorer`);
+
+// (b) minDist relaxation: 10 candidates that all differ from each other in exactly one
+// digit (only the last position varies) — no two can ever satisfy minDist=2, so the
+// first pass must relax to minDist=1 (where all pairs qualify) and still return exactly
+// topN, never fewer.
+const relaxInput = Array.from({ length: 10 }, (_, i) => ({ digits: `00000${i}`, score: 10 - i }));
+const relaxed = _imperialDiverseSelect(relaxInput, 'score', 5, 2);
+if (!Array.isArray(relaxed) || relaxed.length !== 5) {
+  throw new Error(`FAIL: expected minDist relaxation to still return exactly 5 candidates, got ${JSON.stringify(relaxed)}`);
+}
+if (relaxed[0].digits !== '000000') {
+  throw new Error(`FAIL: top scorer must still be admitted first after relaxation, got ${JSON.stringify(relaxed[0])}`);
+}
+console.log('OK: _imperialDiverseSelect relaxes minDist automatically rather than returning fewer than topN');
+
+// (c) end-to-end wiring: on the realistic fixture already used above, จักรพรรดิ's actual
+// output must be measurably more spread out than naive top-10-by-freqScore over the exact
+// same raw candidate pool — proving _imperialDiverseSelect is genuinely wired in, not just
+// defined and unused.
+const realisticRankedForDiversity = _digitPosFreq(_buildPrize1to5Pool(realisticPoolRow));
+const realisticRawCandidates = _imperialCandidates(realisticRankedForDiversity);
+const naiveTop10 = [...realisticRawCandidates].sort((a, b) => b.freqScore - a.freqScore || (a.digits < b.digits ? -1 : a.digits > b.digits ? 1 : 0)).slice(0, 10);
+const actualTop10 = _imperialFormula(realisticPoolRow, 10);
+const naiveTop10AvgDist = avgPairwiseDistance(naiveTop10.map(c => c.digits));
+const actualAvgDist = avgPairwiseDistance(actualTop10);
+if (!(actualAvgDist > naiveTop10AvgDist)) {
+  throw new Error(`FAIL: expected _imperialFormula's actual output (avg dist ${actualAvgDist}) to be more spread out than naive top-10-by-score (avg dist ${naiveTop10AvgDist}) over the same candidate pool`);
+}
+console.log(`OK: _imperialFormula is genuinely wired to _imperialDiverseSelect (actual avg dist ${actualAvgDist.toFixed(2)} > naive ${naiveTop10AvgDist.toFixed(2)})`);

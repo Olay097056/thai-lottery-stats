@@ -1,6 +1,6 @@
 # แผนพัฒนา — Thai Lottery Intelligence Dashboard
 
-> อัปเดตล่าสุด: 2026-07-07 · Phase 1–3.7 เสร็จสมบูรณ์ · Phase 4 (FABLE) ถูกยกเลิก · Phase 5 (จักรพรรดิ/จักรพรรดิทองคำ) เสร็จสมบูรณ์ · frontend แยกไฟล์ + จัดระเบียบ path เสร็จ · หน้า "สรุปงวดนี้" (Decision Center) ปรับปรุงใหม่ (ตัดซ้ำซ้อน + track record + edge badge) เสร็จสมบูรณ์ — ดู [CHANGELOG.md](CHANGELOG.md) สำหรับประวัติละเอียด
+> อัปเดตล่าสุด: 2026-07-07 · Phase 1–3.7 เสร็จสมบูรณ์ · Phase 4 (FABLE) ถูกยกเลิก · Phase 5 (จักรพรรดิ/จักรพรรดิทองคำ) เสร็จสมบูรณ์ (รวม candidate diversity fix) · frontend แยกไฟล์ + จัดระเบียบ path เสร็จ · หน้า "สรุปงวดนี้" (Decision Center) ปรับปรุงใหม่ (ตัดซ้ำซ้อน + track record + edge badge) เสร็จสมบูรณ์ — ดู [CHANGELOG.md](CHANGELOG.md) สำหรับประวัติละเอียด
 
 ## สถานะปัจจุบัน
 
@@ -27,6 +27,8 @@ FABLE (สูตรที่ใช้ rolling history หลายงวด + po
 
 แทนที่แนวทาง FABLE ด้วยสูตรใหม่ที่อ้างอิง**เฉพาะงวดก่อนหน้า 1 งวด** (เหมือนกลุ่ม A-H) แต่ยังคงเป้าหมายเดิม (ทายเลข 6 หลักที่มีโอกาสตรงรางวัล 1-5) โดยนับความถี่ของแต่ละหลัก (position 1-6) จาก pool รางวัลรองของงวดก่อนหน้า (~168 เลข) — ดูรายละเอียดที่ `PRD-replace-fable-with-imperial-formulas.md`
 
-**จักรพรรดิ (ISSUE-6) — เสร็จแล้ว:** `_buildPrize1to5Pool` (สร้าง pool จาก near1+prize2-5 ของงวดก่อนหน้า) + `_digitPosFreq` (นับความถี่เลขต่อหลัก, reusable) + `_imperialCandidates` (cartesian expansion+dedupe, reusable) + `_imperialFormula` (top-2 ต่อหลัก, จัดอันดับด้วย freqScore, คัด ~10 ชุด) ใน `formula-engine.js` แสดงทั้งในหน้า "ทำนาย" (กลุ่ม I dropdown) และตาราง backtest (badge "I · จักรพรรดิ", field `pool6`) เป็นสูตรปกติทันที ไม่มี promotion gate/ป้ายทดลอง
+**จักรพรรดิ (ISSUE-6) — เสร็จแล้ว:** `_buildPrize1to5Pool` (สร้าง pool จาก near1+prize2-5 ของงวดก่อนหน้า) + `_digitPosFreq` (นับความถี่เลขต่อหลัก, reusable) + `_imperialCandidates` (cartesian expansion+dedupe, reusable) + `_imperialFormula` (จัดอันดับด้วย freqScore, คัด ~10 ชุด) ใน `formula-engine.js` แสดงทั้งในหน้า "ทำนาย" (กลุ่ม I dropdown) และตาราง backtest (badge "I · จักรพรรดิ", field `pool6`) เป็นสูตรปกติทันที ไม่มี promotion gate/ป้ายทดลอง
 
 **จักรพรรดิทองคำ (ISSUE-7) — เสร็จแล้ว:** `_imperialGoldFormula` ใช้ `_digitPosFreq`/`_imperialCandidates` เดิม ผสม 80% freqScore + 20% ความใกล้เคียงเชิงระยะห่างของตัวเลข (ไม่ใช่ exact-match — พบว่า exact-match ทำให้ 20% ไม่มีผลจริงกับข้อมูลจริงเลย ดู CHANGELOG.md) กับเลขคณิตจากกลุ่ม D (`prize1 + วัน×เดือน×ปี ของงวดถัดไป`) ยืนยันแล้วว่า candidate set ต่างจากจักรพรรดิจริงทุกงวด แสดงเป็น "I2 จักรพรรดิทองคำ" ใต้ badge เดียวกัน
+
+**Candidate diversity fix — เสร็จแล้ว (2026-07-07, ดู `PRD-imperial-formula-candidate-diversity.md`):** user สังเกตว่า candidate ทั้ง 2 สูตรกระจุกตัวคล้ายกันหมด (ต่างกันแค่ 1-2 หลัก) ไม่กระจายเหมือนเลขจริง — สาเหตุคือ `_imperialCandidates` เดิมคัด top-2 ต่อหลักแล้วจัดอันดับด้วย freqScore รวม ทำให้อันดับรองๆ เป็นแค่เพื่อนบ้านของจุดคะแนนสูงสุด แก้โดยขยายเป็น **top-3 ต่อหลัก** + เพิ่ม `_imperialDiverseSelect` (greedy, บังคับระยะห่าง Hamming distance ≥2 หลักระหว่าง candidate ที่เลือก, ผ่อนอัตโนมัติถ้าไม่พอ) ให้ทั้งสองสูตรเรียกใช้แทน `.sort().slice()` เดิม ยืนยันแล้วว่า edge ไม่เปลี่ยน (ยังคง 0/455, −0.1679% ทั้งก่อน-หลัง ตรงตามที่คาดไว้ — งานนี้ไม่ได้ทำเพื่อไล่ edge) แต่ความหลากหลายต่อตำแหน่งดีขึ้นจริงบนข้อมูลจริง

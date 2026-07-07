@@ -1159,16 +1159,20 @@ function _digitPosFreq(pool6){
   );
 }
 
-// เกณฑ์ร่วมของกลุ่ม I — รวมเลข 2 อันดับแรกต่อหลักแบบ cartesian (สูงสุด 64 ชุด) แล้ว
+// เกณฑ์ร่วมของกลุ่ม I — รวมเลข 3 อันดับแรกต่อหลักแบบ cartesian (สูงสุด 729 ชุด) แล้ว
 // dedupe เหลือชุดไม่ซ้ำพร้อมคะแนนความถี่รวม (freqScore) การจัดอันดับ/ตัดท็อปเป็นหน้าที่
-// ของแต่ละสูตร (จักรพรรดิ ใช้ freqScore ล้วน, จักรพรรดิทองคำ ผสมสัญญาณเลขคณิตเพิ่ม)
+// ของแต่ละสูตร (จักรพรรดิ ใช้ freqScore ล้วน, จักรพรรดิทองคำ ผสมสัญญาณเลขคณิตเพิ่ม) ผ่าน
+// _imperialDiverseSelect ด้านล่าง (เดิมใช้แค่ 2 อันดับแรกต่อหลัก แต่พบว่าการจัดอันดับด้วย
+// freqScore รวมทำให้ผลลัพธ์กระจุกใกล้จุดคะแนนสูงสุดจุดเดียว (candidate อันดับรองๆ ต่างจาก
+// อันดับ 1 แค่ 1-2 หลัก) ไม่กระจายเหมือนเลขจริงที่ออก — ขยายเป็น 3 อันดับให้มีวัตถุดิบกระจาย
+// กว่าเดิมสำหรับ diverse-select ด้านล่าง)
 function _imperialCandidates(ranked){
-  const top2=ranked.map(posRanked=>posRanked.slice(0,2));
+  const top3=ranked.map(posRanked=>posRanked.slice(0,3));
   let candidates=[{digits:'',freqScore:0}];
   for(let pos=0;pos<6;pos++){
     const next=[];
     for(const cand of candidates)
-      for(const {digit,count} of top2[pos])
+      for(const {digit,count} of top3[pos])
         next.push({digits:cand.digits+digit, freqScore:cand.freqScore+count});
     candidates=next;
   }
@@ -1179,17 +1183,38 @@ function _imperialCandidates(ranked){
   return [...seen.values()];
 }
 
-// จักรพรรดิ — takes the top-2 highest-frequency digit per position, combines
-// them across all 6 positions (bounded cartesian expansion, max 64 candidates),
-// ranks by summed position-frequency score, returns top-N (default 10).
+// เลือก candidate สุดท้ายแบบกระจาย (candidate diversity fix) — ยังเรียงตามคะแนน (scoreKey)
+// เป็นหลัก แต่บังคับให้ทุกชุดที่เลือกห่างกันอย่างน้อย minDist หลัก (Hamming distance) จากชุด
+// ที่เลือกไปแล้วทุกชุด ตัวคะแนนสูงสุดถูกเลือกก่อนเสมอ ถ้าเดินจนหมดรายการแล้วยังไม่ครบ topN
+// จะผ่อน minDist ลงทีละ 1 แล้วเริ่มใหม่จากตัวคะแนนสูงสุด จนกว่าจะครบ topN เสมอ (ถ้ามี
+// candidate ไม่ซ้ำกันเพียงพอในอินพุต) — ไม่คืนค่าน้อยกว่า topN ที่ขอ
+function _imperialDiverseSelect(candidates, scoreKey, topN, minDist=2){
+  const sorted=[...candidates].sort((a,b)=>b[scoreKey]-a[scoreKey] || (a.digits<b.digits?-1:a.digits>b.digits?1:0));
+  if(sorted.length<=topN)return sorted;
+  const hammingDist=(a,b)=>{let d=0;for(let i=0;i<a.length;i++)if(a[i]!==b[i])d++;return d;};
+  for(let dist=minDist;dist>=0;dist--){
+    const picked=[sorted[0]];
+    for(let i=1;i<sorted.length&&picked.length<topN;i++){
+      const cand=sorted[i];
+      if(picked.every(p=>hammingDist(p.digits,cand.digits)>=dist))picked.push(cand);
+    }
+    if(picked.length>=topN)return picked;
+  }
+  return sorted.slice(0,topN);
+}
+
+// จักรพรรดิ — takes the top-3 highest-frequency digit per position, combines
+// them across all 6 positions (bounded cartesian expansion, max 729 candidates),
+// ranks by summed position-frequency score, then picks top-N (default 10) via
+// _imperialDiverseSelect so the final set spreads across the digit space instead
+// of clustering around the single highest-scoring candidate.
 function _imperialFormula(prevRow, topN=10){
   const pool=_buildPrize1to5Pool(prevRow);
   if(pool.length===0)return [];
   const ranked=_digitPosFreq(pool);
   if(!ranked)return [];
-  return _imperialCandidates(ranked)
-    .sort((a,b)=>b.freqScore-a.freqScore || (a.digits<b.digits?-1:a.digits>b.digits?1:0))
-    .slice(0,topN).map(c=>c.digits);
+  return _imperialDiverseSelect(_imperialCandidates(ranked),'freqScore',topN,2)
+    .map(c=>c.digits);
 }
 
 // จักรพรรดิทองคำ (ISSUE-7) — ใช้ _digitPosFreq/_imperialCandidates ชุดเดียวกับจักรพรรดิ
@@ -1211,14 +1236,13 @@ function _imperialGoldFormula(prevRow, nextDay, nextMonth, nextYear2, topN=10){
   const maxFreq=ranked.reduce((sum,posRanked)=>sum+(posRanked[0]?.count||0),0)||1;
   const P=parseInt(String(prevRow?.prize1||''))||0;
   const target=String(((Math.round(P+nextDay*nextMonth*nextYear2)%1000000)+1000000)%1000000).padStart(6,'0');
-  return candidates
-    .map(c=>{
-      const closeness=[...c.digits].reduce((n,d,i)=>n+(9-Math.abs(Number(d)-Number(target[i]))),0);
-      const blended=0.8*(c.freqScore/maxFreq)+0.2*(closeness/54);
-      return {...c,blended};
-    })
-    .sort((a,b)=>b.blended-a.blended || (a.digits<b.digits?-1:a.digits>b.digits?1:0))
-    .slice(0,topN).map(c=>c.digits);
+  const blendedCandidates=candidates.map(c=>{
+    const closeness=[...c.digits].reduce((n,d,i)=>n+(9-Math.abs(Number(d)-Number(target[i]))),0);
+    const blended=0.8*(c.freqScore/maxFreq)+0.2*(closeness/54);
+    return {...c,blended};
+  });
+  return _imperialDiverseSelect(blendedCandidates,'blended',topN,2)
+    .map(c=>c.digits);
 }
 
 function _codexPool(rows, col, width, targetIso, topN, coeffs){
