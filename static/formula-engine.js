@@ -1471,6 +1471,34 @@ function _imperialCards(prevRow,nextDay,nextMonth,nextYear2){
   return cards;
 }
 
+// เจ้าสัว pool6 leg (ISSUE-15) — reuses จักรพรรดิทองคำ's per-position blend structure
+// (0.8×freq + 0.2×closeness-to-target, per digit position, via _imperialRoundRobin) but
+// keyed to Group J's own arithmetic atom (|BK2 − DSUM|, ISSUE-13) instead of Group D's,
+// so it doesn't collapse to จักรพรรดิ/จักรพรรดิทองคำ's exact candidates for the same draw.
+// Permanently ทดลอง per ADR-0003 — no gate applies, this leg exists for J's field-type
+// coverage (mirroring จักรพรรดิ's bottom2+pool6 shape), not a claim of statistical edge.
+function _tycoonPool6Formula(prevRow, nextDay, nextMonth, nextYear2, topN=10){
+  const pool=_buildPrize1to5Pool(prevRow);
+  if(pool.length===0)return [];
+  const ranked=_digitPosFreq(pool);
+  if(!ranked)return [];
+  const bk2raw=String(prevRow?.back3_2??'').trim();
+  if(!bk2raw)return [];
+  if(nextDay==null||nextMonth==null||nextYear2==null||isNaN(nextDay)||isNaN(nextMonth)||isNaN(nextYear2))return [];
+  const BK2=parseInt(bk2raw)||0;
+  const DSUM=_dsumValue(nextDay,nextMonth,nextYear2);
+  const target=String(Math.abs(BK2-DSUM)%1000000).padStart(6,'0');
+  const blendedRanked=ranked.map((posRanked,p)=>{
+    const maxCount=posRanked[0]?.count||1;
+    const targetDigit=Number(target[p]);
+    return [...posRanked]
+      .map(e=>({digit:e.digit,count:e.count,blended:0.8*(e.count/maxCount)+0.2*((9-Math.abs(Number(e.digit)-targetDigit))/9)}))
+      .sort((a,b)=>b.blended-a.blended || b.count-a.count || (a.digit<b.digit?-1:a.digit>b.digit?1:0))
+      .map(e=>e.digit);
+  });
+  return _imperialRoundRobin(blendedRanked,topN,8);
+}
+
 // ─── J. เจ้าสัว — bottom2 leg (ISSUE-13), ทดลอง badge ────────────────────────
 function _tycoonCards(prevRow,nextDay,nextMonth,nextYear2){
   const numRow=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(16,185,129,.10);border:1px solid #10b98166;color:#10b981;padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
@@ -1483,6 +1511,16 @@ function _tycoonCards(prevRow,nextDay,nextMonth,nextYear2){
        'pad2(|ท้าย3ชุด2งวดก่อน − (วัน+เดือน+ปี พ.ศ.2หลัก ของงวดถัดไป)|) — DSUM ใช้สูตรเดียวกับกลุ่ม D',
        'ผ่าน train/validation แต่ไม่ผ่าน holdout (เกณฑ์ล่าสุด: train +0.72% validation +1.67% holdout −0.21%) จึงติดป้ายทดลองตาม ADR-0003 — ยังคงร่วมคำนวณ Picks/เลขแนะนำเต็มรูปแบบ'],
       [],numRow(preds),'ทดลอง'
+    ));
+  }
+  const predsPool6=_tycoonPool6Formula(prevRow,nextDay,nextMonth,nextYear2,10);
+  if(predsPool6.length){
+    cards.push(_mkFormulaCard(
+      'J2 เจ้าสัว · เลขเต็ม6หลัก','J. เจ้าสัว',
+      ['ใช้ความถี่ต่อหลักจาก pool รางวัลที่ 1-5 ของงวดก่อนหน้าเดียวกับจักรพรรดิ (I.) ผสม 80% คะแนนความถี่ + 20% ความใกล้เคียงเลขคณิตของกลุ่ม J เอง',
+       'เลขคณิต = |ท้าย3ชุด2งวดก่อน − DSUM| (สูตรเดียวกับ J1) แทนที่จะใช้สูตรของกลุ่ม D จึงให้ผลต่างจากจักรพรรดิ/จักรพรรดิทองคำ',
+       `ทดลองถาวรตาม ADR-0003 — ที่ปริมาณข้อมูลปัจจุบัน ~456 งวด ไม่มีทางแยกฝีมือจากโชคได้ในสนามนี้ (${predsPool6.length} ชุด)`],
+      [],numRow(predsPool6),'ทดลอง'
     ));
   }
   return cards;
@@ -1957,6 +1995,10 @@ function _computeFormulasBatch(prev, nextDateStr, historyCtx=[]){
   try{
     const _J1=_tycoonBottom2Formula(prev,nextDay,nextMonth,nextYear2);
     if(_J1.length)results.push({name:'J1 เจ้าสัว · ท้าย2',preds:_J1,field:'bottom2',baseline:_J1.length,trust:'ทดลอง'});
+  }catch(e){}
+  try{
+    const _J2=_tycoonPool6Formula(prev,nextDay,nextMonth,nextYear2,10);
+    if(_J2.length)results.push({name:'J2 เจ้าสัว · เลขเต็ม6หลัก',preds:_J2,field:'pool6',baseline:_J2.length,trust:'ทดลอง'});
   }catch(e){}
 
   // ══ F. Pattern Link — train/test derived transition links (ไม่มองอนาคต) ══
