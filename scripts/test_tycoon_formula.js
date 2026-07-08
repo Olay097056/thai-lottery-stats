@@ -1,11 +1,14 @@
-// Regression check for เจ้าสัว (Group J) bottom2 leg — ISSUE-13.
+// Regression check for เจ้าสัว (Group J) bottom2 leg — ISSUE-13, widened per the
+// 2026-07-08 grilling session (see docs/adr/0003-...md "Update" section).
 // Run with: node scripts/test_tycoon_formula.js
 // Verifies:
-// 1. _tycoonBottom2Formula computes pad2(|BK2 - DSUM|) using Group D's shared
-//    _dsumValue helper (not a second, duplicate DSUM computation).
-// 2. It produces no output (skip, no fallback) when back3_2 is missing/blank.
-// 3. It produces no output when the target date parts are missing.
-// 4. Regression: _claudeFormulas' D1 output is unchanged after the _dsumValue
+// 1. _tycoonBottom2Formula computes the searched center pad2(|BK2 - DSUM|) (using Group
+//    D's shared _dsumValue helper, not a second duplicate DSUM computation), then returns
+//    that center value plus its +-1/+-2 mod-100 neighbors, 5 candidates, ascending order.
+// 2. The mod-100 wraparound is correct at both boundaries (center near 0, center near 99).
+// 3. It produces no output (skip, no fallback) when back3_2 is missing/blank.
+// 4. It produces no output when the target date parts are missing.
+// 5. Regression: _claudeFormulas' D1 output is unchanged after the _dsumValue
 //    extraction (pure refactor, same DSUM formula).
 const fs = require('fs');
 const path = require('path');
@@ -38,23 +41,45 @@ vm.createContext(sandbox);
 vm.runInContext(code, sandbox);
 const { _dsumValue, _claudeFormulas, _tycoonBottom2Formula } = sandbox;
 
-// --- 1. known-value check: BK2=531 (back3_2), DSUM=15+7+68=90 -> |531-90|=441 -> pad2 -> '41' ---
+// --- 1. known-value check: BK2=531 (back3_2), DSUM=15+7+68=90 -> center=|531-90| mod 100=41
+// -> 5 candidates = center +-1/+-2 = 39,40,41,42,43, ascending, no wraparound needed ---
 const prevRow1 = { back3_2: '531' };
 const j1 = _tycoonBottom2Formula(prevRow1, 15, 7, 68);
-if (JSON.stringify(j1) !== JSON.stringify(['41'])) {
-  throw new Error(`FAIL: expected ["41"] for BK2=531/DSUM=90, got ${JSON.stringify(j1)}`);
+if (JSON.stringify(j1) !== JSON.stringify(['39', '40', '41', '42', '43'])) {
+  throw new Error(`FAIL: expected ["39","40","41","42","43"] for center=41, got ${JSON.stringify(j1)}`);
 }
-console.log(`OK: _tycoonBottom2Formula(back3_2=531, 15/7/68) = ${JSON.stringify(j1)} (independently computed: |531-90| mod 100 = 41)`);
+console.log(`OK: _tycoonBottom2Formula(back3_2=531, 15/7/68) = ${JSON.stringify(j1)} (independently computed: center=|531-90| mod 100=41, +-2 spread)`);
 
-// --- second known-value check, different fixture: BK2=42, DSUM=3+12+67=82 -> |42-82|=40 -> pad2 -> '40' ---
+// --- second known-value check, different fixture: BK2=42, DSUM=3+12+67=82 -> center=|42-82|=40
+// -> 5 candidates = 38,39,40,41,42 ---
 const prevRow2 = { back3_2: '042' };
 const j2 = _tycoonBottom2Formula(prevRow2, 3, 12, 67);
-if (JSON.stringify(j2) !== JSON.stringify(['40'])) {
-  throw new Error(`FAIL: expected ["40"] for BK2=42/DSUM=82, got ${JSON.stringify(j2)}`);
+if (JSON.stringify(j2) !== JSON.stringify(['38', '39', '40', '41', '42'])) {
+  throw new Error(`FAIL: expected ["38","39","40","41","42"] for center=40, got ${JSON.stringify(j2)}`);
 }
-console.log(`OK: _tycoonBottom2Formula(back3_2=042, 3/12/67) = ${JSON.stringify(j2)} (independently computed: |42-82| mod 100 = 40)`);
+console.log(`OK: _tycoonBottom2Formula(back3_2=042, 3/12/67) = ${JSON.stringify(j2)} (independently computed: center=|42-82|=40, +-2 spread)`);
 
-// --- 2. skip on missing/blank back3_2, no fallback substitution ---
+// --- 2. mod-100 wraparound at both boundaries ---
+// center=0: back3_2=090 (BK2=90), nextDay=1,nextMonth=1,nextYear2=88 -> DSUM=90 -> center=|90-90|=0
+// -> raw offsets -2,-1,0,1,2 -> 98,99,00,01,02 -> ascending lexical sort (all 2-digit zero-padded,
+// so lexical order = numeric order) -> ["00","01","02","98","99"]
+const wrapLowRow = { back3_2: '090' };
+const wrapLow = _tycoonBottom2Formula(wrapLowRow, 1, 1, 88);
+if (JSON.stringify(wrapLow) !== JSON.stringify(['00', '01', '02', '98', '99'])) {
+  throw new Error(`FAIL: expected ["00","01","02","98","99"] for center=0 wraparound, got ${JSON.stringify(wrapLow)}`);
+}
+console.log(`OK: _tycoonBottom2Formula wraps correctly at center=0: ${JSON.stringify(wrapLow)}`);
+
+// center=99: back3_2=101 (BK2=101), nextDay=1,nextMonth=1,nextYear2=0 -> DSUM=2 -> center=|101-2|=99
+// -> raw offsets -2,-1,0,1,2 -> 97,98,99,00,01 -> ascending -> ["00","01","97","98","99"]
+const wrapHighRow = { back3_2: '101' };
+const wrapHigh = _tycoonBottom2Formula(wrapHighRow, 1, 1, 0);
+if (JSON.stringify(wrapHigh) !== JSON.stringify(['00', '01', '97', '98', '99'])) {
+  throw new Error(`FAIL: expected ["00","01","97","98","99"] for center=99 wraparound, got ${JSON.stringify(wrapHigh)}`);
+}
+console.log(`OK: _tycoonBottom2Formula wraps correctly at center=99: ${JSON.stringify(wrapHigh)}`);
+
+// --- 3. skip on missing/blank back3_2, no fallback substitution ---
 const missingBk2 = _tycoonBottom2Formula({ back3_2: '' }, 15, 7, 68);
 if (!Array.isArray(missingBk2) || missingBk2.length !== 0) {
   throw new Error(`FAIL: expected no output for blank back3_2, got ${JSON.stringify(missingBk2)}`);
@@ -65,7 +90,7 @@ if (!Array.isArray(absentBk2) || absentBk2.length !== 0) {
 }
 console.log('OK: _tycoonBottom2Formula produces no output (no fallback) when back3_2 is missing/blank');
 
-// --- 3. skip when target date parts are missing ---
+// --- 4. skip when target date parts are missing ---
 const missingDate = _tycoonBottom2Formula({ back3_2: '531' }, null, 7, 68);
 if (!Array.isArray(missingDate) || missingDate.length !== 0) {
   throw new Error(`FAIL: expected no output for missing nextDay, got ${JSON.stringify(missingDate)}`);
@@ -76,7 +101,7 @@ if (!Array.isArray(nanDate) || nanDate.length !== 0) {
 }
 console.log('OK: _tycoonBottom2Formula produces no output when target date parts are missing');
 
-// --- 4. regression: D1 output unchanged after _dsumValue extraction (pure refactor) ---
+// --- 5. regression: D1 output unchanged after _dsumValue extraction (pure refactor) ---
 const ctx = { p6: '751495', t3: '495', b2: '62', bk1: '304', bk2: '531', drawday: 1, nextDay: 15, nextMonth: 7, nextYear2: 68 };
 const D = _claudeFormulas(ctx);
 // Independently hand-computed D1 set (pre-refactor formula, unchanged by the DSUM extraction):
@@ -98,7 +123,7 @@ if (JSON.stringify(D.d1) !== JSON.stringify(expectedD1)) {
 }
 console.log('OK: _claudeFormulas D1 output unchanged after _dsumValue extraction (pure refactor confirmed)');
 
-// --- 5. full-engine integration: J1 appears in _computeFormulasBatch with field=bottom2,
+// --- 6. full-engine integration: J1 appears in _computeFormulasBatch with field=bottom2,
 // trust='ทดลอง', and no other A-I formula gained a trust value ---
 const vmFull = require('vm');
 const stubEl = new Proxy({}, { get: () => () => stubEl, set: () => true });
@@ -126,8 +151,13 @@ if (j1Result.field !== 'bottom2') throw new Error(`FAIL: J1 field should be 'bot
 if (j1Result.trust !== 'ทดลอง') throw new Error(`FAIL: J1 trust should be 'ทดลอง', got ${JSON.stringify(j1Result.trust)}`);
 // Exact arithmetic correctness is already independently verified in checks 1-2 above via
 // direct _tycoonBottom2Formula calls; this integration check only confirms the wiring shape.
-if (!Array.isArray(j1Result.preds) || j1Result.preds.length !== 1 || !/^\d{2}$/.test(j1Result.preds[0])) {
-  throw new Error(`FAIL: J1 preds should be a single 2-digit string, got ${JSON.stringify(j1Result.preds)}`);
+if (!Array.isArray(j1Result.preds) || j1Result.preds.length !== 5 || !j1Result.preds.every(p => /^\d{2}$/.test(p))) {
+  throw new Error(`FAIL: J1 preds should be 5 two-digit strings, got ${JSON.stringify(j1Result.preds)}`);
+}
+// baseline (backtest bottom2 baseP = k/100) tracks candidate count automatically — no code
+// change needed for this, but pin it here so a future accidental change to preds.length is caught.
+if (j1Result.baseline !== 5) {
+  throw new Error(`FAIL: J1 baseline should be 5 (tracks preds.length), got ${j1Result.baseline}`);
 }
 const nonJTrusted = batchResults.filter(r => !String(r.name || '').startsWith('J') && r.trust);
 if (nonJTrusted.length) {
@@ -135,7 +165,7 @@ if (nonJTrusted.length) {
 }
 console.log(`OK: _computeFormulasBatch includes J1 (field=bottom2, trust=ทดลอง, preds=${JSON.stringify(j1Result.preds)}); no A-I formula carries a trust value`);
 
-// --- 6. _GRP has a 'J' entry with a color distinct from every other group's color ---
+// --- 7. _GRP has a 'J' entry with a color distinct from every other group's color ---
 const grpMatch = /const _GRP=\{[^}]*\};/.exec(src);
 if (!grpMatch) throw new Error('FAIL: _GRP literal not found in formula-engine.js');
 const grpSandbox = {};
@@ -149,7 +179,7 @@ const dupes = allColors.filter(c => c === jColor);
 if (dupes.length !== 1) throw new Error(`FAIL: _GRP.J color "${jColor}" is not distinct from other group colors: ${JSON.stringify(_GRP)}`);
 console.log(`OK: _GRP.J = ${JSON.stringify(_GRP.J)}, color distinct from all other groups`);
 
-// --- 7. _mkFormulaCard renders a ทดลอง badge when trust is passed, and none when it isn't ---
+// --- 8. _mkFormulaCard renders a ทดลอง badge when trust is passed, and none when it isn't ---
 // (reuse engineSandbox from check 5 above — the full engine, so every helper _mkFormulaCard
 // transitively calls, e.g. _formulaBacktestRowsByName, is already defined)
 const cardWithTrust = engineSandbox._mkFormulaCard('J1 เจ้าสัว · ท้าย2', 'J. เจ้าสัว', ['step'], [], 'note', 'ทดลอง');
@@ -162,7 +192,7 @@ if (cardNoTrust.includes('trust-badge')) {
 }
 console.log('OK: _mkFormulaCard renders a ทดลอง badge only when a trust value is explicitly passed');
 
-// --- 8. _renderBtTable (app.js) renders the trust badge for a ทดลอง row and not for others ---
+// --- 9. _renderBtTable (app.js) renders the trust badge for a ทดลอง row and not for others ---
 const appSrc = fs.readFileSync(path.join(__dirname, '..', 'static', 'app.js'), 'utf8');
 function extractFrom(fileSrc, name) {
   const re = new RegExp('function ' + name + '\\([^)]*\\)\\{', 'm');
