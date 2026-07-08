@@ -838,7 +838,7 @@ const DC_RECO_FIELDS=[['bottom2','2 ตัวล่าง'],['top3','3 ตัว
 // These values are cross-checked against the real engine output by
 // scripts/test_reco_producer_groups.js (which runs _computeFormulasBatch and counts distinct
 // name[0] per field), so drift here fails a test rather than silently skewing the baseline.
-const DC_RECO_PRODUCER_GROUPS={bottom2:7,top3:3,front3:2,back3exact:2,prize1_last2:2};
+const DC_RECO_PRODUCER_GROUPS={bottom2:8,top3:3,front3:2,back3exact:2,prize1_last2:2};
 const DC_RECO_GROUP_DISPLAY={X:'F'};
 function dcRecoGroupLabel(key){ return DC_RECO_GROUP_DISPLAY[key]||key; }
 
@@ -2659,8 +2659,9 @@ function _renderBtTable(){
     const bc=r.degraded?'var(--red)':r.edge>0?'var(--green)':r.edge<-5?'var(--red)':'var(--text3)';
     const tc=typeColor(r.typeLabel||'');
     const sample=r.total<50?`<span style="color:var(--red);font-size:.68rem;margin-left:6px">low n</span>`:'';
+    const trustHtml=r.trust?`<span class="trust-badge">${r.trust}</span>`:'';
     return `<tr>
-      <td><span style="background:${r.groupColor}22;color:${r.groupColor};padding:1px 7px;border-radius:4px;font-size:.7rem;white-space:nowrap;font-weight:600;margin-right:5px">${r.group}</span>${r.name}${sample}</td>
+      <td><span style="background:${r.groupColor}22;color:${r.groupColor};padding:1px 7px;border-radius:4px;font-size:.7rem;white-space:nowrap;font-weight:600;margin-right:5px">${r.group}</span>${r.name}${trustHtml}${sample}</td>
       <td><span style="background:${tc};padding:1px 6px;border-radius:3px;font-size:.7rem;white-space:nowrap">${r.typeLabel}</span></td>
       <td style="text-align:right">${r.total}</td>
       <td style="text-align:right;font-weight:700;color:${pc}">${r.hits}</td>

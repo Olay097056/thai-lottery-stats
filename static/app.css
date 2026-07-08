@@ -114,6 +114,8 @@ body{background:var(--bg);color:var(--text);font-family:'Noto Sans Thai','Syne',
 .dc-status.good{border-color:#3dd68c66;color:#3dd68c;background:rgba(61,214,140,.08)}
 .dc-status.warn{border-color:#f59e0b66;color:#fbbf24;background:rgba(245,158,11,.08)}
 .dc-status.bad{border-color:#f0545466;color:#f87171;background:rgba(240,84,84,.08)}
+/* ทดลอง (Experimental) trust badge — display-only, never gates participation (ADR-0003) */
+.trust-badge{font-size:.6rem;border:1px solid #f59e0b66;color:#fbbf24;background:rgba(245,158,11,.10);border-radius:999px;padding:2px 7px;font-family:'Noto Sans Thai',sans-serif;font-weight:700;white-space:nowrap;margin-left:5px}
 .dc-match-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;width:100%}
 .dc-match-section{width:100%;margin-bottom:10px}
 .dc-match-section:last-child{margin-bottom:0}

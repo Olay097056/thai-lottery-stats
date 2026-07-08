@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<link rel="stylesheet" href="/static/app.css?v=dc-reco-trend-compare2">
+<link rel="stylesheet" href="/static/app.css?v=group-j-tycoon1">
 </head>
 <body>
 
@@ -417,6 +417,7 @@
       <option value="H">H · มิสเตอร์ซี</option>
       <option value="E">E · สายมู/ความเชื่อ</option>
       <option value="I">I · จักรพรรดิ</option>
+      <option value="J">J · เจ้าสัว (ทดลอง)</option>
     </select>
     <button id="ftab-btn-BT" class="ftab-btn" role="tab" aria-selected="false" aria-controls="formula-results-BT" data-color="orange" data-ftab="BT" onclick="switchFormulaTab('BT')">Backtest</button>
   </div>
@@ -438,6 +439,7 @@
     </div>
   </div>
   <div id="ftab-desc-I" class="ftab-info hidden" data-color="violet">จักรพรรดิ — นับความถี่เลขแต่ละหลักจาก pool รางวัลที่ 1-5 ของงวดก่อนหน้าเดียว (near1+prize2-5, ~168 เลข) แล้วประกอบเลข 6 หลักจาก 2 อันดับแรกต่อหลัก เกณฑ์ถูก: ตรงกับตัวใดตัวหนึ่งใน pool รางวัล 1-5</div>
+  <div id="ftab-desc-J" class="ftab-info hidden" data-color="green">เจ้าสัว 🧪 ทดลอง — สูตรจากการค้นหาระบบ (arithmetic search) ท้าย 2 ตัว = pad2(|ท้าย3ชุด2งวดก่อน − (วัน+เดือน+ปี พ.ศ.2หลัก งวดถัดไป)|) ผ่านการทดสอบ train/validation/holdout แล้วไม่ผ่านเกณฑ์บน holdout จึงติดป้ายทดลอง (ยังใช้งานได้ปกติ ไม่ถูกตัดออกจาก Picks/เลขแนะนำ)</div>
   <div id="ftab-desc-BT" class="ftab-info hidden" data-color="orange">ทดสอบความแม่นของแต่ละสูตรย้อนหลัง — ใช้ผลงวดจริงจาก DB เปรียบเทียบ</div>
 
   <!-- Results per tab -->
@@ -451,6 +453,7 @@
   <div id="formula-results-H" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-H"></div>
   <div id="formula-results-E" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-E"></div>
   <div id="formula-results-I" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-I"></div>
+  <div id="formula-results-J" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-J"></div>
   <div id="formula-results-BT" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-BT">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
       <div class="ctrl-group"><label class="ctrl-label" for="bt-formula-n">จำนวนงวดย้อนหลัง</label><select id="bt-formula-n"><option value="20">20 งวด</option><option value="50" selected>50 งวด</option><option value="100">100 งวด</option><option value="200">200 งวด</option></select></div>
@@ -533,8 +536,8 @@
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script src="/static/formula-engine.js?v=imperial-roundrobin1"></script>
-<script src="/static/app.js?v=dc-reco-trend-compare2"></script>
+<script src="/static/formula-engine.js?v=group-j-tycoon1"></script>
+<script src="/static/app.js?v=group-j-tycoon1"></script>
 
 </body>
 </html>

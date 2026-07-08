@@ -278,7 +278,7 @@ function switchFormulaTab(tab){
   // sync dropdown กลุ่มสูตร: เลือกกลุ่ม → โชว์ค่านั้น + ไฮไลต์, เลือก ALL/BT → กลับ placeholder
   const groupSel=document.getElementById('ftab-group-select');
   if(groupSel){
-    const isGroup=['A','B','C','D','F','G','H','E','I'].includes(tab);
+    const isGroup=['A','B','C','D','F','G','H','E','I','J'].includes(tab);
     groupSel.value=isGroup?tab:'';
     groupSel.classList.toggle('ftab-select-active',isGroup);
   }
@@ -555,7 +555,7 @@ function _misterCCards(ctx){
   ];
 }
 
-function _mkFormulaCard(title, source, steps, highlights, note=''){
+function _mkFormulaCard(title, source, steps, highlights, note='', trust=null){
   const group=_formulaGroupKey(source,title);
   const badges=highlights.map(h=>`<span class="num-badge">${h}</span>`).join('');
   const resultHtml=badges||note||'<span style="font-size:.78rem;color:var(--text3)">ผลลัพธ์อยู่ในรายละเอียดสูตร</span>';
@@ -564,8 +564,9 @@ function _mkFormulaCard(title, source, steps, highlights, note=''){
   const count=highlights.length?`${highlights.length} ชุด`:'ชุดคำนวณเฉพาะ';
   const quality=_formulaQualityBadges(title,source,highlights);
   const noteHtml=(badges&&note)?`<div style="font-size:.72rem;color:var(--text3);font-style:italic;margin-top:6px">${note}</div>`:'';
+  const trustHtml=trust?`<span class="trust-badge">${trust}</span>`:'';
   return `<div class="card formula-card" data-group="${group}">
-    <div class="card-title">${title}</div>
+    <div class="card-title">${title}${trustHtml}</div>
     <div style="font-size:.7rem;color:var(--text3);margin-top:3px">${source}</div>
     <div class="formula-meta"><span class="formula-chip target">${target}</span><span class="formula-chip">${count}</span>${quality}</div>
     <div class="formula-result-row">${resultHtml}</div>
@@ -627,7 +628,7 @@ function _groupFormulaCards(cards){
   return groups;
 }
 
-function _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,targetDate}){
+function _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,tycoonCards,targetDate}){
   const el=document.getElementById('formula-summary');
   if(!el)return;
   const counts={
@@ -640,6 +641,7 @@ function _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,targetDa
     F:codexCards.length,
     E:eCards.length,
     I:(imperialCards||[]).length,
+    J:(tycoonCards||[]).length,
   };
   const total=Object.values(counts).reduce((a,b)=>a+b,0);
   const targetLabel=targetDate?(()=>{
@@ -669,7 +671,7 @@ function _formulaEsc(v){
 function _formulaGroupLabel(group){
   return ({
     A:'A · พื้นบ้าน',B:'B · ล็อตเตอรี่พลัส',C:'C · พิชิตโชค',D:'D · Arithmetic',
-    E:'E · สายมู',F:'F · Rolling',G:'G · แม่นขั้นเทพ',H:'H · มิสเตอร์ซี',I:'I · จักรพรรดิ'
+    E:'E · สายมู',F:'F · Rolling',G:'G · แม่นขั้นเทพ',H:'H · มิสเตอร์ซี',I:'I · จักรพรรดิ',J:'J · เจ้าสัว'
   })[group]||group||'-';
 }
 
@@ -1038,6 +1040,12 @@ function _computeBeliefCards(day,mon,year2,dateStr){
 
 // ─── สูตรเจ้าพ่อ Claude (หมวด D) — คำนวณเลขเต็มตรงๆ จากงวดก่อน ไม่ใช่พูลเลขเดี่ยว ───
 // ใช้ร่วมกันทั้งการ์ดและ backtest เพื่อให้ตรงกันเป๊ะ
+// DSUM (วัน+เดือน+ปี พ.ศ. 2 หลัก ของงวดถัดไป) ใช้ร่วมกับ Group J's bottom2 leg (ISSUE-13) —
+// แยกเป็นฟังก์ชันเดียวเพื่อไม่ให้มีสองจุดคำนวณค่าเดียวกัน
+function _dsumValue(nextDay,nextMonth,nextYear2){
+  return nextDay+nextMonth+nextYear2;
+}
+
 function _claudeFormulas(ctx){
   const {p6,t3,b2,bk1,bk2,drawday,nextDay,nextMonth,nextYear2}=ctx;
   const P=parseInt(p6)||0,B2=parseInt(b2)||0,BK1=parseInt(bk1)||0,BK2=parseInt(bk2)||0,T3=parseInt(t3)||0;
@@ -1046,7 +1054,7 @@ function _claudeFormulas(ctx){
   const pad6=n=>String(((Math.round(n)%1000000)+1000000)%1000000).padStart(6,'0');
   const rev=s=>s.split('').reverse().join('');
   const uniq=a=>[...new Set(a)];
-  const DSUM=nextDay+nextMonth+nextYear2;
+  const DSUM=_dsumValue(nextDay,nextMonth,nextYear2);
   const b2a=parseInt(b2[0]||'0'),b2b=parseInt(b2[1]||'0');
 
   // D1 ท้าย 2 ตัว — 10 สูตรย่อย, แหล่งที่มาหลากหลาย ไม่ซ้ำกัน
@@ -1096,6 +1104,22 @@ function _claudeFormulas(ctx){
   ]);
 
   return {d1,d2,d3,d4full,d4two};
+}
+
+// ─── J. เจ้าสัว — bottom2 leg (ISSUE-13) ───────────────────────────────────────
+// Search finalist from the (closed) Group J promotion-gate search: pad2(|BK2 - DSUM|),
+// where BK2 = previous draw's back3_2 and DSUM reuses Group D's _dsumValue. Failed the
+// holdout gate (train +0.72%, validation +1.67%, holdout -0.21%) — ships anyway under
+// ทดลอง per ADR-0003 rather than being deleted. Skips (no fallback) when back3_2 or the
+// target date is missing, unlike Group D which defaults missing digits to 0.
+function _tycoonBottom2Formula(prevRow, nextDay, nextMonth, nextYear2){
+  const bk2raw=String(prevRow?.back3_2??'').trim();
+  if(!bk2raw)return [];
+  if(nextDay==null||nextMonth==null||nextYear2==null||isNaN(nextDay)||isNaN(nextMonth)||isNaN(nextYear2))return [];
+  const pad2=n=>String(((Math.round(n)%100)+100)%100).padStart(2,'0');
+  const BK2=parseInt(bk2raw)||0;
+  const DSUM=_dsumValue(nextDay,nextMonth,nextYear2);
+  return [pad2(Math.abs(BK2-DSUM))];
 }
 
 function _codexDateParts(row, fallbackIso=''){
@@ -1447,6 +1471,23 @@ function _imperialCards(prevRow,nextDay,nextMonth,nextYear2){
   return cards;
 }
 
+// ─── J. เจ้าสัว — bottom2 leg (ISSUE-13), ทดลอง badge ────────────────────────
+function _tycoonCards(prevRow,nextDay,nextMonth,nextYear2){
+  const numRow=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(16,185,129,.10);border:1px solid #10b98166;color:#10b981;padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
+  const cards=[];
+  const preds=_tycoonBottom2Formula(prevRow,nextDay,nextMonth,nextYear2);
+  if(preds.length){
+    cards.push(_mkFormulaCard(
+      'J1 เจ้าสัว · ท้าย2','J. เจ้าสัว',
+      ['สูตรจากการค้นหาระบบ (arithmetic search) เหนือครอบครัวสูตรที่ประกาศไว้ล่วงหน้า ไม่ใช่ภูมิปัญญาพื้นบ้าน',
+       'pad2(|ท้าย3ชุด2งวดก่อน − (วัน+เดือน+ปี พ.ศ.2หลัก ของงวดถัดไป)|) — DSUM ใช้สูตรเดียวกับกลุ่ม D',
+       'ผ่าน train/validation แต่ไม่ผ่าน holdout (เกณฑ์ล่าสุด: train +0.72% validation +1.67% holdout −0.21%) จึงติดป้ายทดลองตาม ADR-0003 — ยังคงร่วมคำนวณ Picks/เลขแนะนำเต็มรูปแบบ'],
+      [],numRow(preds),'ทดลอง'
+    ));
+  }
+  return cards;
+}
+
 function runAllFormulas(){
   if(!_validateFormulaInputs())return;
   setFormulaLoading('กำลังคำนวณทุกสูตร...');
@@ -1722,6 +1763,7 @@ function runAllFormulas(){
   const misterCCards=_misterCCards({p6:prize1,t3:top3,b2:bottom2,f31:front31,bk1:back31,bk2:back32});
   const imperialPrevRow=_codexHistoryForTarget(predDateStr)[0]||null;
   const imperialCards=imperialPrevRow?_imperialCards(imperialPrevRow,nextDay,nextMonth,nextYear2):[];
+  const tycoonCards=imperialPrevRow?_tycoonCards(imperialPrevRow,nextDay,nextMonth,nextYear2):[];
 
   // กระจายการ์ดเข้า container ตามกลุ่ม
   const grouped=_groupFormulaCards(cards.concat(thepCards,misterCCards));
@@ -1733,8 +1775,9 @@ function runAllFormulas(){
   const groupH=grouped.H.join('');
   const groupF=codexCards.concat(patternCards).join('');
   const groupI=imperialCards.join('');
-  const groupAll=cards.concat(codexCards,patternCards,thepCards,misterCCards,eCards,imperialCards).join('');
-  _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,targetDate:predDateStr});
+  const groupJ=tycoonCards.join('');
+  const groupAll=cards.concat(codexCards,patternCards,thepCards,misterCCards,eCards,imperialCards,tycoonCards).join('');
+  _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,tycoonCards,targetDate:predDateStr});
 
   document.getElementById('formula-results-A').innerHTML=_formulaPanelHtml(groupA,'A');
   document.getElementById('formula-results-B').innerHTML=_formulaPanelHtml(groupB,'B');
@@ -1745,6 +1788,7 @@ function runAllFormulas(){
   document.getElementById('formula-results-H').innerHTML=_formulaPanelHtml(groupH,'มิสเตอร์ซี');
   document.getElementById('formula-results-E').innerHTML=_formulaPanelHtml(eCards.join(''),'สายมู');
   document.getElementById('formula-results-I').innerHTML=_formulaPanelHtml(groupI,'จักรพรรดิ');
+  document.getElementById('formula-results-J').innerHTML=_formulaPanelHtml(groupJ,'เจ้าสัว');
   document.getElementById('formula-results-ALL').innerHTML=_formulaPanelHtml(groupAll,'รวมทุกสูตร');
   document.getElementById('formula-empty').style.display='none';
   _formulaHasRun=true;
@@ -1909,6 +1953,12 @@ function _computeFormulasBatch(prev, nextDateStr, historyCtx=[]){
     if(_IG.length)results.push({name:'I2 จักรพรรดิทองคำ · เลขเต็ม6หลัก',preds:_IG,field:'pool6',baseline:_IG.length});
   }catch(e){}
 
+  // ══ J. เจ้าสัว — bottom2 leg (ISSUE-13): search finalist, failed holdout gate, ships ทดลอง ══
+  try{
+    const _J1=_tycoonBottom2Formula(prev,nextDay,nextMonth,nextYear2);
+    if(_J1.length)results.push({name:'J1 เจ้าสัว · ท้าย2',preds:_J1,field:'bottom2',baseline:_J1.length,trust:'ทดลอง'});
+  }catch(e){}
+
   // ══ F. Pattern Link — train/test derived transition links (ไม่มองอนาคต) ══
   try{
     const _P=_patternLinkFormulas({date:prev.date,prize1:p6,top3:t3,bottom2:b2,front3_1:f31,front3_2:f32,back3_1:bk1,back3_2:bk2},nextDateStr);
@@ -1985,7 +2035,7 @@ async function runFormulaBacktest(){
     const formulaResults=_computeFormulasBatch(prev,isoDate,historyCtx);
     for(const fr of formulaResults){
       if(!stats[fr.name]){
-        stats[fr.name]={hits:0,total:0,preds_n:fr.baseline,field:fr.field,subHits:0,subTotal:0,slots:fr.slots||2,windows:{}};
+        stats[fr.name]={hits:0,total:0,preds_n:fr.baseline,field:fr.field,trust:fr.trust||null,subHits:0,subTotal:0,slots:fr.slots||2,windows:{}};
         FORMULA_BT_WINDOWS.forEach(w=>{stats[fr.name].windows[w]={hits:0,total:0};});
       }
       const s=stats[fr.name];
@@ -2026,12 +2076,12 @@ async function runFormulaBacktest(){
       const wpct=ws.total?ws.hits/ws.total*100:null;
       rolling[w]={hits:ws.hits,total:ws.total,pct:wpct,edge:wpct==null?null:wpct-baseP};
     });
-    const _GRP={'A':['A · กูชอบ','var(--gold)'],'B':['B · ลอตโตพลัส','#4d9de0'],'C':['C · พิชิตโชค','#a855f7'],'D':['D · Claude','#22d3ee'],'X':['F · Codex','#a3e635'],'G':['G · แม่นขั้นเทพ','#f05454'],'H':['H · มิสเตอร์ซี','#f59e0b'],'E':['E · สายมู','#ec4899'],'I':['I · จักรพรรดิ','#c084fc']};
+    const _GRP={'A':['A · กูชอบ','var(--gold)'],'B':['B · ลอตโตพลัส','#4d9de0'],'C':['C · พิชิตโชค','#a855f7'],'D':['D · Claude','#22d3ee'],'X':['F · Codex','#a3e635'],'G':['G · แม่นขั้นเทพ','#f05454'],'H':['H · มิสเตอร์ซี','#f59e0b'],'E':['E · สายมู','#ec4899'],'I':['I · จักรพรรดิ','#c084fc'],'J':['J · เจ้าสัว','#10b981']};
     const [group,groupColor]=_GRP[name[0]]||[name[0],'var(--text3)'];
     const subPct=s.subTotal>0?s.subHits/s.subTotal*100:null;
     const edge50=rolling[50]?.edge??null,edge100=rolling[100]?.edge??null,edge200=rolling[200]?.edge??null;
     const degraded=rolling[200]?.total>=180&&edge200!=null&&edge200<-5;
-    return {name,group,groupColor,field:s.field,typeLabel,board,total:s.total,hits:s.hits,pct,baseP,baseLabel,edge,ciLow,ciHigh,subHits:s.subHits||0,subTotal:s.subTotal||0,subPct,rolling,edge50,edge100,edge200,degraded};
+    return {name,group,groupColor,field:s.field,typeLabel,board,total:s.total,hits:s.hits,pct,baseP,baseLabel,edge,ciLow,ciHigh,subHits:s.subHits||0,subTotal:s.subTotal||0,subPct,rolling,edge50,edge100,edge200,degraded,trust:s.trust||null};
   });
   _btSortKey='edge';_btSortAsc=false;
   _renderBtTable();

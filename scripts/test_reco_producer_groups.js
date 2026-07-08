@@ -78,9 +78,10 @@ Object.keys(DC_RECO_PRODUCER_GROUPS).forEach(field => {
     real === DC_RECO_PRODUCER_GROUPS[field]);
 });
 
-// Specifically pin the bottom2 = 7 case (the one that was wrong): E must be among producers,
-// proving the dynamic-loop สายมู group is counted.
+// Specifically pin the bottom2 = 8 case (7 was correct until Group J's bottom2 leg shipped,
+// ISSUE-13): E must be among producers, proving the dynamic-loop สายมู group is counted.
 check('bottom2 producers include E (สายมู, emitted via dynamic loop)', actual.bottom2 && actual.bottom2.has('E'));
-check('bottom2 has exactly 7 distinct producing groups', actual.bottom2 && actual.bottom2.size === 7);
+check('bottom2 producers include J (เจ้าสัว bottom2 leg, ISSUE-13, ทดลอง)', actual.bottom2 && actual.bottom2.has('J'));
+check('bottom2 has exactly 8 distinct producing groups', actual.bottom2 && actual.bottom2.size === 8);
 
 console.log(`OK: ${passed} checks passed`);

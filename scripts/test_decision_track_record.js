@@ -164,12 +164,12 @@ check('topEdge is set for a single-formula pick too', row12?.topEdge === 15.5);
 // Baseline model: C(G,2) * pRandom^2, where pRandom is the random single-guess hit prob
 // under dcCheckHit (2-digit fields = 1/100, 3-digit fields = 5/1000 ≈ 1/200). Group count
 // G raises the baseline (coincidental convergence is cheaper with more producing groups).
-check('baseline rises with producing-group count (bottom2 G=7 > prize1_last2 G=2, same pRandom)',
-  dcRecoBaseline('bottom2', 7) > dcRecoBaseline('prize1_last2', 2));
+check('baseline rises with producing-group count (bottom2 G=8 > prize1_last2 G=2, same pRandom)',
+  dcRecoBaseline('bottom2', 8) > dcRecoBaseline('prize1_last2', 2));
 check('baseline for a single-pair field (G=2) uses C(2,2)=1',
   Math.abs(dcRecoBaseline('front3', 2) - (1 * 0.005 * 0.005 * 100)) < 1e-9);
-check('baseline for bottom2 (G=7, C(7,2)=21, pRandom=0.01) = 21*0.0001*100 = 0.21%',
-  Math.abs(dcRecoBaseline('bottom2', 7) - 0.21) < 1e-9);
+check('baseline for bottom2 (G=8, C(8,2)=28, pRandom=0.01) = 28*0.0001*100 = 0.28% (7->8 after Group J bottom2 leg, ISSUE-13)',
+  Math.abs(dcRecoBaseline('bottom2', 8) - 0.28) < 1e-9);
 check('2-digit field has higher pRandom than 3-digit at equal group count',
   dcRecoBaseline('prize1_last2', 2) > dcRecoBaseline('front3', 2));
 
@@ -194,7 +194,7 @@ check('bottom2: shown twice, 1 hit -> hitRate 50% over 2 resolved', byField.bott
 check('front3: shown once (other round had no front3 reco), 1 hit -> hitRate 50% unconditional', byField.front3.shown === 1 && byField.front3.hits === 1 && Math.abs(byField.front3.hitRate - 50) < 1e-9);
 check('top3: never shown -> hitRate 0, shown 0', byField.top3.shown === 0 && byField.top3.hits === 0 && byField.top3.hitRate === 0);
 check('edge = hitRate - baseline for a shown field', Math.abs(byField.bottom2.edge - (byField.bottom2.hitRate - byField.bottom2.baseline)) < 1e-9);
-check('each edge row carries its producing-group count', byField.bottom2.groupCount === 7 && byField.front3.groupCount === 2);
+check('each edge row carries its producing-group count', byField.bottom2.groupCount === 8 && byField.front3.groupCount === 2);
 check('empty snapshots -> all fields 0 resolved, no throw', dcRecoEdgeRows([], recoRows).every(r => r.totalResolved === 0 && r.hitRate === 0));
 
 // --- 7. เลขแนะนำ hit-rate trend (ISSUE-11) ---
