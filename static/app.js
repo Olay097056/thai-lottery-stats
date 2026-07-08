@@ -449,10 +449,13 @@ function dcSecondarySignalsHtml(signals){
 function dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,secondarySignals}){
   const map=new Map();
   const btMap=new Map((btRows||[]).map(r=>[r.name,r]));
+  // ทดลอง badge propagation (ISSUE-14): a Pick carries the badge if ANY contributing
+  // formula does, per ADR-0003 — display-only, never affects score/rank below.
+  const trustMap=new Map((formulaResults||[]).map(fr=>[fr.name,fr.trust||null]));
   const cfg={strict:{min:58,limit:4},balanced:{min:42,limit:6},coverage:{min:26,limit:10}}[mode]||{min:42,limit:6};
   const add=(num,type,source,points,reason,meta={})=>{
     const n=String(num||'').trim(); if(!n)return;
-    const r=map.get(n)||{num:n,type,sources:[],score:0,reasons:[],warnings:[],formulaWeight:0,predictCount:0,formulaCount:0,topEdge:null};
+    const r=map.get(n)||{num:n,type,sources:[],score:0,reasons:[],warnings:[],formulaWeight:0,predictCount:0,formulaCount:0,topEdge:null,trust:null};
     r.type=r.type||type;
     r.score+=points;
     r.sources.push(source);
@@ -461,6 +464,7 @@ function dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,second
     if(meta.formula){
       r.formulaCount++;r.formulaWeight+=meta.weight||1;
       if(typeof meta.edge==='number')r.topEdge=r.topEdge==null?meta.edge:Math.max(r.topEdge,meta.edge);
+      if(meta.trust==='ทดลอง')r.trust='ทดลอง';
     }
     map.set(n,r);
   };
@@ -487,7 +491,7 @@ function dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,second
     (fr.preds||[]).forEach(n=>{
       const len=String(n||'').length;
       if(![2,3,6].includes(len))return;
-      add(n,`${len} หลัก`,fr.name,5*w,`สูตร ${fr.name} ให้เลขนี้โดยตรง${bt?` (edge ${edge>=0?'+':''}${edge.toFixed(1)}%)`:''}`,{formula:true,weight:w,edge:bt?bt.edge:undefined});
+      add(n,`${len} หลัก`,fr.name,5*w,`สูตร ${fr.name} ให้เลขนี้โดยตรง${bt?` (edge ${edge>=0?'+':''}${edge.toFixed(1)}%)`:''}`,{formula:true,weight:w,edge:bt?bt.edge:undefined,trust:fr.trust||null});
     });
   });
   (formulaMatches||[]).forEach(m=>{
@@ -495,7 +499,7 @@ function dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,second
       const bt=btMap.get(f.label);
       const w=bt?.weight||1;
       const edge=bt?`backtest edge ${bt.edge>=0?'+':''}${bt.edge.toFixed(1)}%`:'ยังไม่มี backtest weight';
-      add(m.num,String(m.num).length+' หลัก',f.label,10*w,`สูตร ${f.label} สนับสนุน (${edge})`,{formula:true,weight:w,edge:bt?.edge});
+      add(m.num,String(m.num).length+' หลัก',f.label,10*w,`สูตร ${f.label} สนับสนุน (${edge})`,{formula:true,weight:w,edge:bt?.edge,trust:trustMap.get(f.label)||null});
     });
   });
   for(const r of map.values()){
@@ -516,13 +520,20 @@ function dcEdgeBadge(topEdge){
   return `<span class="dc-status ${cls}">edge ${topEdge>=0?'+':''}${topEdge.toFixed(1)}%</span>`;
 }
 
+// ทดลอง trust badge (ISSUE-14) — display-only, shared by Pick chips and เลขแนะนำ chips.
+// Reuses the .trust-badge CSS class introduced for formula-level badges in ISSUE-13.
+function dcTrustBadge(trust){
+  if(trust!=='ทดลอง')return '';
+  return `<span class="trust-badge">${trust}</span>`;
+}
+
 function dcScoreHtml(rows){
   if(!rows?.length)return '<div class="dash-empty">ยังไม่มีเลขที่ผ่านโหมดคัดเลขนี้</div>';
   return `<div class="dc-decision-list">${rows.map((r,i)=>`
     <details class="dc-pick ${i===0?'top':''}" ${i===0?'open':''}>
       <summary class="dc-pick-head">
         <span class="dc-pick-num">${escHtml(r.num)}</span>
-        <span style="display:flex;align-items:center;gap:6px"><span class="dc-score">${r.score}/100</span>${dcEdgeBadge(r.topEdge)}</span>
+        <span style="display:flex;align-items:center;gap:6px"><span class="dc-score">${r.score}/100</span>${dcEdgeBadge(r.topEdge)}${dcTrustBadge(r.trust)}</span>
       </summary>
       <div class="dc-meter"><div class="dc-meter-fill" style="width:${r.score}%"></div></div>
       <div class="dc-explain">${escHtml(dcExplainPick(r))}</div>
@@ -708,7 +719,7 @@ function dcLottoSummaryBoard({next,scored,formulaMatches,btRows,p1,bottom,front,
     <div class="dc-lotto-main">
       <div class="dc-lotto-prize">
         <div class="dc-lotto-label">เลขแนะนำอันดับ 1</div>
-        <div class="dc-lotto-number">${escHtml(best.num||'-')}</div>
+        <div class="dc-lotto-number">${escHtml(best.num||'-')}${dcTrustBadge(best.trust)}</div>
         <div class="dc-lotto-note">${best.score!=null?`Final Confidence ${best.score}/100 · ${escHtml(dcExplainPick(best))}`:'ยังไม่มีเลขผ่านเกณฑ์'}</div>
       </div>
       <div class="dc-lotto-side">
@@ -786,6 +797,9 @@ function dcConsensusCandidates(formulaResults,btMap,len,limit){
 // below, not special-cased. See docs/adr/0001-convergence-definition-for-recommended-number.md.
 function dcRecommendedNumbers(formulaResults,btMap){
   const byField=new Map();
+  // ทดลอง badge propagation (ISSUE-14): a เลขแนะนำ candidate carries the badge if ANY of its
+  // agreeing top-level groups has a ทดลอง formula — display-only, never affects ranking below.
+  const experimentalGroups=new Set((formulaResults||[]).filter(fr=>fr?.trust==='ทดลอง').map(fr=>String(fr?.name||'')[0]||'?'));
   (formulaResults||[]).forEach(fr=>{
     const field=fr?.field;
     if(!field)return;
@@ -810,7 +824,8 @@ function dcRecommendedNumbers(formulaResults,btMap){
       if(groupMap.size<2)continue;
       const groups=[...groupMap.keys()].sort();
       const combinedEdge=[...groupMap.values()].reduce((a,b)=>a+b,0);
-      list.push({num,groups,combinedEdge});
+      const trust=groups.some(g=>experimentalGroups.has(g))?'ทดลอง':null;
+      list.push({num,groups,combinedEdge,trust});
     }
     list.sort((a,b)=>b.groups.length-a.groups.length||b.combinedEdge-a.combinedEdge||a.num.localeCompare(b.num));
     result[field]=list;
@@ -923,11 +938,11 @@ function dcRecoCardHtml(field,label,candidates){
   const rest=list.slice(1);
   const moreHtml=rest.length?`<details class="dc-reco-more">
       <summary>ดูอีก ${rest.length} เลขที่เข้าเกณฑ์</summary>
-      <div class="dc-reco-more-row">${rest.map(c=>`<span class="dc-reco-more-chip" title="${escHtml(dcRecoExplainText(c))}">${escHtml(c.num)}</span>`).join('')}</div>
+      <div class="dc-reco-more-row">${rest.map(c=>`<span class="dc-reco-more-chip" title="${escHtml(dcRecoExplainText(c))}${c.trust==='ทดลอง'?' (ทดลอง)':''}">${escHtml(c.num)}</span>`).join('')}</div>
     </details>`:'';
   return `<div class="dc-reco-card has-num">
     <div class="dc-reco-field-label">${escHtml(label)}</div>
-    <div class="dc-reco-num">${escHtml(top.num)}</div>
+    <div class="dc-reco-num">${escHtml(top.num)}${dcTrustBadge(top.trust)}</div>
     <div class="dc-reco-explain">${escHtml(dcRecoExplainText(top))}</div>
     ${moreHtml}
   </div>`;
@@ -969,7 +984,7 @@ function dcRecoTopOverall(reco){
       ||top.groups.length>best.groups.length
       ||(top.groups.length===best.groups.length&&top.combinedEdge>best.combinedEdge)
       ||(top.groups.length===best.groups.length&&top.combinedEdge===best.combinedEdge&&top.num.localeCompare(best.num)<0)){
-      best={field,label,num:top.num,groups:top.groups,combinedEdge:top.combinedEdge};
+      best={field,label,num:top.num,groups:top.groups,combinedEdge:top.combinedEdge,trust:top.trust||null};
     }
   });
   return best;
@@ -985,10 +1000,10 @@ function dcRecoCompareStripHtml(topReco,bestPick){
     ?'<span class="dc-status good">สองสัญญาณชี้เลขเดียวกัน</span>'
     :'<span class="dc-status warn">สองสัญญาณชี้คนละเลข</span>';
   const recoSide=topReco
-    ?`<div class="dc-compare-num">${escHtml(topReco.num)}</div><div class="dc-compare-sub">${escHtml(topReco.label)} · ${escHtml(dcRecoExplainText(topReco))}</div>`
+    ?`<div class="dc-compare-num">${escHtml(topReco.num)}${dcTrustBadge(topReco.trust)}</div><div class="dc-compare-sub">${escHtml(topReco.label)} · ${escHtml(dcRecoExplainText(topReco))}</div>`
     :'<div class="dc-compare-empty">ไม่มีเลขแนะนำงวดนี้</div>';
   const pickSide=bestPick&&bestPick.num
-    ?`<div class="dc-compare-num">${escHtml(bestPick.num)}</div><div class="dc-compare-sub">Final Confidence ${bestPick.score}/100</div>`
+    ?`<div class="dc-compare-num">${escHtml(bestPick.num)}${dcTrustBadge(bestPick.trust)}</div><div class="dc-compare-sub">Final Confidence ${bestPick.score}/100</div>`
     :'<div class="dc-compare-empty">ไม่มี Pick ผ่านเกณฑ์งวดนี้</div>';
   return `<div class="dc-compare-strip ${agree?'agree':''}">
     <div class="dc-compare-col"><div class="dc-compare-label">เลขแนะนำ อันดับ 1</div>${recoSide}</div>
