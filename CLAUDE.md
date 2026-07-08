@@ -68,6 +68,10 @@ A (กูชอบ) · B (ลอตโตพลัส) · C (พิชิตโ�
 
 FABLE (a rolling-history, prize-1–5-pool formula) was retired 2026-07-06 after failing its promotion gate — see DEVELOPMENT_PLAN.md and CHANGELOG.md for history. The `pool6`/`pool_tail3` backtest field types it introduced (hit = candidate matches anything in the previous draw's combined prize 1–5 pool) were kept and are now used by Group I above.
 
+**J (เจ้าสัว)** — 2026-07-08. Both legs ship under a **ทดลอง** (Experimental) badge — see `docs/adr/0003-group-j-promotion-gate-and-experimental-participation.md`. ทดลอง is display-only: it never gates participation in Picks or เลขแนะนำ, it just labels trust honestly, and it propagates onto any Pick/เลขแนะนำ chip a ทดลอง formula supports.
+- **J1 (bottom2 leg)** — `pad2(|BK2 − DSUM|)`, where `BK2` is the previous draw's `back3_2` and `DSUM` reuses Group D's `_dsumValue`. This is the finalist from a systematic arithmetic-family search (`_tycoonBottom2Formula` in `formula-engine.js`) — it **failed its holdout gate** (train Edge +0.72%, validation +1.67%, holdout −0.21%), so per ADR-0003 it ships anyway under ทดลอง rather than being deleted.
+- **J2 (pool6 leg)** — `_tycoonPool6Formula`, reuses Group I's `_buildPrize1to5Pool`/`_digitPosFreq`/`_imperialRoundRobin` directly, blended 80% frequency / 20% closeness to J1's own `|BK2 − DSUM|` atom (not Group D's, so it doesn't collapse to Group I's exact candidates). **Permanently ทดลอง** per ADR-0003 — at ~456 pool-covered draws, 10 candidates expect under 1 chance-hit across the whole history, so no gate could ever distinguish skill from luck on this field type.
+
 ## API Endpoints
 
 Notable ones under `/api/`:
