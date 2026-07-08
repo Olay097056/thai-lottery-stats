@@ -1106,18 +1106,12 @@ function _claudeFormulas(ctx){
   return {d1,d2,d3,d4full,d4two};
 }
 
-// ─── J. เจ้าสัว — bottom2 leg (ISSUE-13, widened 2026-07-08 — see docs/adr/0003-...md
-// "Update" section for the full grilling record) ───────────────────────────────
-// Center value = search finalist from the (closed) Group J promotion-gate search:
-// pad2(|BK2 - DSUM|), where BK2 = previous draw's back3_2 and DSUM reuses Group D's
-// _dsumValue. That center failed the holdout gate (train +0.72%, validation +1.67%,
-// holdout -0.21%) — ships anyway under ทดลอง per ADR-0003 rather than being deleted.
-// Widened from 1 to 5 candidates (center, center+-1, center+-2, mod 100, ascending) — a
-// fixed transformation of the already-decided finalist, not a new search. Only the
-// center value has ever been measured against train/validation/holdout; the +-1/+-2
-// neighbors are unverified and holdout is deliberately NOT being re-evaluated for them
-// (see ADR-0003 update). Skips (no fallback) when back3_2 or the target date is missing,
-// unlike Group D which defaults missing digits to 0.
+// ─── J. เจ้าสัว — bottom2 leg (ISSUE-13) ───────────────────────────────────────
+// Search finalist from the (closed) Group J promotion-gate search: pad2(|BK2 - DSUM|),
+// where BK2 = previous draw's back3_2 and DSUM reuses Group D's _dsumValue. Failed the
+// holdout gate (train +0.72%, validation +1.67%, holdout -0.21%) — ships anyway under
+// ทดลอง per ADR-0003 rather than being deleted. Skips (no fallback) when back3_2 or the
+// target date is missing, unlike Group D which defaults missing digits to 0.
 function _tycoonBottom2Formula(prevRow, nextDay, nextMonth, nextYear2){
   const bk2raw=String(prevRow?.back3_2??'').trim();
   if(!bk2raw)return [];
@@ -1125,8 +1119,7 @@ function _tycoonBottom2Formula(prevRow, nextDay, nextMonth, nextYear2){
   const pad2=n=>String(((Math.round(n)%100)+100)%100).padStart(2,'0');
   const BK2=parseInt(bk2raw)||0;
   const DSUM=_dsumValue(nextDay,nextMonth,nextYear2);
-  const center=Math.abs(BK2-DSUM);
-  return [-2,-1,0,1,2].map(offset=>pad2(center+offset)).sort();
+  return [pad2(Math.abs(BK2-DSUM))];
 }
 
 function _codexDateParts(row, fallbackIso=''){
@@ -1515,8 +1508,8 @@ function _tycoonCards(prevRow,nextDay,nextMonth,nextYear2){
     cards.push(_mkFormulaCard(
       'J1 เจ้าสัว · ท้าย2','J. เจ้าสัว',
       ['สูตรจากการค้นหาระบบ (arithmetic search) เหนือครอบครัวสูตรที่ประกาศไว้ล่วงหน้า ไม่ใช่ภูมิปัญญาพื้นบ้าน',
-       'เลขศูนย์กลาง = pad2(|ท้าย3ชุด2งวดก่อน − (วัน+เดือน+ปี พ.ศ.2หลัก ของงวดถัดไป)|) — DSUM ใช้สูตรเดียวกับกลุ่ม D — แล้วขยายเป็น 5 ชุดด้วย ±1/±2 รอบเลขศูนย์กลาง (วนกลับ mod 100)',
-       'เลขศูนย์กลางผ่าน train/validation แต่ไม่ผ่าน holdout (เกณฑ์ล่าสุด: train +0.72% validation +1.67% holdout −0.21%) — มีแค่เลขศูนย์กลางเท่านั้นที่ผ่านการทดสอบจริง ส่วนอีก 4 เลขข้างเคียงยังไม่เคยประเมิน (ไม่แตะ holdout ซ้ำ ตาม ADR-0003) จึงติดป้ายทดลองทั้งชุดตาม ADR-0003 — ยังคงร่วมคำนวณ Picks/เลขแนะนำเต็มรูปแบบ'],
+       'pad2(|ท้าย3ชุด2งวดก่อน − (วัน+เดือน+ปี พ.ศ.2หลัก ของงวดถัดไป)|) — DSUM ใช้สูตรเดียวกับกลุ่ม D',
+       'ผ่าน train/validation แต่ไม่ผ่าน holdout (เกณฑ์ล่าสุด: train +0.72% validation +1.67% holdout −0.21%) จึงติดป้ายทดลองตาม ADR-0003 — ยังคงร่วมคำนวณ Picks/เลขแนะนำเต็มรูปแบบ'],
       [],numRow(preds),'ทดลอง'
     ));
   }
