@@ -2,6 +2,10 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-07-09 — จัดชุดซื้อ: อธิบายเหตุผลรายเลข/รายบาท (explainability layer)
+
+จัดชุดซื้อ: อธิบายเหตุผลรายเลข/รายบาท — group dots, strength word (หนุนแรง/กลาง/เบา), ⭐ เลขแนะนำ, และแถวกาง "ทำไมได้เลขนี้/เงินเท่านี้" ทั้งโหมดแทงรายเลขและลอตเตอรี่ใบ. Display-only, ไม่แตะ logic เลข/เงิน. เพิ่ม helper `bpGroupsForSources`/`bpStrengthWord`/`bpRowExplainHtml`/`bpTicketExplainHtml`; ทดสอบใน test_buyplan_build.js (+25) / test_buyplan_ticket.js (+6).
+
 ## 2026-07-09 — จัดชุดซื้อ (Buy Plan): แผนใช้เงินจริง + EV คู่ + ledger บาท — ISSUE-17→20
 
 PRD: `PRD-buy-plan-tab.md` · ADR: `docs/adr/0004-buy-plan-tab-dual-ev-and-honest-pnl.md` (2 โหมดแยกกัน, EV คู่ทฤษฎีนำ, บันทึกล็อกเป็น ledger บาทจริง) · glossary ใน `CONTEXT.md`: จัดชุดซื้อ, ชุดซื้อ, EV คู่, แก้เอง (ตกลงผ่าน grilling ก่อนเขียนโค้ด) · หน้า sidebar ที่ 5 (`page-buyplan`, `loadBuyPlan`) · client-side ล้วน ใช้ fetch ที่ Decision Center ทำอยู่แล้ว ไม่มี endpoint ใหม่

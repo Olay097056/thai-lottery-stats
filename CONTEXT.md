@@ -76,3 +76,6 @@ _Avoid_: expected profit, ROI (both smuggle in the idea that the number can be t
 **แก้เอง (hand-edited)**:
 A label on any ชุดซื้อ row the user changed or added by hand before saving (stake changed, number typed in, row deleted-and-replaced). Exists so the cumulative ledger can separate system-pure P/L from human-adjusted P/L — without it, the ledger can't answer whether the *system's* Edge shows up in real money.
 _Avoid_: custom, manual override (use แก้เอง consistently in UI and record fields)
+
+**หนุนแรง/หนุนกลาง/หนุนเบา**:
+คำบอกความมั่นใจของเลขในหน้าจัดชุดซื้อ ได้จาก Edge ของ backtest ที่ดีสุดที่หนุนเลขนั้น (≥+1.0% แรง / 0–1.0% กลาง / ≤0 หรือไม่มี เบา); เป็นแค่การแสดงผล ไม่กระทบการให้คะแนนหรือจัดเงิน.

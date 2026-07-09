@@ -59,6 +59,8 @@ Turns Picks/เลขแนะนำ into an actual spending plan with honest EV
 
 **localStorage keys (own, isolated from all DC/Mix snapshot stores):** `lottery_buyplan_history` (saved plans — manual save only, immutable, delete-whole-plan), `lottery_buyplan_config` (payouts/min/round/ticket price, copied by value into each saved plan), `lottery_buyplan_prefs` (last-used mode/budget/risk). The Mix page links in via a "จัดชุดซื้อจากเลขชุดนี้ →" button (`bpFromMix`, opens ใบ mode).
 
+**Explainability layer** (`PRD-buy-plan-explainability.md`): each plan row is now self-explaining — inline formula-group dots + a plain-Thai strength word (หนุนแรง/กลาง/เบา, derived from the number's best supporting backtest Edge) + a ⭐ on เลขแนะนำ rows, plus an expandable "ทำไมได้เลขนี้ / ทำไมเงินเท่านี้" detail row (reasons come from `dcBuildScoreRows`; the money trace — score → share → ×1.5 → rounding → baht — comes from `bpAllocateTier`). ลอตเตอรี่ใบ rows show an agreement count + the fallback ladder in the same expand. Display-only: no scoring/allocation/EV/ledger logic change.
+
 ## Lottery Columns (`col` parameter)
 
 | Value | Description | Source |
