@@ -2986,6 +2986,36 @@ function bpStrengthWord(topEdge){
   if (e >= 1) return { word: 'หนุนแรง', cls: 'bp-str-strong' };
   return { word: 'หนุนกลาง', cls: 'bp-str-mid' };
 }
+// The expand body for one แทงรายเลข row: why the number (reasons + group dots + warnings) and
+// why the money (score → share → boost → rounding → baht). Hand-edited rows show a neutral note.
+function bpRowExplainHtml(row, roundUnit){
+  const dots = bpGroupsForSources(row.sources)
+    .map(g => `<span class="bp-group-dot" style="background:${g.color}" title="${escHtml(g.label)}"></span>`).join('');
+  const reasons = (row.reasons || []).map(x => `<li>${escHtml(x)}</li>`).join('')
+    || '<li class="bp-why-none">มาจากสัญญาณรวม ไม่มีเหตุผลรายตัว</li>';
+  const warns = (row.warnings || []).map(w => `<div class="bp-why-warn">⚠ ${escHtml(w)}</div>`).join('');
+  const rs = row.reason || {};
+  const money = row.hand
+    ? `<div class="bp-why-hand">แก้เอง — ตัวเลขนี้คุณกำหนดเอง ไม่ได้มาจากการจัดเงินของระบบ</div>`
+    : `<div class="bp-why-money">คะแนน <b>${(Number(rs.score) || 0).toFixed(1)}</b>`
+      + ` → สัดส่วนในกอง <b>${Math.round((rs.share || 0) * 100)}%</b>`
+      + (rs.boostApplied ? ` → <b>×1.5</b> เลขแนะนำ` : '')
+      + ` → ปัดลงหน่วย ${roundUnit || 10} = <b>${row.stake}฿</b>`
+      + (rs.gotRemainder ? ` <span class="bp-why-rem">· +เศษที่เหลือของกอง</span>` : '')
+      + `</div>`;
+  return `<div class="bp-why">
+    <div class="bp-why-block"><div class="bp-why-h">ทำไมได้เลขนี้</div>
+      <div class="bp-why-groups">${dots}</div><ul class="bp-why-reasons">${reasons}</ul>${warns}</div>
+    <div class="bp-why-block"><div class="bp-why-h">ทำไมเงินเท่านี้</div>${money}</div>
+  </div>`;
+}
+// Toggle an expand detail block by element id; flips the caret + aria-expanded on the button.
+function bpToggleRow(id, btn){
+  const el = document.getElementById(id); if (!el) return;
+  const open = !el.classList.toggle('hidden');
+  if (btn) { btn.textContent = open ? '▾' : '▸'; btn.setAttribute('aria-expanded', String(open)); }
+}
+window.bpToggleRow = bpToggleRow;
 function bpPlanTableHtml(plan){
   if(!plan||!plan.rows.length)return '<div class="dash-empty">งบไม่พอวางเลขแม้แต่ตัวเดียว (ขั้นต่ำ '+(plan?.config?.minStake??20)+'฿/เลข) — เพิ่มงบแล้วลองใหม่</div>';
   const tierBlock=(tierKey,label)=>{
@@ -3297,12 +3327,20 @@ function bpEditablePlanHtml(plan){
   const tierBlock=(tierKey,label)=>{
     const items=indexed.filter(x=>x.r.tier===tierKey);
     if(!items.length)return '';
-    const body=items.map(({r,i})=>`<tr class="bp-row">
-      <td class="bp-num">${escHtml(r.num)}${dcTrustBadge(r.trust)}${r.hand?'<span class="bp-handedit">แก้เอง</span>':''}</td>
+    const body=items.map(({r,i})=>{
+      const dots=bpGroupsForSources(r.sources).map(g=>`<span class="bp-group-dot" style="background:${g.color}" title="${escHtml(g.label)}"></span>`).join('');
+      const star=r.boosted?'<span class="bp-reco-star" title="เลขแนะนำ">⭐</span>':'';
+      const st=bpStrengthWord(r.topEdge);
+      const edgeTxt=typeof r.topEdge==='number'?` ${r.topEdge>=0?'+':'−'}${Math.abs(r.topEdge).toFixed(1)}%`:'';
+      return `<tr class="bp-row">
+      <td class="bp-num">${escHtml(r.num)}${star}${dcTrustBadge(r.trust)}${r.hand?'<span class="bp-handedit">แก้เอง</span>':''}
+        <div class="bp-num-meta"><span class="bp-groups">${dots}</span><span class="bp-strength ${st.cls}">${st.word}${edgeTxt}</span></div></td>
       <td class="bp-field">${escHtml(BP_FIELD_LABELS[r.field]||r.field)}</td>
       <td class="bp-stake-edit"><input type="number" min="0" step="${plan.config.roundUnit}" value="${r.stake}" aria-label="เงินเดิมพันเลข ${escHtml(r.num)}" onchange="bpEditStake(${i},this.value)">฿</td>
-      <td><button class="bp-del" title="ลบเลขนี้ (เจ้ามืออั้น/ไม่เอา)" onclick="bpDeleteRow(${i})">✕</button></td>
-    </tr>`).join('');
+      <td class="bp-row-actions"><button class="bp-why-toggle" aria-expanded="false" title="ทำไมได้เลขนี้ เงินเท่านี้" onclick="bpToggleRow('bp-detail-${i}',this)">▸</button><button class="bp-del" title="ลบเลขนี้ (เจ้ามืออั้น/ไม่เอา)" onclick="bpDeleteRow(${i})">✕</button></td>
+    </tr>
+    <tr class="bp-row-detail hidden" id="bp-detail-${i}"><td colspan="4">${bpRowExplainHtml(r,plan.config.roundUnit)}</td></tr>`;
+    }).join('');
     return `<div class="bp-tier">
       <div class="bp-tier-head">${label} <span class="dc-status">${items.length} เลข · ${items.reduce((a,x)=>a+x.r.stake,0)}฿</span></div>
       <table class="bp-table"><thead><tr><th>เลข</th><th>ประเภท</th><th>เงิน</th><th></th></tr></thead><tbody>${body}</tbody></table>

@@ -203,4 +203,24 @@ check('mid edge (0<e<1) → หนุนกลาง', bpStrengthWord(0.4).word 
 check('zero/negative/null edge → หนุนเบา',
   bpStrengthWord(0).word === 'หนุนเบา' && bpStrengthWord(-1).word === 'หนุนเบา' && bpStrengthWord(null).word === 'หนุนเบา');
 
+// ── 10. แทงรายเลข explain rendering ───────────────────────────────────────────────
+const { bpRowExplainHtml, bpEditablePlanHtml } = sandbox;
+['bpRowExplainHtml', 'bpEditablePlanHtml'].forEach(n => {
+  if (typeof sandbox[n] !== 'function') throw new Error('FAIL: ' + n + ' not loaded from app.js');
+});
+const exHtml = bpRowExplainHtml(r45, 10);
+check('explain body lists each recorded reason', exHtml.includes('สูตร C ให้เลขนี้') && exHtml.includes('สูตร G สนับสนุน'));
+check('explain body shows the money chain with คะแนน and สัดส่วน', exHtml.includes('คะแนน') && exHtml.includes('สัดส่วน'));
+check('explain body shows the ×1.5 เลขแนะนำ step for a boosted row', exHtml.includes('×1.5'));
+check('explain body shows a group dot for a backing group', exHtml.includes('bp-group-dot'));
+const warnHtml = bpRowExplainHtml(pRich.rows.find(r => r.num === '12'), 10);
+check('a row with a warning surfaces it in the explain body', warnHtml.includes('ไม่มีแรงหนุนจาก Predict'));
+const handRow = { ...r45, hand: true };
+check('a hand-edited row shows the แก้เอง note instead of the system money math', bpRowExplainHtml(handRow, 10).includes('แก้เอง'));
+const planHtml = bpEditablePlanHtml(pRich);
+check('editable plan renders a ⭐ on the เลขแนะนำ row', planHtml.includes('bp-reco-star'));
+check('editable plan renders the strength word', /หนุน(แรง|กลาง|เบา)/.test(planHtml));
+check('editable plan renders a why-toggle and a hidden detail row', planHtml.includes('bp-why-toggle') && planHtml.includes('bp-row-detail'));
+check('editable plan detail row carries the matching id', planHtml.includes('id="bp-detail-'));
+
 console.log(`OK: ${passed} checks passed`);

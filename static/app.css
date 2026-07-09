@@ -799,3 +799,29 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
   .bp-controls{flex-direction:column;gap:14px}
   .bp-ticket-grid{grid-template-columns:1fr}
 }
+/* จัดชุดซื้อ explainability */
+.bp-num-meta{display:flex;align-items:center;gap:6px;margin-top:3px}
+.bp-groups{display:inline-flex;gap:3px}
+.bp-group-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.bp-reco-star{font-size:.8em;margin-left:3px}
+.bp-strength{font-size:.72rem;color:var(--text3)}
+.bp-strength.bp-str-strong{color:#34d399}
+.bp-strength.bp-str-mid{color:var(--accent)}
+.bp-row-actions{white-space:nowrap;display:flex;gap:4px;justify-content:flex-end}
+.bp-why-toggle{background:none;border:1px solid var(--surface2,#2a2a2e);color:var(--text2,#aaa);border-radius:6px;cursor:pointer;padding:1px 7px;font-size:.85rem}
+.bp-why-toggle:hover{color:var(--text);border-color:var(--accent)}
+.bp-row-detail.hidden{display:none}
+.bp-row-detail>td{background:rgba(255,255,255,.02);padding:10px 14px}
+.bp-why{display:flex;flex-wrap:wrap;gap:18px}
+.bp-why-block{flex:1;min-width:220px}
+.bp-why-h{font-size:.72rem;letter-spacing:.04em;color:var(--text3);text-transform:uppercase;margin-bottom:5px}
+.bp-why-groups{display:flex;gap:4px;margin-bottom:5px}
+.bp-why-reasons{margin:0;padding-left:18px;font-size:.85rem;color:var(--text2,#ccc);line-height:1.55}
+.bp-why-none{list-style:none;margin-left:-18px;color:var(--text3);font-style:italic}
+.bp-why-warn{color:#fbbf24;font-size:.82rem;margin-top:4px}
+.bp-why-money{font-size:.88rem;color:var(--text2,#ccc);line-height:1.6}
+.bp-why-money b{color:var(--text)}
+.bp-why-rem{color:var(--gold)}
+.bp-why-hand{font-size:.85rem;color:var(--text3);font-style:italic}
+.bp-why-agree{font-size:.85rem;color:var(--text2,#ccc)}
+.bp-why-ladder{font-size:.85rem;color:var(--text2,#ccc)}
