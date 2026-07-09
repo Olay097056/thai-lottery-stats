@@ -34,8 +34,8 @@ vm.createContext(sandbox);
 vm.runInContext(engineSrc, sandbox);
 vm.runInContext(appSrc, sandbox);
 
-const { bpMergeTicketCandidates, bpBuildPlan, bpComputeTicketEv, bpResolvePlan, bpResolveTicket, bpLedger, dcActualForDate } = sandbox;
-['bpMergeTicketCandidates', 'bpBuildPlan', 'bpComputeTicketEv', 'bpResolvePlan', 'bpResolveTicket', 'bpLedger'].forEach(name => {
+const { bpMergeTicketCandidates, bpBuildPlan, bpComputeTicketEv, bpResolvePlan, bpResolveTicket, bpLedger, dcActualForDate, bpEditableTicketHtml, bpTicketExplainHtml } = sandbox;
+['bpMergeTicketCandidates', 'bpBuildPlan', 'bpComputeTicketEv', 'bpResolvePlan', 'bpResolveTicket', 'bpLedger', 'bpEditableTicketHtml', 'bpTicketExplainHtml'].forEach(name => {
   if (typeof sandbox[name] !== 'function') throw new Error(`FAIL: ${name} not loaded from app.js`);
 });
 
@@ -152,5 +152,23 @@ check('แก้เอง survives ticket resolution', rTicket.rows[1].hand === 
 const led = bpLedger([ticketPlan], histRows);
 check('ledger random-play expectation is mode-aware for tickets (−32฿ × 3 tickets = −96)', Math.abs(led.randomExpectedNet - (-96)) < 1e-9);
 check('ledger sums the ticket plan', led.resolved === 1 && led.spent === 240 && led.returned === rTicket.returned);
+
+// ── ticket explainability (PRD-buy-plan-explainability) ──────────────────────────
+const tSources = [
+  { num: '123456', label: 'I1', kind: 'group', group: 'I · จักรพรรดิ', trust: null },
+  { num: '123456', label: 'Mix', kind: 'mix' },
+  { num: '778899', label: 'beam', kind: 'predict' },
+];
+const CFGT = { pay2: 95, pay3: 950, minStake: 20, roundUnit: 10, tierCap: 10, ticketPrice: 80 };
+const pT = bpBuildPlan({ mode: 'ticket', budget: 240, risk: 'safe', config: CFGT, ticketSources: tSources });
+const tRow = pT.rows.find(r => r.num === '123456');
+const tEx = bpTicketExplainHtml(tRow);
+check('ticket explain shows the agreement count (2 แหล่ง for 123456)', tEx.includes('2') && tEx.includes('แหล่ง'));
+check('ticket explain lists the sources', tEx.includes('I1') && tEx.includes('Mix'));
+check('ticket explain shows the fallback ladder', tEx.includes('เต็ม 6') && tEx.includes('ท้าย 2'));
+check('ticket explain shows a group dot for group I', tEx.includes('bp-group-dot'));
+const ticketHtml = bpEditableTicketHtml(pT);
+check('ticket card renders a why-toggle', ticketHtml.includes('bp-why-toggle'));
+check('ticket card renders a hidden detail block with matching id', ticketHtml.includes('id="bp-tdetail-'));
 
 console.log(`OK: ${passed} checks passed`);

@@ -3016,6 +3016,23 @@ function bpToggleRow(id, btn){
   if (btn) { btn.textContent = open ? '▾' : '▸'; btn.setAttribute('aria-expanded', String(open)); }
 }
 window.bpToggleRow = bpToggleRow;
+// Expand body for one ลอตเตอรี่ใบ row: which sources agreed (tickets have no per-number Edge, so
+// agreement count stands in for strength) and what to search if the exact ticket is sold out.
+function bpTicketExplainHtml(row){
+  const dots = bpGroupsForSources(row.sources)
+    .map(g => `<span class="bp-group-dot" style="background:${g.color}" title="${escHtml(g.label)}"></span>`).join('');
+  const srcs = (row.sources || []).map(s => escHtml(s)).join(', ') || '—';
+  const n = (row.sources || []).length;
+  const agree = n >= 3 ? 'หลายแหล่งเห็นตรงกัน' : n === 2 ? 'สองแหล่งเห็นตรงกัน' : 'มาจากแหล่งเดียว';
+  const L = row.ladder || [row.num, String(row.num).slice(-3), String(row.num).slice(-2)];
+  return `<div class="bp-why">
+    <div class="bp-why-block"><div class="bp-why-h">ทำไมใบนี้</div>
+      <div class="bp-why-groups">${dots}</div>
+      <div class="bp-why-agree">เห็นตรงกัน <b>${n}</b> แหล่ง (${agree}): ${srcs}</div></div>
+    <div class="bp-why-block"><div class="bp-why-h">ถ้าเลขเต็มขายหมด</div>
+      <div class="bp-why-ladder">ไล่ซื้อ เต็ม 6 (${escHtml(L[0])}) → ท้าย 3 (${escHtml(L[1])}) → ท้าย 2 (${escHtml(L[2])})</div></div>
+  </div>`;
+}
 function bpPlanTableHtml(plan){
   if(!plan||!plan.rows.length)return '<div class="dash-empty">งบไม่พอวางเลขแม้แต่ตัวเดียว (ขั้นต่ำ '+(plan?.config?.minStake??20)+'฿/เลข) — เพิ่มงบแล้วลองใหม่</div>';
   const tierBlock=(tierKey,label)=>{
@@ -3260,12 +3277,17 @@ function bpEditableTicketHtml(plan){
   }
   const cards=plan.rows.map((r,i)=>{
     const chips=(r.sources||[]).map(s=>`<span class="dc-source-chip">${escHtml(s)}</span>`).join('');
+    const tDots=bpGroupsForSources(r.sources).map(g=>`<span class="bp-group-dot" style="background:${g.color}" title="${escHtml(g.label)}"></span>`).join('');
+    const tAgree=(r.sources||[]).length>1?`<span class="bp-strength">เห็นตรงกัน ${(r.sources||[]).length} แหล่ง</span>`:'';
     return `<div class="bp-ticket-card${i===0?' bp-rank1':''}">
       <div class="bp-ticket-top">
         <span class="bp-ticket-num">${escHtml(r.num)}</span>
+        <span class="bp-groups">${tDots}</span>${tAgree}
         ${dcTrustBadge(r.trust)}${r.hand?'<span class="bp-handedit">แก้เอง</span>':''}
+        <button class="bp-why-toggle" aria-expanded="false" title="ทำไมใบนี้" onclick="bpToggleRow('bp-tdetail-${i}',this)">▸</button>
         <button class="bp-del" title="ลบใบนี้" onclick="bpDeleteRow(${i})">✕</button>
       </div>
+      <div class="bp-row-detail hidden" id="bp-tdetail-${i}">${bpTicketExplainHtml(r)}</div>
       <div class="bp-ladder">
         <span class="bp-ladder-step">เต็ม 6 · <b>${escHtml(r.ladder[0])}</b></span>
         <span class="bp-ladder-arrow">→</span>
