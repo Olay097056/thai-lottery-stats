@@ -2769,8 +2769,13 @@ function bpAllocateTier(cands,tierBudget,cfg){
     let dropIdx=-1;
     for(let i=work.length-1;i>=0;i--){ if(stakes[i]<minStake){ dropIdx=i; break; } }
     if(dropIdx>=0&&work.length>1){ work.splice(dropIdx,1); continue; }
+    const rawStakes=stakes.slice();
     stakes[0]+=tierBudget-stakes.reduce((a,b)=>a+b,0);
-    return work.map((r,i)=>({...r,stake:stakes[i]}));
+    return work.map((r,i)=>({...r,stake:stakes[i],reason:{
+      score:r.score,boostedScore:r.boostedScore,boostApplied:!!r.boosted,
+      tierTotal:total,share:total>0?r.boostedScore/total:1/work.length,
+      rawStake:rawStakes[i],roundedStake:rawStakes[i],finalStake:stakes[i],
+      gotRemainder:i===0&&stakes[i]>rawStakes[i]}}));
   }
 }
 
@@ -2928,7 +2933,11 @@ function bpBuildPlan(input){
       const score=Number(r.score)||0;
       return {num:String(r.num),field,len,tier:len===2?'2d':'3d',score,
         topEdge:(typeof r.topEdge==='number'?r.topEdge:null),trust:r.trust||null,
-        source:field==='bottom2'?'2 ตัวล่าง':'3 ตัวบน',boosted,boostedScore:score*(boosted?1.5:1)};
+        source:field==='bottom2'?'2 ตัวล่าง':'3 ตัวบน',boosted,boostedScore:score*(boosted?1.5:1),
+        reasons:Array.isArray(r.reasons)?r.reasons.slice():[],
+        sources:Array.isArray(r.sources)?r.sources.slice():[],
+        warnings:Array.isArray(r.warnings)?r.warnings.slice():[],
+        formulaCount:Number(r.formulaCount)||0,predictCount:Number(r.predictCount)||0};
     })
     .sort((a,b)=>b.boostedScore-a.boostedScore||a.num.localeCompare(b.num));
   const cand2=mk(2,'bottom2'), cand3=mk(3,'back3');
@@ -2951,6 +2960,32 @@ function bpBuildPlan(input){
 
 // ── Buy Plan rendering (light HTML string helpers, mirroring the DC/Mix prior art) ──
 const BP_FIELD_LABELS={bottom2:'2 ตัวล่าง',prize1_last2:'2 ตัวบน',back3:'3 ตัวบน'};
+// Mirror of formula-engine.js's function-local _GRP (group letter → [label,color]); Codex X* → F.
+// Kept in sync manually — groups A–J are stable. Change both if a new group is added.
+const BP_GROUP_MAP = {
+  A: ['A · กูชอบ', 'var(--gold)'], B: ['B · ลอตโตพลัส', '#4d9de0'], C: ['C · พิชิตโชค', '#a855f7'],
+  D: ['D · Claude', '#22d3ee'], X: ['F · Codex', '#a3e635'], G: ['G · แม่นขั้นเทพ', '#f05454'],
+  H: ['H · มิสเตอร์ซี', '#f59e0b'], E: ['E · สายมู', '#ec4899'], I: ['I · จักรพรรดิ', '#c084fc'],
+  J: ['J · เจ้าสัว', '#10b981'],
+};
+// Distinct top-level formula groups backing a number, derived from its source labels (name[0],
+// Codex X→F). Non-formula sources (Predict/รางวัลรอง/พิมพ์เอง) have no group letter → excluded.
+function bpGroupsForSources(sources){
+  const seen = new Map();
+  (sources || []).forEach(s => {
+    const letter = String(s || '').trim()[0];
+    if (!letter || !BP_GROUP_MAP[letter] || seen.has(letter)) return;
+    seen.set(letter, { letter, label: BP_GROUP_MAP[letter][0], color: BP_GROUP_MAP[letter][1] });
+  });
+  return [...seen.values()];
+}
+// Plain-Thai confidence word from a number's best supporting Edge (percentage points).
+function bpStrengthWord(topEdge){
+  const e = typeof topEdge === 'number' ? topEdge : null;
+  if (e == null || e <= 0) return { word: 'หนุนเบา', cls: 'bp-str-weak' };
+  if (e >= 1) return { word: 'หนุนแรง', cls: 'bp-str-strong' };
+  return { word: 'หนุนกลาง', cls: 'bp-str-mid' };
+}
 function bpPlanTableHtml(plan){
   if(!plan||!plan.rows.length)return '<div class="dash-empty">งบไม่พอวางเลขแม้แต่ตัวเดียว (ขั้นต่ำ '+(plan?.config?.minStake??20)+'฿/เลข) — เพิ่มงบแล้วลองใหม่</div>';
   const tierBlock=(tierKey,label)=>{

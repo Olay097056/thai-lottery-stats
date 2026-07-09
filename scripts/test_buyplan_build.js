@@ -167,4 +167,40 @@ check('EV card (zero-Edge) does NOT show the noise warning', !cardTheory.include
 const cardWarn = bpEvCardHtml(pBig);
 check('EV card shows the noise warning when adjusted EV is positive', cardWarn.includes('ไม่ใช่กำไรจริง'));
 
+// ── 9. explainability data (PRD-buy-plan-explainability) ─────────────────────────
+const { bpGroupsForSources, bpStrengthWord } = sandbox;
+['bpGroupsForSources', 'bpStrengthWord'].forEach(n => {
+  if (typeof sandbox[n] !== 'function') throw new Error('FAIL: ' + n + ' not loaded from app.js');
+});
+const richRows = [
+  { num: '45', type: '2 หลัก', score: 82, topEdge: 2.1, trust: null,
+    sources: ['C1 พิชิตโชค', 'G แม่นขั้นเทพ', 'I1 จักรพรรดิ', 'Predict 2 ตัวล่าง'],
+    reasons: ['สูตร C ให้เลขนี้', 'สูตร G สนับสนุน (backtest edge +2.1%)'], warnings: [], formulaCount: 3, predictCount: 1 },
+  { num: '12', type: '2 หลัก', score: 40, topEdge: 0.4, trust: null,
+    sources: ['C1 พิชิตโชค'], reasons: ['สูตร C สนับสนุน'], warnings: ['ไม่มีแรงหนุนจาก Predict'], formulaCount: 1, predictCount: 0 },
+];
+const pRich = bpBuildPlan({ mode: 'perNumber', budget: 500, risk: 'safe', config: CFG, scoreRows: richRows, recoNums: ['45'] });
+const r45 = pRich.rows.find(r => r.num === '45');
+const t2rich = pRich.rows.filter(r => r.tier === '2d');
+check('row carries reasons array through from the score row', Array.isArray(r45.reasons) && r45.reasons.length === 2);
+check('row carries sources array through', Array.isArray(r45.sources) && r45.sources.includes('G แม่นขั้นเทพ'));
+check('row carries warnings array through', Array.isArray(pRich.rows.find(r => r.num === '12').warnings));
+check('row carries a money-trace reason object', r45.reason && typeof r45.reason.share === 'number' && typeof r45.reason.tierTotal === 'number');
+check('rank-1 row of a tier is flagged gotRemainder when a remainder exists', t2rich[0].reason.gotRemainder === true);
+check('non-rank-1 rows are not flagged gotRemainder', t2rich.slice(1).every(r => r.reason.gotRemainder === false));
+check('boosted (เลขแนะนำ) row records boostApplied=true', r45.reason.boostApplied === true);
+check('reason.finalStake equals the row stake', t2rich.every(r => r.reason.finalStake === r.stake));
+// group dots
+const g45 = bpGroupsForSources(r45.sources);
+check('bpGroupsForSources returns distinct formula groups only (C,G,I — Predict excluded)',
+  g45.length === 3 && g45.map(x => x.letter).sort().join('') === 'CGI');
+check('bpGroupsForSources de-dupes repeated group letters', bpGroupsForSources(['C1', 'C2 พิชิตโชค', 'C3']).length === 1);
+check('Codex X* source maps to the F group', bpGroupsForSources(['X5 Pattern Link'])[0].label.startsWith('F'));
+check('non-formula sources yield no group dots', bpGroupsForSources(['Predict หน้า 3', 'รางวัลรอง 10 งวด', 'พิมพ์เอง']).length === 0);
+// strength words
+check('strong edge (≥1.0) → หนุนแรง', bpStrengthWord(2.1).word === 'หนุนแรง');
+check('mid edge (0<e<1) → หนุนกลาง', bpStrengthWord(0.4).word === 'หนุนกลาง');
+check('zero/negative/null edge → หนุนเบา',
+  bpStrengthWord(0).word === 'หนุนเบา' && bpStrengthWord(-1).word === 'หนุนเบา' && bpStrengthWord(null).word === 'หนุนเบา');
+
 console.log(`OK: ${passed} checks passed`);
