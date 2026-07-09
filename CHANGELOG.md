@@ -2,6 +2,40 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-07-09 — จัดชุดซื้อ (Buy Plan): แผนใช้เงินจริง + EV คู่ + ledger บาท — ISSUE-17→20
+
+PRD: `PRD-buy-plan-tab.md` · ADR: `docs/adr/0004-buy-plan-tab-dual-ev-and-honest-pnl.md` (2 โหมดแยกกัน, EV คู่ทฤษฎีนำ, บันทึกล็อกเป็น ledger บาทจริง) · glossary ใน `CONTEXT.md`: จัดชุดซื้อ, ชุดซื้อ, EV คู่, แก้เอง (ตกลงผ่าน grilling ก่อนเขียนโค้ด) · หน้า sidebar ที่ 5 (`page-buyplan`, `loadBuyPlan`) · client-side ล้วน ใช้ fetch ที่ Decision Center ทำอยู่แล้ว ไม่มี endpoint ใหม่
+
+**ปรัชญา (ADR-0004):** หน้านี้ตอบคำถามที่หน้าอื่นไม่ตอบ — "มีงบ X ควรซื้ออะไร ตัวละเท่าไหร่ ระยะยาวเสียเท่าไหร่จริงๆ" · ledger บาทสะสมมักโชว์ยอดขาดทุนที่โตขึ้น = ฟีเจอร์ทำงานถูกต้อง ไม่ใช่บั๊ก (งานคือวางแผน+บัญชีที่ซื่อสัตย์ ไม่ใช่ภาพลวงกำไร)
+
+**สอง seam บริสุทธิ์ (unit test แบบ vm-extract, fixture ล้วน ไม่แตะ DOM/network — `scripts/test_buyplan_build.js`/`_resolve.js`/`_ticket.js`):**
+- `bpBuildPlan(input) → plan` — logic จัดสรรทั้งสองโหมดอยู่หลังฟังก์ชันเดียว
+- `bpResolvePlan(plan, actualDrawRow) → resolution` — ผลลัพธ์เป็นบาทต่อแถว (stake × payout ที่ **freeze ไว้ในแผน**), net = returned − spent · reuse convention lookup ISO→แถวประวัติแบบไทย (`dcActualForDate`) จาก track record ของ Decision Center
+
+**ISSUE-17 — หน้า + โหมดแทงรายเลข:** budget (ปุ่มด่วน 200/500/1,000 + พิมพ์เอง) + risk preset คุมเฉพาะสัดส่วนเงิน 2 หลัก (`bottom2`+`prize1_last2`) ต่อ 3 หลัก (`back3`) — เซฟ 80/20, กลาง 50/50, ใจถึง 20/80 (risk ไม่เปลี่ยนว่าเลือกเลขไหน) · จัดสรรตามคะแนน Pick (`dcBuildScoreRows`) ×1.5 boost เลขแนะนำ, ขั้นต่ำ 20฿/ปัด 10฿/สูงสุด 10 เลขต่อ tier, ต่ำกว่าขั้นต่ำตัดทิ้งแล้วเกลี่ยใหม่, เศษปัดไปเลขอันดับ 1 → รวมเท่างบเป๊ะ · EV คู่: ทฤษฎีล้วน (baseline 1/100, 1/1000) นำเสมอ −5%/บาทที่ ×95/×950, adjusted (`p = baseline + Edge`) เตือน "อาจเป็น noise ไม่ใช่กำไร" เมื่อ ≥0 · ป้ายทดลองส่งต่อจากสูตร J ไปแถวในแผน (ADR-0003, แสดงผลอย่างเดียว) · config (payout/min/round/ticket price) + prefs (mode/budget/risk) ใน localStorage
+
+**ISSUE-18 — แก้ก่อนเซฟ + ล็อก + resolve บาท + ledger:** ทุกแถวแก้ได้ (เปลี่ยน stake / ลบ [ไม่เกลี่ยใหม่ ผู้ใช้คุมเอง] / เพิ่มเลขเอง) ติดป้าย **แก้เอง** เก็บผ่าน save→resolve เพื่อแยก P/L ระบบล้วนกับที่คนแก้ · ปุ่ม "บันทึกชุดนี้" (ไม่ auto-save — บันทึกการตัดสินใจของผู้ใช้ ไม่ใช่ความเห็นระบบ) freeze mode/budget/risk/date/ทุกแถว/config-by-value/EV ณ ตอนเซฟ ลง `lottery_buyplan_history` (key แยกจากทุก snapshot store เดิม) · immutable หลังเซฟ ลบได้ทั้งชุดเท่านั้น — config เปลี่ยนทีหลังไม่แตะ P/L ที่บันทึกไว้ (พิสูจน์ใน browser: เปลี่ยน pay2→80 แผนที่เซฟยังจ่าย ×95) · `bpResolvePlan` hit เป๊ะต่อชนิด (`bottom2` vs 2ตัวล่าง, `prize1_last2` vs ท้าย2 ที่1, `back3` vs ท้าย3 ที่1) + `bpLedger` สะสม "ซื้อ N ชุด รวม X ได้คืน Y = net −Z" เทียบ random-play · resolve อัตโนมัติตอนเปิดหน้า
+
+**ISSUE-19 — โหมดลอตเตอรี่ใบ (ตั๋วออนไลน์):** งบ→จำนวนใบเต็มที่ราคาที่ตั้ง · `bpMergeTicketCandidates` รวมเลข 6 หลักจาก I/J2 `pool6` + ทำนายรางวัลที่ 1 (beam) + **Mix (เป็น source มีป้ายชื่อ ไม่ใช่กลุ่มสูตร** — กันนับสูตรแม่ซ้ำ) · จัดใบตาม risk: เซฟ = กระจายท้าย 2 ต่างกัน, ใจถึง = อัดใบซ้ำใบบนสุด, กลาง = ระหว่างกลาง · ทุกใบมีบันได เต็ม6 → ท้าย3 → ท้าย2 สำหรับตอนตั๋วหมด · `bpComputeTicketEv`: ตารางรางวัลรัฐบาลจ่ายคาดหวัง **48฿/ใบ** (6M + 2×100k + 5×200k + 10×80k + 50×40k + 100×20k + หน้า3/ท้าย3/ท้าย2) = −40% ที่ 80฿ โชว์เทียบ −5% ของแทงรายเลข (~8 เท่า/บาท) · `bpResolveTicket` เทียบตารางเต็ม (ที่1/ข้างเคียง/ที่2–5/หน้า3/ท้าย3/ท้าย2, รางวัลซ้อนได้ตามกติกา, prize4/5 เป็น string คั่น space) — งวดที่ไม่มีคอลัมน์ Sanook ติดธง **unverifiable** ไม่นับเป็นพลาด · `bpLedger` random-play เป็น mode-aware (−32฿/ใบ ตั๋ว vs −5%/บาท แทงเลข) · บันทึกแผนตั๋วต้องเก็บ `qty`+`ladder` (บั๊กที่เจอตอน verify: mapping เดิมตกไป ทำให้ resolve นับผิด — แก้แล้ว)
+
+**ISSUE-20 — ปุ่มเชื่อมจาก Mix + เอกสารปิดงาน:** ปุ่ม "จัดชุดซื้อจากเลขชุดนี้ →" บน hero หน้า Mix (`bpFromMix` → เปิดโหมดลอตเตอรี่ใบ, banner "มาจากหน้า Mix") — budget-cuts ของ Mix ไม่ถูกแตะ (แค่เพิ่มปุ่ม ไม่แก้ logic) · อัปเดต CLAUDE.md (pages list 7 + section Buy Plan), DEVELOPMENT_PLAN.md (Phase 7), CHANGELOG นี้ · ตรวจ glossary CONTEXT.md ตรงกับที่สร้างจริง
+
+**CSS/assets:** block `.bp-*` ใหม่ท้าย `app.css` (ตาม macOS dark palette) · bump `?v=buyplan1→4` ครบ 3 ไฟล์ทุกรอบที่แก้
+
+## 2026-07-08 — สูตร Mix "ไม่รู้ซื้อเหี้ยไรดี" + หน้าใหม่ "ไม่รู้ซื้ออะไรดี"
+
+Glossary ใหม่ใน `CONTEXT.md`: ไม่รู้ซื้อเหี้ยไรดี (Mix), ไม่รู้ซื้ออะไรดี (page) — สเปกทั้งหมดตกลงผ่าน grilling ก่อนเขียนโค้ด
+
+**สูตร Mix (meta-formula):** สร้างเลข 6 หลัก ~10 ชุดจากการ**โหวตรายหลัก**ของผลลัพธ์ทุกกลุ่มสูตร A–J (ไม่รวมหน้าทำนาย/Predict) — `_mixCompute`/`_computeMixRow` ใน `formula-engine.js` · กติกา: หนึ่งกลุ่ม = หนึ่งเสียงต่อหลัก (normalize มวลโหวตต่อกลุ่ม, ไม่ถ่วง Edge — Edge ข้าม field เทียบกันไม่แฟร์และเสี่ยง overfit) · หลัก 1–3 ฟังเฉพาะ `front3` (D, F) กัน I/J2 ครอบครึ่งหน้า, fallback ไป I/J2 เมื่อ front3 ว่างทั้งหมด · หลัก 4–6 ฟังทุก field ที่ map ท้ายเลขได้ (top3/back3/back3exact ชิดขวา, bottom2/prize1_last2 → หลัก 5–6, bottom2_unit → หลัก 6, prize1_last4_digits ตัดหลักแรกทิ้ง) + เลขเต็ม I/J2 · ประกอบชุดผ่าน `_imperialRoundRobin` (K=8) เหมือนกลุ่ม I
+
+**จงใจไม่เข้า Picks/เลขแนะนำ (กัน double-count):** Mix เป็นอนุพันธ์ของทุกกลุ่ม ถ้าเข้าเลขแนะนำจะเห็นด้วยกับสูตรแม่ตัวเองเสมอ — บังคับด้วยโครงสร้าง: ไม่อยู่ใน `_computeFormulasBatch` เลย ผู้บริโภคต้องเรียก `_computeMixRow` เพิ่มเอง (มีแค่ backtest กับหน้าใหม่) พิสูจน์ใน browser: `dcComputeFormulaResults` 41 แถวไม่มี Mix, `dcRecommendedNumbers` ไม่มี Mix · **ไม่ติดป้ายทดลอง** (ตัดสินใจใน grilling): ความเป็น "สายสนุก" สื่อผ่านหน้าแยกของตัวเองแทน
+
+**Backtest:** แถว `ไม่รู้ซื้อเหี้ยไรดี · เลขเต็ม6หลัก` field `pool6` group badge "MIX · รวมทุกสูตร" (สีทอง `#f2ca73`) — เข้าตารางเฉพาะงวดที่มี pool6 producer (เงื่อนไขเดียวกับที่ I/J ข้ามงวดไร้ข้อมูล Sanook เพื่อ baseline แฟร์) · ทดสอบจริง 20 งวด: 0 hits, edge −0.2% (ตามคาด — pool6 hit หายากพอๆ กับ I1/I2)
+
+**หน้าใหม่ "ไม่รู้ซื้ออะไรดี" (sidebar ที่ 4, `page-mix`, `loadMixPage` ใน `app.js`):** 6 ส่วน — (1) hero เลขอันดับ 1 ใหญ่ + 9 ชุดรอง (2) ผังโหวตรายหลัก 6 ช่อง โชว์เลขผู้ชนะ+กลุ่มที่โหวต+% (3) มิเตอร์ฉันทามติ = ค่าเฉลี่ยสัดส่วนกลุ่มที่โหวตเลขผู้ชนะต่อหลัก (4) Track Record แยก localStorage `lottery_mix_snapshots` (cap 60, auto-save ทุกครั้งที่เปิดหน้า, hit = 1 ใน 10 ชุดตรง pool รางวัลที่ 1–5) + trend chart rolling 5 งวด (5) เลขตัดงบน้อย (ตัดหัว/ท้ายชุดอันดับ 1 — ติดป้าย "ไม่ใช่ Pick" กันสับสนกับหน้าสรุปงวดนี้) (6) ปุ่มสุ่มหยิบ 1 ใบถ่วงน้ำหนักตามอันดับ · CSS ใหม่ block `.mix-*` ท้าย `app.css` · bump `?v=mix-page1` ครบ 3 ไฟล์
+
+**หมายเหตุ dev:** เปลี่ยน port ใน `.claude/launch.json` เป็น 8510 เพราะ 8509 ถูกยึดโดยโปรเซสเก่าที่ระบุตัว/ปิดไม่ได้ (netstat ชี้ PID ที่ไม่มีอยู่แล้ว)
+
 ## 2026-07-08 — เจ้าสัว (Group J): สูตรจากการค้นหาระบบตัวแรก + ป้ายทดลอง — ISSUE-13→16
 
 PRD: `PRD-group-j-tycoon-formula.md` · ADR: `docs/adr/0003-group-j-promotion-gate-and-experimental-participation.md` (gate เข้มแบบ train/validation/holdout, ป้ายทดลอง = แสดงผลอย่างเดียวไม่ gate การมีส่วนร่วม) · glossary ใหม่ใน `CONTEXT.md`: เจ้าสัว (Group J), ทดลอง, Promotion Gate, Holdout

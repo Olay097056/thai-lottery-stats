@@ -1838,6 +1838,102 @@ function runAllFormulas(){
   filterFormulaCards();
 }
 
+// ─── Mix. "ไม่รู้ซื้อเหี้ยไรดี" — derived meta-formula ────────────────────────────
+// ผสมเลข 6 หลักจากการโหวตรายหลักของผลลัพธ์ทุกกลุ่มสูตร A–J (ไม่รวมหน้าทำนาย/Predict)
+// กติกา (ตกลงใน CONTEXT.md):
+// - หนึ่งกลุ่ม = หนึ่งเสียงต่อหลัก (normalize มวลโหวตของแต่ละกลุ่มให้รวมเป็น 1 ต่อหลัก
+//   ไม่ว่ากลุ่มนั้นผลิตกี่ตัวเลข) — ไม่ถ่วงน้ำหนักตาม Edge
+// - หลัก 1–3 (index 0–2): ฟังเฉพาะ field 'front3' (กลุ่ม D, F) — เสียงเลขเต็ม 6 หลักของ
+//   I/J2 ถูกกันออกจากครึ่งหน้า เพื่อไม่ให้ครึ่งหน้ากลายเป็น copy ของกลุ่ม I; ถ้างวดไหน
+//   front3 ว่างทั้งหมด จึงค่อย fallback ไปใช้เสียง I/J2 (หน้านี้ต้องมีคำตอบเสมอ)
+// - หลัก 4–6 (index 3–5): ฟังทุก field type ที่ map ลงท้ายเลขได้ + เลขเต็มของ I/J2
+// - ผลลัพธ์ 10 ชุดผ่าน _imperialRoundRobin (K=8) เหมือนกลุ่ม I เพื่อเทียบ backtest แฟร์
+// จงใจ "ไม่" อยู่ใน _computeFormulasBatch: Mix เป็นอนุพันธ์ของทุกกลุ่ม ถ้าไหลเข้า
+// Picks/เลขแนะนำ จะ double-count สูตรแม่ของตัวเอง — ผู้บริโภคที่ต้องการ (backtest,
+// หน้า ไม่รู้ซื้ออะไรดี) ต้องเรียก _computeMixRow/_mixCompute เพิ่มเองเท่านั้น
+const MIX_FORMULA_NAME='ไม่รู้ซื้อเหี้ยไรดี · เลขเต็ม6หลัก';
+
+function _mixGroupKey(name){
+  const m=String(name||'').match(/^([A-Z])\d/);
+  if(m)return m[1]==='X'?'F':m[1]; // X* = กลุ่ม F (Codex/Pattern Link)
+  return 'E'; // แถวชื่อไทยล้วนมาจาก _beliefData (สายมู) เท่านั้น
+}
+
+function _mixCompute(formulaResults){
+  // votes[pos] = Map(groupKey -> Map(digit -> rawCount)) · fallback = เสียง pool6 สำหรับหลัก 0-2
+  const votes=Array.from({length:6},()=>new Map());
+  const fallback=Array.from({length:3},()=>new Map());
+  const addTo=(store,g,d)=>{
+    if(!/^\d$/.test(d))return;
+    if(!store.has(g))store.set(g,new Map());
+    const m=store.get(g);
+    m.set(d,(m.get(d)||0)+1);
+  };
+  const addVote=(g,pos,d)=>{if(pos>=0&&pos<6)addTo(votes[pos],g,d);};
+  for(const fr of (formulaResults||[])){
+    if(!fr||fr.mix)continue;
+    const g=_mixGroupKey(fr.name);
+    const preds=(fr.preds||[]).map(String);
+    if(!preds.length)continue;
+    switch(fr.field){
+      case 'front3':
+        preds.forEach(p=>{if(/^\d{3}$/.test(p))for(let i=0;i<3;i++)addVote(g,i,p[i]);});
+        break;
+      case 'pool6': // I/J2: หลักท้ายโหวตตรง, หลักหน้าเก็บไว้เป็น fallback เท่านั้น
+        preds.forEach(p=>{if(/^\d{6}$/.test(p)){for(let i=3;i<6;i++)addVote(g,i,p[i]);for(let i=0;i<3;i++)addTo(fallback[i],g,p[i]);}});
+        break;
+      case 'top3':
+      case 'back3exact':
+        preds.forEach(p=>{if(/^\d{3}$/.test(p))for(let i=0;i<3;i++)addVote(g,3+i,p[i]);});
+        break;
+      case 'back3': // preds ปน 3 และ 2 หลัก (เช่น C3) — ชิดขวาที่หลักสุดท้าย
+        preds.forEach(p=>{if(/^\d{2,3}$/.test(p))for(let i=0;i<p.length;i++)addVote(g,6-p.length+i,p[i]);});
+        break;
+      case 'bottom2':
+      case 'prize1_last2':
+        preds.forEach(p=>{if(/^\d{2}$/.test(p)){addVote(g,4,p[0]);addVote(g,5,p[1]);}});
+        break;
+      case 'bottom2_unit':
+      case 'prize1_unit':
+        preds.forEach(p=>addVote(g,5,p));
+        break;
+      case 'prize1_last4_digits': // preds[i] ผูกตำแหน่ง 2+i ของ prize1 — ตัด pos 2 ทิ้ง (ครึ่งหน้าเป็นของ front3)
+        preds.forEach((p,i)=>{if(2+i>=3)addVote(g,2+i,p);});
+        break;
+      default: break; // field อื่น (run_* ฯลฯ) ไม่เข้าโหวต
+    }
+  }
+  let fallbackUsed=false;
+  for(let pos=0;pos<3;pos++){
+    if(votes[pos].size===0&&fallback[pos].size>0){votes[pos]=fallback[pos];fallbackUsed=true;}
+  }
+  // normalize รายกลุ่มต่อหลัก แล้วจัดอันดับ 0-9 ต่อหลัก
+  const positions=votes.map(groupMaps=>{
+    const score=new Array(10).fill(0);
+    const votersByDigit=Array.from({length:10},()=>new Set());
+    for(const [g,m] of groupMaps){
+      let total=0;for(const c of m.values())total+=c;
+      if(!total)continue;
+      for(const [d,c] of m){score[Number(d)]+=c/total;votersByDigit[Number(d)].add(g);}
+    }
+    const ranked=score.map((s,d)=>({digit:String(d),score:s,groups:[...votersByDigit[d]].sort()}))
+      .sort((a,b)=>b.score-a.score||Number(a.digit)-Number(b.digit));
+    return {ranked,groupCount:groupMaps.size};
+  });
+  if(positions.some(p=>p.groupCount===0))return null; // มีหลักที่ไม่มีใครโหวตเลย → ผสมไม่ได้
+  const preds=_imperialRoundRobin(positions.map(p=>p.ranked.map(e=>e.digit)),10,8);
+  return {preds,positions,fallbackUsed};
+}
+
+// แถวสำหรับตาราง Backtest — field pool6 เหมือน I1/I2/J2 (baseline ต่อ candidate เท่ากัน)
+function _computeMixRow(formulaResults){
+  try{
+    const mix=_mixCompute(formulaResults);
+    if(!mix||!mix.preds.length)return null;
+    return {name:MIX_FORMULA_NAME,preds:mix.preds,field:'pool6',baseline:mix.preds.length,mix:true};
+  }catch(e){return null;}
+}
+
 // ─── Formula Backtest ──────────────────────────────────────────────────────────
 // คำนวณสูตรแต่ละตัวในโหมด batch (ไม่ยุ่งกับ DOM) และ return {predictions[], compareField}
 function _computeFormulasBatch(prev, nextDateStr, historyCtx=[]){
@@ -2075,9 +2171,15 @@ async function runFormulaBacktest(){
     if(/^\d{6}$/.test(curr.prize1||''))pool6Set.add(curr.prize1);
     const poolTail3Set=new Set([...pool6Set].map(v=>v.slice(-3)));
     const formulaResults=_computeFormulasBatch(prev,isoDate,historyCtx);
+    // Mix เข้าตาราง backtest เฉพาะงวดที่มี pool6 producer (I/J มีข้อมูล Sanook) — เงื่อนไข
+    // เดียวกับที่ I1/I2/J2 ข้ามงวดไร้ pool เพื่อให้ baseline pool6 เทียบกันแฟร์
+    if(formulaResults.some(fr=>fr.field==='pool6')){
+      const mixRow=_computeMixRow(formulaResults);
+      if(mixRow)formulaResults.push(mixRow);
+    }
     for(const fr of formulaResults){
       if(!stats[fr.name]){
-        stats[fr.name]={hits:0,total:0,preds_n:fr.baseline,field:fr.field,trust:fr.trust||null,subHits:0,subTotal:0,slots:fr.slots||2,windows:{}};
+        stats[fr.name]={hits:0,total:0,preds_n:fr.baseline,field:fr.field,trust:fr.trust||null,mix:fr.mix||false,subHits:0,subTotal:0,slots:fr.slots||2,windows:{}};
         FORMULA_BT_WINDOWS.forEach(w=>{stats[fr.name].windows[w]={hits:0,total:0};});
       }
       const s=stats[fr.name];
@@ -2119,7 +2221,7 @@ async function runFormulaBacktest(){
       rolling[w]={hits:ws.hits,total:ws.total,pct:wpct,edge:wpct==null?null:wpct-baseP};
     });
     const _GRP={'A':['A · กูชอบ','var(--gold)'],'B':['B · ลอตโตพลัส','#4d9de0'],'C':['C · พิชิตโชค','#a855f7'],'D':['D · Claude','#22d3ee'],'X':['F · Codex','#a3e635'],'G':['G · แม่นขั้นเทพ','#f05454'],'H':['H · มิสเตอร์ซี','#f59e0b'],'E':['E · สายมู','#ec4899'],'I':['I · จักรพรรดิ','#c084fc'],'J':['J · เจ้าสัว','#10b981']};
-    const [group,groupColor]=_GRP[name[0]]||[name[0],'var(--text3)'];
+    const [group,groupColor]=s.mix?['MIX · รวมทุกสูตร','#f2ca73']:(_GRP[name[0]]||[name[0],'var(--text3)']);
     const subPct=s.subTotal>0?s.subHits/s.subTotal*100:null;
     const edge50=rolling[50]?.edge??null,edge100=rolling[100]?.edge??null,edge200=rolling[200]?.edge??null;
     const degraded=rolling[200]?.total>=180&&edge200!=null&&edge200<-5;

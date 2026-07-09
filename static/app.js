@@ -124,6 +124,8 @@ function onPageLoad(p){
   if(p==='predict'){ renderPageSnapshots('predict'); }
   else if(p==='frequency') loadFreq();
   else if(p==='history') loadHistory();
+  else if(p==='mix') loadMixPage();
+  else if(p==='buyplan'){ _bpMixIntent=_bpMixIntentPending; _bpMixIntentPending=false; bpFillConfigInputs(); loadBuyPlan(); }
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -2645,6 +2647,913 @@ async function loadLuckyNews(){
   sec.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
+
+// ─── ไม่รู้ซื้ออะไรดี (Mix page) ──────────────────────────────────────────────────
+// หน้า standalone ของสูตร "ไม่รู้ซื้อเหี้ยไรดี" (Mix — ดู CONTEXT.md) — จงใจไม่แตะ
+// Picks/เลขแนะนำ: อ่านผลสูตรผ่าน dcComputeFormulaResults แล้วผสมเองด้วย _mixCompute
+// Track record แยก localStorage ('lottery_mix_snapshots') ไม่ปนกับ Decision Center
+let _mixHistRows=[];
+let _mixLastPreds=[];
+
+function mixSnapshots(){try{return JSON.parse(localStorage.getItem('lottery_mix_snapshots')||'[]');}catch(e){return [];}}
+function mixAutoSaveSnapshot(snap){
+  const list=mixSnapshots().filter(x=>x.date!==snap.date);
+  list.unshift({...snap,savedAt:new Date().toISOString()});
+  localStorage.setItem('lottery_mix_snapshots',JSON.stringify(list.slice(0,60)));
+}
+// pool ที่ใช้ตัดสิน hit ของ Mix = pool6 (prize1 + near1 + prize2-5) ของงวดผลจริง
+function mixPoolForRow(row){
+  const pool=new Set(typeof _buildPrize1to5Pool==='function'?_buildPrize1to5Pool(row):[]);
+  const p1=String(row?.prize1||'').padStart(6,'0');
+  if(/^\d{6}$/.test(p1))pool.add(p1);
+  return pool;
+}
+function mixSnapshotResult(s,rows){
+  const actual=dcActualForDate(rows,s?.date);
+  if(!actual)return {status:'pending',hits:0,poolSize:0};
+  const pool=mixPoolForRow(actual);
+  const hits=(s.picks||[]).filter(n=>pool.has(String(n))).length;
+  return {status:hits>0?'hit':'miss',hits,poolSize:pool.size};
+}
+function mixHitRateTrend(snapshots,rows,window=5,take=20){
+  const resolved=(snapshots||[])
+    .map(s=>({date:s.date,...mixSnapshotResult(s,rows)}))
+    .filter(r=>r.status!=='pending')
+    .sort((a,b)=>a.date.localeCompare(b.date));
+  return dcRollingRate(resolved,window,take);
+}
+function mixTrackHtml(rows){
+  const list=mixSnapshots();
+  if(!list.length)return '<div class="dash-empty">ยังไม่มีประวัติ — บันทึกอัตโนมัติทุกครั้งที่เปิดหน้านี้</div>';
+  return `<div class="dc-snapshot-list">${list.map((s,i)=>{
+    const r=mixSnapshotResult(s,rows);
+    return `<details class="dc-snapshot-item" ${i===0?'open':''}>
+      <summary><span>${fmtDate(s.date)}</span><span style="display:flex;gap:6px;align-items:center"><span class="dc-status">${(s.picks||[]).length} ชุด</span>${dcTrackStatusBadge(r.status)}</span></summary>
+      <div class="dc-snapshot-detail">
+        <div class="dc-row">${(s.picks||[]).map(n=>`<span class="num-badge">${escHtml(n)}</span>`).join('')||'<span class="dash-empty">ไม่มีเลข</span>'}</div>
+        <div class="dc-signal-sub" style="margin-top:7px">${r.status==='pending'?'รอผลงวดนี้':`ถูกใน pool รางวัลที่ 1-5: ${r.hits}/${(s.picks||[]).length} ชุด · pool ${r.poolSize} ใบ`} · บันทึก ${s.savedAt?new Date(s.savedAt).toLocaleString('th-TH'):'-'}</div>
+        <div class="dc-snapshot-actions"><button class="dc-mini-btn" onclick="mixDeleteSnapshot('${escHtml(s.date)}')">ลบ</button></div>
+      </div>
+    </details>`;
+  }).join('')}${list.length>1?'<button class="dc-mini-btn" onclick="mixClearSnapshots()">ลบประวัติทั้งหมด</button>':''}</div>`;
+}
+function mixDeleteSnapshot(date){
+  localStorage.setItem('lottery_mix_snapshots',JSON.stringify(mixSnapshots().filter(x=>x.date!==date)));
+  const el=document.getElementById('mix-track-list');
+  if(el)el.innerHTML=mixTrackHtml(_mixHistRows);
+  toast('ลบประวัติแล้ว','success');
+}
+function mixClearSnapshots(){
+  localStorage.removeItem('lottery_mix_snapshots');
+  const el=document.getElementById('mix-track-list');
+  if(el)el.innerHTML=mixTrackHtml(_mixHistRows);
+  toast('ลบประวัติทั้งหมดแล้ว','success');
+}
+// ปุ่มสุ่มหยิบ 1 ใบ — ถ่วงน้ำหนักตามอันดับ (ชุดที่ i จาก N ชุด มีน้ำหนัก N-i)
+function mixRandomPick(){
+  if(!_mixLastPreds.length)return;
+  const weights=_mixLastPreds.map((_,i)=>_mixLastPreds.length-i);
+  const total=weights.reduce((a,b)=>a+b,0);
+  let r=Math.random()*total,idx=0;
+  for(let i=0;i<weights.length;i++){r-=weights[i];if(r<=0){idx=i;break;}}
+  const el=document.getElementById('mix-random-result');
+  if(el)el.innerHTML=`<span class="mix-random-num">${escHtml(_mixLastPreds[idx])}</span><span class="dc-signal-sub" style="margin-left:8px">อันดับ ${idx+1} จาก ${_mixLastPreds.length} ชุด</span>`;
+}
+
+// ─── จัดชุดซื้อ (Buy Plan) ──────────────────────────────────────────────────────
+// A new top-level page turning Picks/เลขแนะนำ into an actual spending plan (ADR-0004).
+// ISSUE-17 ships แทงรายเลข mode end-to-end. The whole allocation contract lives behind the
+// pure seam bpBuildPlan(input) → plan; EV คู่ behind bpComputeEv. Both are unit-tested by
+// scripts/test_buyplan_build.js (vm-extracted, fixture-driven) — no DOM/network needed.
+const BP_DEFAULT_CONFIG={pay2:95,pay3:950,minStake:20,roundUnit:10,tierCap:10,ticketPrice:80};
+// Risk preset → fraction of the budget assigned to 2-digit money (bottom2+prize1_last2);
+// the rest goes to 3-digit money (back3). Risk ONLY moves this split — never which numbers
+// are chosen (ADR-0004 decision 2).
+const BP_RISK_SPLITS={safe:0.8,mid:0.5,bold:0.2};
+const BP_RISK_LABELS={safe:'เซฟ',mid:'กลาง',bold:'ใจถึง'};
+
+// Normalise the เลขแนะนำ input (array of {field,num} | array of nums | Set) to a Set of nums.
+function bpRecoSet(recoNums){
+  const s=new Set();
+  if(!recoNums)return s;
+  const items=typeof recoNums.forEach==='function'&&!Array.isArray(recoNums)?[...recoNums]:recoNums;
+  (items||[]).forEach(x=>{ const n=x&&typeof x==='object'?x.num:x; if(n!=null)s.add(String(n)); });
+  return s;
+}
+
+// Split the budget between the two tiers, rolling an unfundable tier's money into the other so
+// the plan always sums to the full budget. Below the minimum stake entirely → both tiers empty.
+function bpTierBudgets(budget,risk,cfg){
+  const split=BP_RISK_SPLITS[risk]??0.5;
+  let b2=Math.round(budget*split), b3=budget-b2;
+  const min=cfg.minStake;
+  if(b2<min){ b3+=b2; b2=0; }
+  else if(b3<min){ b2+=b3; b3=0; }
+  return {b2,b3,split};
+}
+
+// Allocate one tier's budget across its candidates: proportional to boostedScore, floored to the
+// rounding unit, sub-minimum candidates dropped (lowest first) and their money redistributed among
+// survivors, capped at tierCap numbers, with the leftover remainder assigned to rank 1 so the tier
+// sums EXACTLY to tierBudget. Candidates arrive pre-sorted by boostedScore desc.
+function bpAllocateTier(cands,tierBudget,cfg){
+  const {minStake,roundUnit,tierCap}=cfg;
+  let work=(cands||[]).slice(0,tierCap);
+  if(tierBudget<minStake||!work.length)return [];
+  while(true){
+    const total=work.reduce((a,r)=>a+r.boostedScore,0);
+    const stakes=work.map(r=>{
+      const share=total>0?r.boostedScore/total:1/work.length;
+      return Math.floor(tierBudget*share/roundUnit)*roundUnit;
+    });
+    let dropIdx=-1;
+    for(let i=work.length-1;i>=0;i--){ if(stakes[i]<minStake){ dropIdx=i; break; } }
+    if(dropIdx>=0&&work.length>1){ work.splice(dropIdx,1); continue; }
+    stakes[0]+=tierBudget-stakes.reduce((a,b)=>a+b,0);
+    return work.map((r,i)=>({...r,stake:stakes[i]}));
+  }
+}
+
+// EV คู่ (ADR-0004 decision 3): theoretical p uses pure baselines (1/100 for 2-digit, 1/1000 for
+// 3-digit) → always negative; adjusted p = baseline + the number's supporting rolling Edge (in
+// percentage points). Both lines are stake-weighted over the plan. When adjusted EV ≥ 0 the caller
+// must warn it is window noise, not profit — the honest headline is always the theoretical line.
+function bpComputeEv(rows,cfg){
+  const c={...BP_DEFAULT_CONFIG,...(cfg||{})};
+  const payoutFor=len=>len===2?c.pay2:c.pay3;
+  const baseP=len=>len===2?1/100:1/1000;
+  let total=0,theo=0,adj=0;
+  (rows||[]).forEach(r=>{
+    const payout=payoutFor(r.len);
+    const p0=baseP(r.len);
+    const pAdj=p0+((typeof r.topEdge==='number'?r.topEdge:0)/100);
+    const evT=p0*payout-1;
+    const evA=pAdj*payout-1;
+    total+=r.stake; theo+=r.stake*evT; adj+=r.stake*evA;
+  });
+  const theoPerBaht=total?theo/total:0;
+  const adjPerBaht=total?adj/total:0;
+  return {
+    theoretical:{perBaht:theoPerBaht,per100:theoPerBaht*100},
+    adjusted:{perBaht:adjPerBaht,per100:adjPerBaht*100,positive:adjPerBaht>=0},
+    warning:adjPerBaht>=0,
+    total,
+  };
+}
+
+// ── ลอตเตอรี่ใบ (ticket) mode (ISSUE-19) ──
+// Standard Thai government prize table (baht per winning ticket). เลขหน้า3/ท้าย3 have two sets each,
+// ท้าย2 one set — all handled in bpResolveTicket. Over the full 10⁶ number space this table pays out
+// exactly 48฿ of expected value per ticket (6M + 2×100k + 5×200k + 10×80k + 50×40k + 100×20k +
+// 2×1000×4k [หน้า3] + 2×1000×4k [ท้าย3] + 10000×2k [ท้าย2] = 48,000,000 / 1,000,000), i.e. −40% at 80฿.
+const BP_TICKET_PRIZES={ prize1:6000000, near1:100000, prize2:200000, prize3:80000, prize4:40000, prize5:20000, front3:4000, back3:4000, bottom2:2000 };
+const BP_TICKET_EXPECTED_RETURN=48; // baht of expected govt payout per ticket (derivation above)
+
+// Merge the ใบ-mode 6-digit sources (I/J2 pool6 + prize-1 predictions + Mix) into ranked distinct
+// candidates. Mix is a labeled SOURCE, never a formula group — it is built from the other groups, so
+// counting it as a group would double-count its parents (CONTEXT.md Mix entry). Ranking = number of
+// agreeing sources, then distinct formula groups, then number ascending. ทดลอง propagates from J2.
+function bpMergeTicketCandidates(sources){
+  const map=new Map();
+  (sources||[]).forEach(s=>{
+    const num=String(s&&s.num||'').trim();
+    if(num.length!==6)return;
+    const c=map.get(num)||{num,sources:[],groups:[],trust:null};
+    const label=s.label||s.kind||'?';
+    if(!c.sources.includes(label))c.sources.push(label);
+    if(s.kind==='group'&&s.group&&!c.groups.includes(s.group))c.groups.push(s.group);
+    if(s.trust==='ทดลอง')c.trust='ทดลอง';
+    map.set(num,c);
+  });
+  return [...map.values()].sort((a,b)=>b.sources.length-a.sources.length||b.groups.length-a.groups.length||a.num.localeCompare(b.num));
+}
+
+// Distribute a whole number of tickets across ranked candidates per risk preset (ADR-0004 decision 1
+// reinterpreted for ใบ mode): เซฟ spreads across distinct ท้าย 2 endings, ใจถึง stacks on the top
+// candidate (chase the full 6-digit), กลาง in between. Returns [{...candidate, qty}].
+function bpAllocateTickets(cands,ticketCount,risk){
+  if(!cands.length||ticketCount<=0)return [];
+  if(risk==='bold'){ return [{...cands[0],qty:ticketCount}]; }
+  const spread=(cap)=>{
+    const chosen=[],used=new Set();
+    for(const c of cands){ const end=c.num.slice(-2); if(used.has(end))continue; used.add(end); chosen.push({...c,qty:1}); if(chosen.length>=cap)break; }
+    let i=0,remaining=ticketCount-chosen.length;
+    while(remaining>0&&chosen.length){ chosen[i%chosen.length].qty++; i++; remaining--; }
+    return chosen;
+  };
+  // เซฟ: as many distinct endings as tickets allow; กลาง: concentrate onto ~half as many.
+  return spread(risk==='mid'?Math.max(1,Math.ceil(ticketCount/2)):ticketCount);
+}
+
+// EV คู่ for ใบ mode. Theoretical = the govt table's fixed 48฿ expected return minus the ticket price
+// (≈ −40% at 80฿) — shown against แทงรายเลข's −5% so the ~8× cost gap is plain. Adjusted lifts the
+// ท้าย 2 prize probability by the plan endings' rolling Edge (endingEdge, in pp); when that pushes the
+// adjusted line non-negative the same noise warning as ISSUE-17 fires.
+function bpComputeTicketEv(rows,cfg,endingEdge=0){
+  const c={...BP_DEFAULT_CONFIG,...(cfg||{})};
+  const price=c.ticketPrice||80;
+  const tickets=(rows||[]).reduce((a,r)=>a+(Number(r.qty)||0),0);
+  const theoPerTicket=BP_TICKET_EXPECTED_RETURN-price;
+  const theoPerBaht=price?theoPerTicket/price:0;
+  const adjReturn=BP_TICKET_EXPECTED_RETURN+((Number(endingEdge)||0)/100)*BP_TICKET_PRIZES.bottom2;
+  const adjPerTicket=adjReturn-price;
+  const adjPerBaht=price?adjPerTicket/price:0;
+  return {
+    mode:'ticket', tickets, ticketPrice:price,
+    theoretical:{perBaht:theoPerBaht,per100:theoPerBaht*100,perTicket:theoPerTicket,expectedReturn:BP_TICKET_EXPECTED_RETURN},
+    adjusted:{perBaht:adjPerBaht,per100:adjPerBaht*100,perTicket:adjPerTicket,positive:adjPerTicket>=0},
+    warning:adjPerTicket>=0,
+  };
+}
+
+// Resolve ONE ticket against the full government prize table. myhora columns (prize1, front3×2,
+// back3×2, bottom2) are always present; sanook columns (near1, prize2–5) exist for only ~456 draws —
+// when absent those checks are flagged unverifiable rather than silently counted as misses. Prizes
+// stack across independent categories (the standard rule).
+function bpResolveTicket(num,actual){
+  const t=bpPad(num,6);
+  const wins=[];
+  if(t===bpPad(actual.prize1,6))wins.push({prize:'ที่ 1',amount:BP_TICKET_PRIZES.prize1});
+  if([actual.front3_1,actual.front3_2].some(x=>x!=null&&bpPad(x,3)===t.slice(0,3)))wins.push({prize:'เลขหน้า 3 ตัว',amount:BP_TICKET_PRIZES.front3});
+  if([actual.back3_1,actual.back3_2].some(x=>x!=null&&bpPad(x,3)===t.slice(-3)))wins.push({prize:'เลขท้าย 3 ตัว',amount:BP_TICKET_PRIZES.back3});
+  if(actual.bottom2!=null&&bpPad(actual.bottom2,2)===t.slice(-2))wins.push({prize:'เลขท้าย 2 ตัว',amount:BP_TICKET_PRIZES.bottom2});
+  const hasSanook=actual.near1_1!=null||actual.prize2_1!=null||actual.prize4!=null;
+  if(hasSanook){
+    if([actual.near1_1,actual.near1_2].some(x=>x!=null&&bpPad(x,6)===t))wins.push({prize:'ข้างเคียงที่ 1',amount:BP_TICKET_PRIZES.near1});
+    const inCols=(prefix,count)=>{ for(let i=1;i<=count;i++){ const v=actual[prefix+i]; if(v!=null&&bpPad(v,6)===t)return true; } return false; };
+    if(inCols('prize2_',5))wins.push({prize:'ที่ 2',amount:BP_TICKET_PRIZES.prize2});
+    if(inCols('prize3_',10))wins.push({prize:'ที่ 3',amount:BP_TICKET_PRIZES.prize3});
+    const inStr=v=>String(v||'').split(/\s+/).filter(Boolean).some(x=>bpPad(x,6)===t);
+    if(inStr(actual.prize4))wins.push({prize:'ที่ 4',amount:BP_TICKET_PRIZES.prize4});
+    if(inStr(actual.prize5))wins.push({prize:'ที่ 5',amount:BP_TICKET_PRIZES.prize5});
+  }
+  return {wins,amount:wins.reduce((a,w)=>a+w.amount,0),unverifiable:!hasSanook};
+}
+
+// The pure seam. Per-number (แทงรายเลข) input: {mode, budget, risk, config, scoreRows, recoNums}.
+// Ticket (ลอตเตอรี่ใบ) input: {mode:'ticket', budget, risk, config, ticketSources, endingEdge?}.
+function bpBuildPlan(input){
+  const cfg={...BP_DEFAULT_CONFIG,...(input.config||{})};
+  const risk=BP_RISK_SPLITS[input.risk]!=null?input.risk:'mid';
+  const budget=Math.max(0,Math.floor(Number(input.budget)||0));
+  if(input.mode==='ticket'){
+    const price=cfg.ticketPrice||80;
+    let merged=bpMergeTicketCandidates(input.ticketSources);
+    // Arriving from the Mix page (prioritizeSource:'Mix'), float candidates carrying that source to the
+    // front so a Mix number is always buyable/visible — even past one with more overall agreement.
+    // Stable sort preserves the agreement ranking within each group.
+    if(input.prioritizeSource){
+      const has=c=>(c.sources||[]).includes(input.prioritizeSource)?1:0;
+      merged=merged.slice().sort((a,b)=>has(b)-has(a));
+    }
+    const ticketCount=price>0?Math.floor(budget/price):0;
+    const rows=bpAllocateTickets(merged,ticketCount,risk).map(c=>({
+      num:c.num,field:'ticket',tier:'ticket',qty:c.qty,stake:c.qty*price,
+      sources:c.sources,groups:c.groups,trust:c.trust||null,
+      ladder:[c.num,c.num.slice(-3),c.num.slice(-2)],hand:false,
+    }));
+    return {
+      mode:'ticket',budget,risk,config:cfg,rows,
+      ev:bpComputeTicketEv(rows,cfg,input.endingEdge||0),
+      ticketPrice:price,ticketCount,totalStake:rows.reduce((a,r)=>a+r.stake,0),
+    };
+  }
+  const recoSet=bpRecoSet(input.recoNums);
+  // Candidates for a tier = Decision Center score rows of the matching digit length. Scoring is
+  // untouched; เลขแนะนำ membership applies a ×1.5 multiplier for allocation ranking only.
+  const mk=(len,field)=>(input.scoreRows||[])
+    .filter(r=>String(r.num||'').length===len)
+    .map(r=>{
+      const boosted=recoSet.has(String(r.num));
+      const score=Number(r.score)||0;
+      return {num:String(r.num),field,len,tier:len===2?'2d':'3d',score,
+        topEdge:(typeof r.topEdge==='number'?r.topEdge:null),trust:r.trust||null,
+        source:field==='bottom2'?'2 ตัวล่าง':'3 ตัวบน',boosted,boostedScore:score*(boosted?1.5:1)};
+    })
+    .sort((a,b)=>b.boostedScore-a.boostedScore||a.num.localeCompare(b.num));
+  const cand2=mk(2,'bottom2'), cand3=mk(3,'back3');
+  let {b2,b3,split}=bpTierBudgets(budget,risk,cfg);
+  // A tier with budget but no candidates would strand its money — roll it into the other tier so
+  // the plan still sums to the full budget (pick-count scales with what the formulas actually gave).
+  if(!cand2.length&&cand3.length){ b3+=b2; b2=0; }
+  else if(!cand3.length&&cand2.length){ b2+=b3; b3=0; }
+  const rows=[
+    ...bpAllocateTier(cand2,b2,cfg),
+    ...bpAllocateTier(cand3,b3,cfg),
+  ].map(r=>({...r,hand:false}));
+  const ev=bpComputeEv(rows,cfg);
+  return {
+    mode:input.mode||'perNumber',budget,risk,config:cfg,rows,ev,
+    tiers:{'2d':{budget:b2},'3d':{budget:b3},split},
+    totalStake:rows.reduce((a,r)=>a+r.stake,0),
+  };
+}
+
+// ── Buy Plan rendering (light HTML string helpers, mirroring the DC/Mix prior art) ──
+const BP_FIELD_LABELS={bottom2:'2 ตัวล่าง',prize1_last2:'2 ตัวบน',back3:'3 ตัวบน'};
+function bpPlanTableHtml(plan){
+  if(!plan||!plan.rows.length)return '<div class="dash-empty">งบไม่พอวางเลขแม้แต่ตัวเดียว (ขั้นต่ำ '+(plan?.config?.minStake??20)+'฿/เลข) — เพิ่มงบแล้วลองใหม่</div>';
+  const tierBlock=(tierKey,label)=>{
+    const rows=plan.rows.filter(r=>r.tier===tierKey);
+    if(!rows.length)return '';
+    const body=rows.map((r,i)=>`<tr class="bp-row${i===0?' bp-rank1':''}">
+      <td class="bp-num">${escHtml(r.num)}${dcTrustBadge(r.trust)}${r.hand?'<span class="bp-handedit">แก้เอง</span>':''}</td>
+      <td class="bp-field">${escHtml(BP_FIELD_LABELS[r.field]||r.field)}</td>
+      <td class="bp-stake">${r.stake}฿</td>
+    </tr>`).join('');
+    return `<div class="bp-tier">
+      <div class="bp-tier-head">${label} <span class="dc-status">${rows.length} เลข · ${rows.reduce((a,r)=>a+r.stake,0)}฿</span></div>
+      <table class="bp-table"><thead><tr><th>เลข</th><th>ประเภท</th><th>เงิน</th></tr></thead><tbody>${body}</tbody></table>
+    </div>`;
+  };
+  return `<div class="bp-plan">
+    ${tierBlock('2d','เงิน 2 หลัก (2 ตัวล่าง/บน)')}
+    ${tierBlock('3d','เงิน 3 หลัก (3 ตัวบน)')}
+    <div class="bp-total">รวมทั้งชุด <b>${plan.totalStake}฿</b> จากงบ ${plan.budget}฿ · ความเสี่ยง ${BP_RISK_LABELS[plan.risk]||plan.risk}</div>
+  </div>`;
+}
+function bpEvCardHtml(plan){
+  const ev=plan.ev;
+  const warn=ev.warning
+    ?`<div class="bp-ev-warn">⚠ ตัวเลขปรับตาม Edge เป็นบวก — <b>น่าจะเป็นสัญญาณรบกวนของหน้าต่างข้อมูล ไม่ใช่กำไรจริง</b> อย่าหลงเชื่อว่าแทงแล้วได้กำไร</div>`
+    :'';
+  if(plan.mode==='ticket'){
+    const perTicketLoss=Math.abs(ev.theoretical.perTicket);
+    const pct=Math.abs(ev.theoretical.per100);
+    const adj=ev.adjusted.per100;
+    return `<div class="bp-ev-card">
+      <div class="bp-ev-label">EV คู่ — ลอตเตอรี่ใบ (ตามตารางรางวัลรัฐบาล)</div>
+      <div class="bp-ev-theory">ตามทฤษฎีล้วนๆ ทุกใบราคา ${plan.config.ticketPrice||80}฿ ระยะยาว<b>เสีย ${perTicketLoss.toFixed(0)}฿ ต่อใบ (≈ ${pct.toFixed(0)}% ต่อบาท)</b></div>
+      <div class="bp-ev-adj">ปรับตาม Edge ของเลขท้ายในชุด (จำกัดด้วยหน้าต่างข้อมูล): ${adj>=0?'+':'−'}${Math.abs(adj).toFixed(1)}% ต่อบาท</div>
+      ${warn}
+      <div class="bp-ev-note">เทียบกัน: ลอตเตอรี่ใบ <b>≈ −40% ต่อบาท</b> แพงกว่าแทงรายเลข (−5% ต่อบาท) ราว <b>8 เท่า</b> ต่อบาทที่ลงไป — แลกกับรางวัลก้อนใหญ่</div>
+    </div>`;
+  }
+  const theoLoss=Math.abs(ev.theoretical.per100);
+  const adj=ev.adjusted.per100;
+  const adjTxt=`${adj>=0?'+':'−'}${Math.abs(adj).toFixed(1)}฿ ต่อ 100฿`;
+  return `<div class="bp-ev-card">
+    <div class="bp-ev-label">EV คู่ — ค่าคาดหวังของชุดนี้</div>
+    <div class="bp-ev-theory">ตามทฤษฎีล้วนๆ ระยะยาว<b>เสีย ${theoLoss.toFixed(1)}฿ ต่อ 100฿</b> ที่แทง (บ้านได้เปรียบเสมอ)</div>
+    <div class="bp-ev-adj">ปรับตาม backtest Edge (จำกัดด้วยหน้าต่างข้อมูล): ${adjTxt}</div>
+    ${warn}
+    <div class="bp-ev-note">ที่เรต ×${plan.config.pay2}/×${plan.config.pay3} ทั้ง 2 ตัวและ 3 ตัวมีต้นทุนเท่ากัน −5% ต่อบาท — <b>ความเสี่ยงเปลี่ยนความผันผวน ไม่ใช่ต้นทุน</b></div>
+  </div>`;
+}
+
+// ── Resolution + ledger seams (ISSUE-18, ADR-0004 decision 8) ──
+// bpResolvePlan(plan, actualDrawRow) → resolution: per-row ถูก/ผิด + baht returned (stake × the
+// payout FROZEN in the plan), per-plan net = returned − spent. Hit definitions are exact per bet
+// type. actualDrawRow is the history row (or null → Pending) from dcActualForDate — the same
+// ISO-target-date → Thai-history-row lookup the Decision Center track record already uses.
+function bpPad(v,n){ return String(v==null?'':v).padStart(n,'0').slice(-n); }
+function bpResolvePlan(plan,actual){
+  const rows=plan&&plan.rows?plan.rows:[];
+  const spent=rows.reduce((a,r)=>a+(Number(r.stake)||0),0);
+  if(!actual){
+    return {status:'pending',rows:rows.map(r=>({...r,hit:null,returned:0})),returned:0,spent,net:0,budget:plan?plan.budget:0};
+  }
+  const prize1=bpPad(actual.prize1,6);
+  const targets={ bottom2:bpPad(actual.bottom2,2), prize1_last2:prize1.slice(-2), back3:prize1.slice(-3) };
+  const cfg={...BP_DEFAULT_CONFIG,...((plan&&plan.config)||{})};
+  const payoutFor=field=>field==='back3'?cfg.pay3:cfg.pay2;
+  let returned=0,unverifiable=false;
+  const resolved=rows.map(r=>{
+    if(r.field==='ticket'){
+      const tr=bpResolveTicket(r.num,actual);
+      const qty=Number(r.qty)||1;
+      const ret=qty*tr.amount;
+      returned+=ret; if(tr.unverifiable)unverifiable=true;
+      return {...r,hit:tr.amount>0,returned:ret,wins:tr.wins,unverifiable:tr.unverifiable};
+    }
+    const width=r.field==='back3'?3:2;
+    const target=targets[r.field];
+    const hit=target!=null&&bpPad(r.num,width)===target;
+    const ret=hit?(Number(r.stake)||0)*payoutFor(r.field):0;
+    returned+=ret;
+    return {...r,hit,returned:ret};
+  });
+  return {status:'resolved',rows:resolved,returned,spent,net:returned-spent,budget:plan.budget,unverifiable};
+}
+
+// Theoretical expected net (baht) of the money a plan actually wagered — mode-aware so the ledger's
+// random-play comparison uses the right prize structure (−5%/baht for แทงรายเลข, −40%/ticket for ใบ).
+function bpPlanTheoreticalNet(plan){
+  const rows=(plan&&plan.rows)||[];
+  if(plan&&plan.mode==='ticket'){
+    const tickets=rows.reduce((a,r)=>a+(Number(r.qty)||0),0);
+    return bpComputeTicketEv(rows,plan.config,0).theoretical.perTicket*tickets;
+  }
+  const spent=rows.reduce((a,r)=>a+(Number(r.stake)||0),0);
+  return bpComputeEv(rows,plan?plan.config:{}).theoretical.perBaht*spent;
+}
+
+// bpLedger(savedPlans, histRows) → cumulative real-money answer. Totals accumulate over RESOLVED
+// plans only (a pending plan's return is unknown); the random-play expectation is the theoretical
+// EV in baht of the amounts ACTUALLY wagered on those resolved plans (ADR-0004: the honest metric).
+function bpLedger(plans,histRows){
+  const list=Array.isArray(plans)?plans:[];
+  let resolved=0,pending=0,spent=0,returned=0,randomExpectedNet=0;
+  const items=list.map(plan=>{
+    const actual=(typeof dcActualForDate==='function')?dcActualForDate(histRows,plan.date):null;
+    const res=bpResolvePlan(plan,actual);
+    const planSpent=(plan.rows||[]).reduce((a,r)=>a+(Number(r.stake)||0),0);
+    if(res.status==='resolved'){
+      resolved++; spent+=planSpent; returned+=res.returned;
+      randomExpectedNet+=bpPlanTheoreticalNet(plan);
+    }else{ pending++; }
+    return {plan,res,spent:planSpent};
+  });
+  return {totalPlans:list.length,resolved,pending,spent,returned,net:returned-spent,randomExpectedNet,items};
+}
+
+// ── Buy Plan page state, config/prefs persistence, loader + handlers ──
+// Config (payouts/min/round) and last-used mode/budget/risk persist in localStorage under their
+// own keys, isolated from every Decision Center / Mix key. Saved plans (ISSUE-18) get a third key.
+const BP_CONFIG_KEY='lottery_buyplan_config';
+const BP_PREFS_KEY='lottery_buyplan_prefs';
+const BP_HISTORY_KEY='lottery_buyplan_history'; // saved ชุดซื้อ — own key, separate from every DC/Mix store
+let _bpSources=null;      // {scoreRows, recoNums} cached after fetch so budget/risk/config recompute live
+let _bpWorkingPlan=null;  // the current editable plan (regenerated on budget/risk/config change)
+let _bpHistRows=null;     // prize-history rows cached for auto-resolving saved plans on load
+
+// Saved-plan storage. Records are frozen at save time and immutable — delete-whole-plan only.
+function bpHistory(){ try{return JSON.parse(localStorage.getItem(BP_HISTORY_KEY)||'[]');}catch(e){return [];} }
+function bpHistoryAdd(rec){ const list=bpHistory(); list.unshift(rec); localStorage.setItem(BP_HISTORY_KEY,JSON.stringify(list.slice(0,200))); }
+function bpHistoryDelete(id){ localStorage.setItem(BP_HISTORY_KEY,JSON.stringify(bpHistory().filter(x=>x.id!==id))); }
+function bpReadConfig(){
+  try{return {...BP_DEFAULT_CONFIG,...JSON.parse(localStorage.getItem(BP_CONFIG_KEY)||'{}')};}
+  catch(e){return {...BP_DEFAULT_CONFIG};}
+}
+function bpWriteConfig(cfg){ localStorage.setItem(BP_CONFIG_KEY,JSON.stringify(cfg)); }
+function bpReadPrefs(){
+  try{return {mode:'perNumber',budget:500,risk:'mid',...JSON.parse(localStorage.getItem(BP_PREFS_KEY)||'{}')};}
+  catch(e){return {mode:'perNumber',budget:500,risk:'mid'};}
+}
+function bpWritePrefs(p){ localStorage.setItem(BP_PREFS_KEY,JSON.stringify(p)); }
+
+async function loadBuyPlan(){
+  const root=document.getElementById('bp-plan-root');
+  if(!root)return;
+  const prefs=bpReadPrefs();
+  bpSyncControls(prefs);
+  root.className='dc-loading';
+  root.textContent='กำลังจัดชุดซื้อจากสัญญาณงวดนี้...';
+  const dateEl=document.getElementById('bp-date');
+  if(dateEl&&!dateEl.options.length){
+    dateEl.innerHTML=clientDraws().map(d=>`<option value="${d.date}">${d.label}</option>`).join('');
+  }
+  const next=dateEl?.value||nextDrawInfo().iso;
+  try{
+    const [pred,hist]=await Promise.all([
+      api(`predict/all?top_n=10&date=${next}&beam_width=500&k_back=100&preset=optimized`),
+      api('prize-history?n=260'),
+    ]);
+    const cats=pred.categories||{};
+    const rows=(hist.data||[]).filter(Boolean);
+    const formulaResults=dcComputeFormulaResults(rows,next);
+    const formulaMatches=dcBuildPredictFormulaMatches(cats,formulaResults);
+    const btRows=dcFormulaBacktestRows(rows,80);
+    const secondarySignals=dcSecondaryPrizeSignals(rows,10);
+    const scored=dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode:'coverage',secondarySignals});
+    const btMap=new Map((btRows||[]).map(r=>[r.name,r]));
+    const recoObj=dcRecommendedNumbers(formulaResults,btMap);
+    const recoNums=[];
+    Object.values(recoObj).forEach(list=>(list||[]).forEach(c=>{ if(c&&c.num)recoNums.push(c.num); }));
+    // ใบ-mode 6-digit sources: I/J2 pool6 candidates + prize-1 beam predictions + Mix (labeled source).
+    const ticketSources=[];
+    (formulaResults||[]).filter(fr=>fr.field==='pool6').forEach(fr=>{
+      (fr.preds||[]).forEach(num=>ticketSources.push({num:String(num),label:fr.name,kind:'group',group:String(fr.name||'?')[0],trust:fr.trust||null}));
+    });
+    (cats.prize1?.numbers||[]).map(predNum).filter(Boolean).forEach(num=>ticketSources.push({num:String(num),label:'Predict ที่ 1',kind:'predict',trust:null}));
+    try{ const mix=(typeof _mixCompute==='function')?_mixCompute(formulaResults):null; (mix?.preds||[]).forEach(num=>ticketSources.push({num:String(num),label:'Mix',kind:'mix',trust:null})); }catch(e){}
+    _bpSources={scoreRows:scored.all,recoNums,ticketSources:ticketSources.filter(s=>String(s.num).length===6)};
+    _bpHistRows=rows;
+    bpRender();
+  }catch(e){
+    console.warn('loadBuyPlan failed',e);
+    root.className='dc-loading';
+    root.textContent='โหลดหน้าจัดชุดซื้อไม่สำเร็จ ลองใหม่อีกครั้ง';
+  }
+}
+window.loadBuyPlan=loadBuyPlan;
+
+// Regenerate a fresh plan from cached sources + current prefs/config, then paint. Called on
+// budget/risk/config/date change — DISCARDS in-progress row edits by design (a new budget is a new
+// plan). No refetch. Row-level edits below mutate _bpWorkingPlan and call bpPaint() only.
+function bpRender(){
+  const root=document.getElementById('bp-plan-root');
+  if(!root||!_bpSources)return;
+  const prefs=bpReadPrefs();
+  const cfg=bpReadConfig();
+  const dateEl=document.getElementById('bp-date');
+  let plan;
+  if(prefs.mode==='ticket'){
+    // adjusted-EV ending Edge = average ท้าย2 Edge of the plan's tickets (two-pass: build, read
+    // endings, rebuild with the Edge). Keeps the adjusted line honest to the digits the plan controls.
+    const edgeMap=new Map((_bpSources.scoreRows||[]).filter(r=>String(r.num).length===2).map(r=>[String(r.num),(typeof r.topEdge==='number'?r.topEdge:0)]));
+    const prioritizeSource=_bpMixIntent?'Mix':undefined;
+    const first=bpBuildPlan({mode:'ticket',budget:prefs.budget,risk:prefs.risk,config:cfg,ticketSources:_bpSources.ticketSources,prioritizeSource});
+    const ends=first.rows.map(r=>r.num.slice(-2));
+    const endingEdge=ends.length?ends.reduce((a,e)=>a+(edgeMap.get(e)||0),0)/ends.length:0;
+    plan=bpBuildPlan({mode:'ticket',budget:prefs.budget,risk:prefs.risk,config:cfg,ticketSources:_bpSources.ticketSources,endingEdge,prioritizeSource});
+    plan._endingEdge=endingEdge;
+  }else{
+    plan=bpBuildPlan({mode:'perNumber',budget:prefs.budget,risk:prefs.risk,config:cfg,scoreRows:_bpSources.scoreRows,recoNums:_bpSources.recoNums});
+  }
+  plan.date=dateEl?.value||nextDrawInfo().iso;
+  _bpWorkingPlan=plan;
+  bpPaint();
+}
+function bpRecomputeWorking(){
+  const p=_bpWorkingPlan; if(!p)return;
+  p.totalStake=p.rows.reduce((a,r)=>a+(Number(r.stake)||0),0);
+  if(p.mode==='ticket'){
+    p.ticketCount=p.rows.reduce((a,r)=>a+(Number(r.qty)||0),0);
+    p.ev=bpComputeTicketEv(p.rows,p.config,p._endingEdge||0);
+  }else{
+    p.ev=bpComputeEv(p.rows,p.config);
+  }
+}
+// Paint the current working plan (editable) + save button + the auto-resolved history/ledger.
+function bpPaint(){
+  const root=document.getElementById('bp-plan-root');
+  if(!root||!_bpWorkingPlan)return;
+  const body=_bpWorkingPlan.mode==='ticket'?bpEditableTicketHtml(_bpWorkingPlan):bpEditablePlanHtml(_bpWorkingPlan);
+  root.className='';
+  root.innerHTML=bpEvCardHtml(_bpWorkingPlan)
+    +body
+    +`<div class="bp-save-row"><button class="btn btn-primary" onclick="bpSaveCurrentPlan()">💾 บันทึกชุดนี้</button><span class="bp-save-hint">บันทึกเองเท่านั้น — เข้าประวัติเพื่อวัดผลจริงเป็นบาท (บันทึกแล้วแก้ไม่ได้ ลบได้ทั้งชุด)</span></div>`
+    +bpHistoryLedgerHtml();
+}
+// Editable ticket cards: each 6-digit number with its เต็ม6 → ท้าย3 → ท้าย2 ladder, editable ticket
+// quantity, per-card delete, source chips + ทดลอง badge, plus a hand-add-ticket form.
+function bpEditableTicketHtml(plan){
+  const price=plan.config.ticketPrice||80;
+  if(!plan.rows.length){
+    return `<div class="dash-empty">งบไม่พอซื้อสักใบ (ใบละ ${price}฿) — เพิ่มงบ หรือพิมพ์เลขเอง</div>`+bpAddTicketFormHtml();
+  }
+  const cards=plan.rows.map((r,i)=>{
+    const chips=(r.sources||[]).map(s=>`<span class="dc-source-chip">${escHtml(s)}</span>`).join('');
+    return `<div class="bp-ticket-card${i===0?' bp-rank1':''}">
+      <div class="bp-ticket-top">
+        <span class="bp-ticket-num">${escHtml(r.num)}</span>
+        ${dcTrustBadge(r.trust)}${r.hand?'<span class="bp-handedit">แก้เอง</span>':''}
+        <button class="bp-del" title="ลบใบนี้" onclick="bpDeleteRow(${i})">✕</button>
+      </div>
+      <div class="bp-ladder">
+        <span class="bp-ladder-step">เต็ม 6 · <b>${escHtml(r.ladder[0])}</b></span>
+        <span class="bp-ladder-arrow">→</span>
+        <span class="bp-ladder-step">ท้าย 3 · <b>${escHtml(r.ladder[1])}</b></span>
+        <span class="bp-ladder-arrow">→</span>
+        <span class="bp-ladder-step">ท้าย 2 · <b>${escHtml(r.ladder[2])}</b></span>
+      </div>
+      <div class="bp-ticket-foot">
+        <span class="bp-ticket-qty">จำนวนใบ <input type="number" min="0" step="1" value="${r.qty}" aria-label="จำนวนใบเลข ${escHtml(r.num)}" onchange="bpEditTicketQty(${i},this.value)"> ใบ = ${r.stake}฿</span>
+        <span class="bp-ticket-src">${chips}</span>
+      </div>
+    </div>`;
+  }).join('');
+  const mixBanner=_bpMixIntent?`<div class="bp-mix-banner">📥 มาจากหน้า <b>ไม่รู้ซื้ออะไรดี (Mix)</b> — รวมเลขชุด Mix ไว้ในรายการใบด้านล่างแล้ว (ดูป้าย "Mix" บนใบที่ Mix โหวต)</div>`:'';
+  return `<div class="bp-plan">
+    ${mixBanner}
+    <div class="bp-tier-head">ใบที่แนะนำ (เรียงตามเสียงสนับสนุน) <span class="dc-status">${plan.ticketCount} ใบ · ${plan.totalStake}฿</span></div>
+    <div class="bp-ticket-grid">${cards}</div>
+    <div class="bp-total">รวม <b>${plan.ticketCount} ใบ = ${plan.totalStake}฿</b> จากงบ ${plan.budget}฿ (ใบละ ${price}฿) · ${BP_RISK_LABELS[plan.risk]||plan.risk}</div>
+    ${bpAddTicketFormHtml()}
+  </div>`;
+}
+function bpAddTicketFormHtml(){
+  return `<div class="bp-add-row">
+    <span class="bp-add-label">พิมพ์เลขใบเอง:</span>
+    <input id="bp-add-ticket-num" class="bp-add-num" inputmode="numeric" placeholder="เลข 6 หลัก" style="width:120px">
+    <input id="bp-add-ticket-qty" class="bp-add-stake" type="number" min="1" step="1" placeholder="กี่ใบ" value="1">
+    <button class="btn" onclick="bpAddTicket()">+ เพิ่มใบ</button>
+  </div>`;
+}
+function bpEditTicketQty(idx,val){
+  const p=_bpWorkingPlan; if(!p||!p.rows[idx])return;
+  const qty=Math.max(0,Math.floor(Number(val)||0));
+  const price=p.config.ticketPrice||80;
+  p.rows[idx].qty=qty; p.rows[idx].stake=qty*price; p.rows[idx].hand=true;
+  if(qty===0)p.rows.splice(idx,1);
+  bpRecomputeWorking(); bpPaint();
+}
+window.bpEditTicketQty=bpEditTicketQty;
+function bpAddTicket(){
+  const p=_bpWorkingPlan; if(!p)return;
+  const num=String(document.getElementById('bp-add-ticket-num')?.value||'').trim();
+  const qty=Math.max(1,Math.floor(Number(document.getElementById('bp-add-ticket-qty')?.value)||0));
+  if(!/^\d{6}$/.test(num)){ if(typeof toast==='function')toast('เลขใบต้องมี 6 หลัก','error'); return; }
+  const price=p.config.ticketPrice||80;
+  p.rows.push({num,field:'ticket',tier:'ticket',qty,stake:qty*price,sources:['พิมพ์เอง'],groups:[],trust:null,ladder:[num,num.slice(-3),num.slice(-2)],hand:true});
+  bpRecomputeWorking(); bpPaint();
+  if(typeof toast==='function')toast('เพิ่มใบแล้ว','success');
+}
+window.bpAddTicket=bpAddTicket;
+
+// Editable plan table: stake inputs, per-row delete, and a hand-add form. Row edits/deletes mark
+// the row แก้เอง; deleting does NOT redistribute (the user is in control now — just re-total).
+function bpEditablePlanHtml(plan){
+  if(!plan.rows.length){
+    return `<div class="dash-empty">งบไม่พอวางเลขแม้แต่ตัวเดียว (ขั้นต่ำ ${plan.config.minStake}฿/เลข) — เพิ่มงบ หรือเพิ่มเลขเอง</div>`+bpAddFormHtml();
+  }
+  const indexed=plan.rows.map((r,i)=>({r,i}));
+  const tierBlock=(tierKey,label)=>{
+    const items=indexed.filter(x=>x.r.tier===tierKey);
+    if(!items.length)return '';
+    const body=items.map(({r,i})=>`<tr class="bp-row">
+      <td class="bp-num">${escHtml(r.num)}${dcTrustBadge(r.trust)}${r.hand?'<span class="bp-handedit">แก้เอง</span>':''}</td>
+      <td class="bp-field">${escHtml(BP_FIELD_LABELS[r.field]||r.field)}</td>
+      <td class="bp-stake-edit"><input type="number" min="0" step="${plan.config.roundUnit}" value="${r.stake}" aria-label="เงินเดิมพันเลข ${escHtml(r.num)}" onchange="bpEditStake(${i},this.value)">฿</td>
+      <td><button class="bp-del" title="ลบเลขนี้ (เจ้ามืออั้น/ไม่เอา)" onclick="bpDeleteRow(${i})">✕</button></td>
+    </tr>`).join('');
+    return `<div class="bp-tier">
+      <div class="bp-tier-head">${label} <span class="dc-status">${items.length} เลข · ${items.reduce((a,x)=>a+x.r.stake,0)}฿</span></div>
+      <table class="bp-table"><thead><tr><th>เลข</th><th>ประเภท</th><th>เงิน</th><th></th></tr></thead><tbody>${body}</tbody></table>
+    </div>`;
+  };
+  return `<div class="bp-plan">
+    ${tierBlock('2d','เงิน 2 หลัก (2 ตัวล่าง/บน)')}
+    ${tierBlock('3d','เงิน 3 หลัก (3 ตัวบน)')}
+    <div class="bp-total">รวมที่จะซื้อจริง <b>${plan.totalStake}฿</b> จากงบ ${plan.budget}฿ · ความเสี่ยง ${BP_RISK_LABELS[plan.risk]||plan.risk}</div>
+    ${bpAddFormHtml()}
+  </div>`;
+}
+function bpAddFormHtml(){
+  return `<div class="bp-add-row">
+    <span class="bp-add-label">เพิ่มเลขเอง:</span>
+    <input id="bp-add-num" class="bp-add-num" inputmode="numeric" placeholder="เลข">
+    <select id="bp-add-type" class="bp-add-type">
+      <option value="bottom2">2 ตัวล่าง</option>
+      <option value="prize1_last2">2 ตัวบน</option>
+      <option value="back3">3 ตัวบน</option>
+    </select>
+    <input id="bp-add-stake" class="bp-add-stake" type="number" min="0" step="10" placeholder="เงิน ฿">
+    <button class="btn" onclick="bpAddRow()">+ เพิ่ม</button>
+  </div>`;
+}
+
+function bpEditStake(idx,val){
+  if(!_bpWorkingPlan||!_bpWorkingPlan.rows[idx])return;
+  _bpWorkingPlan.rows[idx].stake=Math.max(0,Math.round(Number(val)||0));
+  _bpWorkingPlan.rows[idx].hand=true;
+  bpRecomputeWorking(); bpPaint();
+}
+window.bpEditStake=bpEditStake;
+function bpDeleteRow(idx){
+  if(!_bpWorkingPlan||!_bpWorkingPlan.rows[idx])return;
+  _bpWorkingPlan.rows.splice(idx,1);
+  bpRecomputeWorking(); bpPaint();
+}
+window.bpDeleteRow=bpDeleteRow;
+function bpAddRow(){
+  if(!_bpWorkingPlan)return;
+  const num=String(document.getElementById('bp-add-num')?.value||'').trim();
+  const type=document.getElementById('bp-add-type')?.value||'bottom2';
+  const stake=Math.round(Number(document.getElementById('bp-add-stake')?.value)||0);
+  const width=type==='back3'?3:2;
+  if(!/^\d+$/.test(num)||num.length!==width){ if(typeof toast==='function')toast(`เลข ${BP_FIELD_LABELS[type]} ต้องมี ${width} หลัก`,'error'); return; }
+  if(stake<=0){ if(typeof toast==='function')toast('ใส่จำนวนเงินก่อน','error'); return; }
+  _bpWorkingPlan.rows.push({num,field:type,len:width,tier:width===2?'2d':'3d',stake,score:0,boostedScore:0,boosted:false,topEdge:null,trust:null,source:BP_FIELD_LABELS[type],hand:true});
+  bpRecomputeWorking(); bpPaint();
+  if(typeof toast==='function')toast('เพิ่มเลขแล้ว','success');
+}
+window.bpAddRow=bpAddRow;
+
+// Manual save — freezes mode/budget/risk/date, every row, the payout config BY VALUE, and the EV คู่
+// shown right now. Immutable afterwards (ADR-0004 decision 7). Never auto-saves.
+function bpSaveCurrentPlan(){
+  const p=_bpWorkingPlan;
+  if(!p||!p.rows.length){ if(typeof toast==='function')toast('ยังไม่มีเลขให้บันทึก','error'); return; }
+  const record={
+    id:'bp'+Date.now(),
+    savedAt:new Date().toISOString(),
+    mode:p.mode, date:p.date, budget:p.budget, risk:p.risk,
+    config:{...p.config},
+    rows:p.rows.map(r=>{
+      const base={num:r.num,field:r.field,tier:r.tier,stake:r.stake,trust:r.trust||null,hand:!!r.hand};
+      // ticket rows must keep qty + ladder (qty drives baht resolution; ladder is the sold-out fallback);
+      // per-number rows keep len + a human bet-type source label.
+      return r.field==='ticket'
+        ? {...base,qty:r.qty,ladder:r.ladder,sources:r.sources||[]}
+        : {...base,len:r.len,source:r.source||BP_FIELD_LABELS[r.field]||r.field};
+    }),
+    ev:{theoretical:{...p.ev.theoretical},adjusted:{...p.ev.adjusted},warning:p.ev.warning},
+    totalStake:p.totalStake,
+  };
+  if(p.mode==='ticket'){ record.ticketPrice=p.ticketPrice; record.ticketCount=p.ticketCount; }
+  bpHistoryAdd(record);
+  if(typeof toast==='function')toast('บันทึกชุดซื้อแล้ว — ล็อกไม่ให้แก้','success');
+  bpPaint();
+}
+window.bpSaveCurrentPlan=bpSaveCurrentPlan;
+function bpDeletePlan(id){
+  bpHistoryDelete(id);
+  bpPaint();
+  if(typeof toast==='function')toast('ลบชุดนี้แล้ว','success');
+}
+window.bpDeletePlan=bpDeletePlan;
+
+// History + all-time ledger, auto-resolved against the cached prize history on every paint.
+function bpHistoryLedgerHtml(){
+  const plans=bpHistory();
+  const head='<div class="bp-history-head">ประวัติชุดซื้อ · Ledger จริงเป็นบาท</div>';
+  if(!plans.length)return `<div class="bp-history">${head}<div class="dash-empty">ยังไม่มีชุดที่บันทึก — กด "บันทึกชุดนี้" เมื่อจะซื้อจริง เพื่อวัดว่าระบบทำเงินได้จริงไหม</div></div>`;
+  const led=bpLedger(plans,_bpHistRows||[]);
+  const netCls=led.net>=0?'good':'bad';
+  const sign=v=>`${v>=0?'+':'−'}${Math.abs(Math.round(v))}฿`;
+  const summary=`<div class="bp-ledger-summary">
+    <div class="bp-ledger-line">ซื้อ <b>${led.resolved}</b> ชุดที่รู้ผลแล้ว · จ่ายไป <b>${led.spent}฿</b> · ได้คืน <b>${led.returned}฿</b> = <span class="dc-status ${netCls}">net ${sign(led.net)}</span></div>
+    <div class="bp-ledger-sub">ถ้าสุ่มแทงล้วนๆ ด้วยเงินก้อนเดียวกัน คาดว่าจะได้ราว ${sign(led.randomExpectedNet)} — นี่คือคำตอบตรงๆ ว่า Edge โผล่มาเป็นเงินจริงไหม${led.pending?` · อีก ${led.pending} ชุดยังรอผล`:''}</div>
+  </div>`;
+  const items=led.items.map(({plan,res,spent})=>{
+    const status=res.status==='pending'
+      ?'<span class="dc-status warn">รอผล</span>'
+      :`<span class="dc-status ${res.net>=0?'good':'bad'}">net ${sign(res.net)}</span>`;
+    const hand=plan.rows.some(r=>r.hand)?'<span class="bp-handedit">มีแก้เอง</span>':'';
+    const won=res.status==='resolved'?res.rows.filter(r=>r.hit).length:0;
+    return `<div class="bp-hist-item">
+      <div class="bp-hist-meta"><b>${fmtDate(plan.date)}</b> · ${plan.rows.length} เลข · ${spent}฿ · ${BP_RISK_LABELS[plan.risk]||plan.risk} ${hand}${won?` · ถูก ${won} เลข`:''}</div>
+      <div class="bp-hist-right">${status}<button class="bp-del" onclick="bpDeletePlan('${plan.id}')" title="ลบทั้งชุด">✕</button></div>
+    </div>`;
+  }).join('');
+  return `<div class="bp-history">${head}${summary}<div class="bp-hist-list">${items}</div></div>`;
+}
+
+// Reflect the persisted prefs onto the control chrome (active states, budget field value).
+function bpSyncControls(prefs){
+  const bi=document.getElementById('bp-budget-input');
+  if(bi&&document.activeElement!==bi)bi.value=prefs.budget;
+  document.querySelectorAll('.bp-risk-btn').forEach(b=>b.classList.toggle('active',b.dataset.risk===prefs.risk));
+  document.querySelectorAll('.bp-budget-quick').forEach(b=>b.classList.toggle('active',Number(b.dataset.amt)===Number(prefs.budget)));
+  document.querySelectorAll('.bp-mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode===prefs.mode));
+}
+function bpSetMode(mode){
+  if(mode!=='perNumber'&&mode!=='ticket')return;
+  if(mode!=='ticket')_bpMixIntent=false; // leaving ใบ mode drops the "came from Mix" hint
+  const prefs=bpReadPrefs(); prefs.mode=mode; bpWritePrefs(prefs);
+  bpSyncControls(prefs); bpRender();
+}
+window.bpSetMode=bpSetMode;
+// Entry point for the Mix page's "จัดชุดซื้อจากเลขชุดนี้ →" button (ISSUE-20, ADR-0004 decision 9).
+// Pre-selects ลอตเตอรี่ใบ mode (where Mix is one of the 6-digit sources) and navigates. Conveys intent
+// only — the Buy Plan page fetches its own data; the intent just floats Mix candidates to the top and
+// shows a banner. _bpMixIntentPending is a one-shot consumed at the next buyplan load (onPageLoad), so
+// a later plain sidebar visit doesn't inherit a stale "came from Mix" state.
+let _bpMixIntent=false, _bpMixIntentPending=false;
+function bpFromMix(){
+  _bpMixIntentPending=true;
+  const prefs=bpReadPrefs(); prefs.mode='ticket'; bpWritePrefs(prefs);
+  showPage('buyplan');
+}
+window.bpFromMix=bpFromMix;
+function bpSetBudget(v){
+  const budget=Math.max(0,Math.floor(Number(v)||0));
+  const prefs=bpReadPrefs(); prefs.budget=budget; bpWritePrefs(prefs);
+  bpSyncControls(prefs); bpRender();
+}
+window.bpSetBudget=bpSetBudget;
+function bpSetRisk(risk){
+  const prefs=bpReadPrefs(); prefs.risk=risk; bpWritePrefs(prefs);
+  bpSyncControls(prefs); bpRender();
+}
+window.bpSetRisk=bpSetRisk;
+function bpToggleConfig(){
+  const el=document.getElementById('bp-config-panel');
+  if(el)el.classList.toggle('open');
+}
+window.bpToggleConfig=bpToggleConfig;
+function bpSaveConfig(){
+  const num=(id,def)=>{ const v=Number(document.getElementById(id)?.value); return Number.isFinite(v)&&v>0?v:def; };
+  const cfg=bpReadConfig();
+  cfg.pay2=num('bp-cfg-pay2',cfg.pay2);
+  cfg.pay3=num('bp-cfg-pay3',cfg.pay3);
+  cfg.minStake=num('bp-cfg-min',cfg.minStake);
+  cfg.roundUnit=num('bp-cfg-round',cfg.roundUnit);
+  cfg.ticketPrice=num('bp-cfg-ticket',cfg.ticketPrice);
+  bpWriteConfig(cfg);
+  bpRender();
+  if(typeof toast==='function')toast('บันทึกการตั้งค่าเรตแล้ว','success');
+}
+window.bpSaveConfig=bpSaveConfig;
+// Populate the config panel inputs from storage when the page mounts.
+function bpFillConfigInputs(){
+  const cfg=bpReadConfig();
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el)el.value=v; };
+  set('bp-cfg-pay2',cfg.pay2); set('bp-cfg-pay3',cfg.pay3);
+  set('bp-cfg-min',cfg.minStake); set('bp-cfg-round',cfg.roundUnit);
+  set('bp-cfg-ticket',cfg.ticketPrice);
+}
+window.bpFillConfigInputs=bpFillConfigInputs;
+
+async function loadMixPage(){
+  const root=document.getElementById('mix-root');
+  if(!root)return;
+  root.className='dc-loading';
+  root.textContent='กำลังผสมเลขจากทุกสูตร...';
+  const dateEl=document.getElementById('mix-date');
+  if(dateEl&&!dateEl.options.length){
+    dateEl.innerHTML=clientDraws().map(d=>`<option value="${d.date}">${d.label}</option>`).join('');
+  }
+  const next=dateEl?.value||nextDrawInfo().iso;
+  try{
+    const hist=await api('prize-history?n=260');
+    const rows=(hist.data||[]).filter(Boolean);
+    if(!rows.length||typeof _mixCompute!=='function')throw new Error('no data');
+    const frs=dcComputeFormulaResults(rows,next);
+    const mix=_mixCompute(frs);
+    if(!mix||!mix.preds.length){
+      root.textContent='ข้อมูลไม่พอสำหรับผสมเลขงวดนี้ ลองรีเฟรชข้อมูลก่อน';
+      return;
+    }
+    _mixHistRows=rows;
+    _mixLastPreds=mix.preds;
+    mixAutoSaveSnapshot({date:next,picks:mix.preds});
+
+    const top=mix.preds[0],rest=mix.preds.slice(1);
+    // ระดับฉันทามติ = ค่าเฉลี่ยต่อหลักของ (สัดส่วนกลุ่มที่โหวตเลขผู้ชนะ)
+    const shares=mix.positions.map(p=>p.groupCount?p.ranked[0].groups.length/p.groupCount:0);
+    const consensus=Math.round(shares.reduce((a,b)=>a+b,0)/mix.positions.length*100);
+    const level=consensus>=70?'เสียงชัดมาก':consensus>=45?'เสียงค่อนข้างตรงกัน':'เสียงแตก';
+    const levelCls=consensus>=70?'good':consensus>=45?'warn':'bad';
+
+    const heroHtml=`<div class="card mix-hero">
+      <div class="dc-label">เลขเด็ดงวด ${fmtDate(next)} · สูตร "ไม่รู้ซื้อเหี้ยไรดี" (Mix)</div>
+      <div class="mix-hero-num">${escHtml(top)}</div>
+      <div class="dc-signal-sub">อันดับ 1 จากการโหวตรายหลักของทุกกลุ่มสูตร${mix.fallbackUsed?' · หลักหน้าใช้เสียงสำรองจากกลุ่ม I/J (งวดนี้ไม่มีเสียงหน้า 3)':''}</div>
+      <div class="dc-row" style="margin-top:12px;justify-content:center">${rest.map((n,i)=>`<span class="num-badge" title="อันดับ ${i+2}">${escHtml(n)}</span>`).join('')}</div>
+      <div style="margin-top:14px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="mixRandomPick()">🎲 ตัดสินใจไม่ได้ สุ่มให้ 1 ใบ</button>
+        <button class="btn" onclick="bpFromMix()">🧾 จัดชุดซื้อจากเลขชุดนี้ →</button>
+        <span id="mix-random-result"></span>
+      </div>
+    </div>`;
+
+    const posLabels=['หลัก 1','หลัก 2','หลัก 3','หลัก 4','หลัก 5','หลัก 6'];
+    const voteCols=mix.positions.map((p,i)=>{
+      const w=p.ranked[0];
+      const share=p.groupCount?Math.round(w.groups.length/p.groupCount*100):0;
+      const runner=p.ranked[1];
+      return `<div class="mix-vote-col">
+        <div class="mix-vote-poslabel">${posLabels[i]}${i<3?'<span class="mix-front-tag">ครึ่งหน้า</span>':''}</div>
+        <div class="mix-digit">${escHtml(w.digit)}</div>
+        <div class="dc-signal-sub">${w.groups.length}/${p.groupCount} กลุ่ม (${share}%)</div>
+        <div class="mix-vote-groups">${w.groups.map(g=>`<span class="dc-source-chip">${escHtml(g)}</span>`).join('')||'<span class="dc-signal-sub">—</span>'}</div>
+        ${runner&&runner.score>0?`<div class="dc-signal-sub" style="margin-top:4px">รอง: ${escHtml(runner.digit)}</div>`:''}
+      </div>`;
+    }).join('');
+    const voteHtml=`<div class="card">
+      <div class="dc-label">ทำไมถึงเป็นเลขนี้ — ผลโหวตรายหลัก</div>
+      <div class="dc-signal-sub" style="margin-bottom:10px">หนึ่งกลุ่มสูตร = หนึ่งเสียงต่อหลัก (ไม่ถ่วงตาม Edge) · หลัก 1-3 ฟังเฉพาะสูตรหน้า 3 (กลุ่ม D, F) · หลัก 4-6 ฟังทุกสูตรที่ทายท้ายเลข + เลขเต็มของกลุ่ม I/J</div>
+      <div class="mix-vote-grid">${voteCols}</div>
+    </div>`;
+
+    const meterHtml=`<div class="card">
+      <div class="dc-label">ระดับฉันทามติงวดนี้ <span class="dc-status ${levelCls}">${level}</span></div>
+      <div class="dc-meter" style="margin-top:10px"><div class="dc-meter-fill" style="width:${consensus}%"></div></div>
+      <div class="dc-signal-sub" style="margin-top:7px">${consensus}/100 — ยิ่งสูง แปลว่าหลายกลุ่มสูตรโหวตเลขเดียวกันในแต่ละหลัก · ต่ำ = เสียงแตก เลขงวดนี้พึ่งดวงมากหน่อย</div>
+    </div>`;
+
+    const cutsHtml=`<div class="card">
+      <div class="dc-label">เลขตัดสำหรับงบน้อย <span class="dc-status warn">ตัดจากชุดใหญ่อันดับ 1 — ไม่ใช่ Pick</span></div>
+      <div class="dc-row" style="margin-top:10px">
+        <span class="num-badge">2 ตัวล่าง → ${escHtml(top.slice(-2))}</span>
+        <span class="num-badge">3 ตัวบน → ${escHtml(top.slice(-3))}</span>
+        <span class="num-badge">หน้า 3 → ${escHtml(top.slice(0,3))}</span>
+      </div>
+      <div class="dc-signal-sub" style="margin-top:7px">แค่การตัดหัว/ท้ายของเลข 6 หลักอันดับ 1 ตรงๆ — ไม่ได้ผ่านการคัดกรองแบบ Pick ของหน้า สรุปงวดนี้</div>
+    </div>`;
+
+    const trend=mixHitRateTrend(mixSnapshots(),rows,5,20);
+    const trendHtml=trend.length
+      ?`<div style="height:180px"><canvas id="mix-trend-chart" role="img" aria-label="กราฟแนวโน้มอัตราถูกของสูตร Mix"></canvas></div>`
+      :'<div class="dash-empty">ยังไม่มีงวดที่มีผลจริง — เปิดหน้านี้ทุกงวดเพื่อสะสมประวัติ</div>';
+    const trackHtml=`<div class="dc-grid">
+      <div class="dc-card dc-card-wide"><div class="dc-label">Track Record ของสูตรนี้</div><div class="dc-signal-sub" style="margin-bottom:8px">บันทึกอัตโนมัติทุกครั้งที่เปิดหน้านี้ · "ถูก" = อย่างน้อย 1 ใน 10 ชุดตรงกับเลขใดก็ได้ใน pool รางวัลที่ 1-5 (~168 ใบ) ของงวดนั้น</div><div id="mix-track-list" class="dc-row">${mixTrackHtml(rows)}</div></div>
+      <div class="dc-card dc-card-wide"><div class="dc-label">แนวโน้มอัตราถูก (rolling 5 งวด)</div>${trendHtml}</div>
+    </div>`;
+
+    root.className='';
+    root.innerHTML=heroHtml+voteHtml+`<div class="mix-two-col">${meterHtml}${cutsHtml}</div>`+trackHtml;
+    if(trend.length){
+      const opts=chartOpts('% ถูก');
+      opts.scales.y.min=0;opts.scales.y.max=100;
+      mkChart('mix-trend-chart',{type:'line',data:{
+        labels:trend.map(t=>fmtDate(t.date)),
+        datasets:[{label:'Mix % ถูก (rolling 5 งวด)',data:trend.map(t=>t.value),borderColor:'#f2ca73',backgroundColor:'rgba(233,182,77,.15)',tension:.3,fill:true,pointRadius:2}]
+      },options:opts});
+    }
+  }catch(e){
+    console.warn('loadMixPage failed',e);
+    root.className='dc-loading';
+    root.textContent='โหลดหน้านี้ไม่สำเร็จ ลองใหม่อีกครั้ง';
+  }
+}
+window.loadMixPage=loadMixPage;
+window.mixRandomPick=mixRandomPick;
+window.mixDeleteSnapshot=mixDeleteSnapshot;
+window.mixClearSnapshots=mixClearSnapshots;
 
 // ─── History ──────────────────────────────────────────────────────────────────
 function _renderBtTable(){

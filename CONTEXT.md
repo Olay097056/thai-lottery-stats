@@ -50,6 +50,29 @@ _Avoid_: backtest pass (the gate is stricter than a positive row in the rolling 
 The newest tail of draw history, never touched during formula search or finalist selection, evaluated exactly once per formula to produce the Promotion Gate's deciding Edge. Once evaluated — or leaked into search — it is spent and cannot serve as a holdout again.
 _Avoid_: test set, live window
 
+**ไม่รู้ซื้อเหี้ยไรดี (Mix)**:
+A derived meta-formula that builds ~10 six-digit candidates by digit-position voting over the outputs of all formula groups A–J (Predict-page output excluded). One group = one vote regardless of how many numbers it produced. Positions 1–3 are voted only by `front3` outputs (groups D, F), falling back to I/J2 votes when both are empty; positions 4–6 by all matching field types plus I/J2's full 6-digit candidates. Deliberately NOT a Formula group: it never votes in เลขแนะนำ and never joins Picks (it would double-count its own parent formulas); its only central-system presence is a Backtest row under `pool6`. Lives on its own sidebar page named ไม่รู้ซื้ออะไรดี.
+_Avoid_: Group K, สูตร K (it is not a formula group), เลขรวมมิตร
+
+**ไม่รู้ซื้ออะไรดี (page)**:
+The sidebar page presenting the Mix formula: hero top-1 candidate + 9 secondary candidates, per-position vote breakdown, consensus meter, its own track record (Auto-snapshot/Hit/hit-rate trend scoped to Mix), budget cuts (2–3 digit tails cut from the top candidate — labeled as cuts, never called Picks), and a weighted random-pick button.
+
 **เจ้าสัว (Group J)**:
 The formula group derived by systematic search over a declared arithmetic family — inputs limited to the previous single draw and the target draw's date — rather than handed down as folk wisdom. Two legs: a `bottom2` leg subject to the Promotion Gate, and a `pool6` leg that wears ทดลอง permanently because its Edge is statistically unverifiable at current sample size.
 _Avoid_: Tycoon formula, searched formula (use เจ้าสัว in UI, Group J in engineering shorthand)
+
+**จัดชุดซื้อ (Buy Plan, page)**:
+The sidebar page that turns Picks/เลขแนะนำ into an actual spending plan: user enters a budget + risk preset, the system allocates money across numbers, shows Dual EV, and (on manual save) locks the plan into a real-money track record. Two modes behind a toggle — แทงรายเลข (per-number betting) and ลอตเตอรี่ใบ (online government tickets) — each planned separately, never one budget split across both. See ADR-0004.
+_Avoid_: portfolio tab, betting tab (use จัดชุดซื้อ as the UI-facing name)
+
+**ชุดซื้อ (Buy Plan, record)**:
+One saved plan: mode, budget, risk preset, every number with its stake, the payout config frozen at save time, and the Dual EV shown at save time. Editable freely *before* save (hand-edited rows carry a แก้เอง label); immutable after save — delete-whole-plan is the only allowed change, so the cumulative baht ledger can't be hindsight-edited.
+_Avoid_: snapshot (that word means the Decision Center's *automatic* record of the system's opinion; a ชุดซื้อ is the user's *manual* record of a spending decision)
+
+**EV คู่ (Dual EV)**:
+The two expected-value lines shown on every ชุดซื้อ. Headline: theoretical EV (p = pure math), always negative, stated as baht lost per 100฿ long-run. Secondary: backtest-adjusted EV (p = baseline + rolling Edge), labeled as window-limited noise-prone — and when it goes positive, the UI itself says so rather than implying profit. Theory leads; Edge informs allocation and ranking but never replaces the honest headline number.
+_Avoid_: expected profit, ROI (both smuggle in the idea that the number can be trusted positive)
+
+**แก้เอง (hand-edited)**:
+A label on any ชุดซื้อ row the user changed or added by hand before saving (stake changed, number typed in, row deleted-and-replaced). Exists so the cumulative ledger can separate system-pure P/L from human-adjusted P/L — without it, the ledger can't answer whether the *system's* Edge shows up in real money.
+_Avoid_: custom, manual override (use แก้เอง consistently in UI and record fields)

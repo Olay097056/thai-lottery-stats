@@ -1,13 +1,13 @@
 # แผนพัฒนา — Thai Lottery Intelligence Dashboard
 
-> อัปเดตล่าสุด: 2026-07-08 · Phase 1–3.7 เสร็จสมบูรณ์ · Phase 4 (FABLE) ถูกยกเลิก · Phase 5 (จักรพรรดิ/จักรพรรดิทองคำ) เสร็จสมบูรณ์ (รวม candidate diversity fix รอบ 2 — round-robin ต่อหลัก) · Phase 6 (เจ้าสัว J1/J2 + ป้ายทดลองบน Picks/เลขแนะนำ) เสร็จสมบูรณ์ · frontend แยกไฟล์ + จัดระเบียบ path เสร็จ · หน้า "สรุปงวดนี้" (Decision Center) ปรับปรุงใหม่ (ตัดซ้ำซ้อน + track record + edge badge) เสร็จสมบูรณ์ — ดู [CHANGELOG.md](CHANGELOG.md) สำหรับประวัติละเอียด
+> อัปเดตล่าสุด: 2026-07-09 · Phase 1–3.7 เสร็จสมบูรณ์ · Phase 4 (FABLE) ถูกยกเลิก · Phase 5 (จักรพรรดิ/จักรพรรดิทองคำ) เสร็จสมบูรณ์ (รวม candidate diversity fix รอบ 2 — round-robin ต่อหลัก) · Phase 6 (เจ้าสัว J1/J2 + ป้ายทดลองบน Picks/เลขแนะนำ) เสร็จสมบูรณ์ · **Phase 7 (จัดชุดซื้อ/Buy Plan — 2 โหมด, EV คู่, ledger บาทจริง) เสร็จสมบูรณ์** · frontend แยกไฟล์ + จัดระเบียบ path เสร็จ · หน้า "สรุปงวดนี้" (Decision Center) ปรับปรุงใหม่ (ตัดซ้ำซ้อน + track record + edge badge) เสร็จสมบูรณ์ — ดู [CHANGELOG.md](CHANGELOG.md) สำหรับประวัติละเอียด
 
 ## สถานะปัจจุบัน
 
 | ส่วน | สถานะ |
 |---|---|
 | Database | prize1–3 ครบ 777 งวด (myhora) · prize4/5 + near1/2/3 ครบ 456 งวด (sanook, ~2549–ปัจจุบัน) |
-| UI | macOS dark skin · 5 หน้า: Dashboard / ทำนาย-สูตร / ตารางความถี่ / ผลย้อนหลัง / Backtest |
+| UI | macOS dark skin · 7 หน้า: Dashboard / ตารางความถี่ / ทำนาย-สูตร / ไม่รู้ซื้ออะไรดี (Mix) / จัดชุดซื้อ (Buy Plan) / ผลย้อนหลัง / Backtest |
 | สูตร | A–H + สายมู (ใช้ผลงวดก่อน 1 งวด) + **I จักรพรรดิ/จักรพรรดิทองคำ** (ไม่มี promotion gate) + **J เจ้าสัว J1/J2** (ค้นหาระบบ, ทั้งคู่ติดป้ายทดลองถาวรตาม ADR-0003) |
 
 ## กติกาคงที่ (ห้ามละเมิด)
@@ -44,3 +44,14 @@ FABLE (สูตรที่ใช้ rolling history หลายงวด + po
 **J2 เจ้าสัว (เลขเต็ม 6 หลัก / pool6) — เสร็จแล้ว (ISSUE-15):** ใช้ `_buildPrize1to5Pool`/`_digitPosFreq`/`_imperialRoundRobin` ร่วมกับกลุ่ม I โดยตรง (ไม่ก็อปปี้) ผสม 80% คะแนนความถี่ + 20% ความใกล้เคียงกับ atom ของกลุ่ม J เอง (`|BK2 − DSUM|` จาก J1) แทนที่จะใช้เลขคณิตของกลุ่ม D เหมือนจักรพรรดิทองคำ — ยืนยันแล้วว่า candidate ต่างจาก I1/I2 จริงทุกงวด (ป้องกันไม่ให้เลขแนะนำนับ J ซ้ำกับ I โดยไม่ได้ตั้งใจ) **ติดป้ายทดลองถาวร**ตาม ADR-0003 — ที่ปริมาณข้อมูล pool ~456 งวด 10 candidate คาดว่าถูกโดยบังเอิญไม่ถึง 1 ครั้งตลอดประวัติศาสตร์ทั้งหมด จึงไม่มี gate ใดแยกฝีมือจากโชคได้ในสนามนี้
 
 **ป้ายทดลอง (ทดลอง badge) — สร้างกลไกจริงครั้งแรก (ISSUE-13, ISSUE-14):** แม้ concept "ทดลอง" จะถูกกำหนดไว้ในกติกาคงที่ข้อ 3 ตั้งแต่ต้น แต่ไม่เคยมีการแสดงผลจริงในหน้าเว็บมาก่อน — เพิ่ม `trust` field บนผล formula (`'ทดลอง'` หรือ `null`) แสดงเป็น badge สีเหลืองอำพัน (`.trust-badge` ใน `app.css`) ที่ dropdown กลุ่มสูตร, แถวตาราง backtest, การ์ดหน้า "ทำนาย" และ**ส่งต่อ (propagate)** ไปยัง Pick (Final Confidence board) และเลขแนะนำ (Recommended Number) ที่มีสูตรทดลองสนับสนุนอยู่บางส่วน — เป็นป้ายแสดงผลอย่างเดียว ไม่มีผลต่อคะแนน/อันดับ/การมีส่วนร่วมใดๆ ทั้งสิ้น (ADR-0003 decision #6)
+
+## Phase 7 — จัดชุดซื้อ (Buy Plan) (เสร็จสมบูรณ์, 2026-07-09)
+
+หน้า sidebar ใหม่ที่แปลง Pick/เลขแนะนำ เป็น**แผนการใช้เงินจริง** พร้อม EV ที่ซื่อสัตย์และ ledger บาทสะสม — ตอบคำถาม "มีงบเท่านี้ ซื้ออะไร ตัวละเท่าไหร่ ระยะยาวเสียเท่าไหร่จริงๆ" ที่หน้าอื่นไม่ตอบ · governing ADR: `docs/adr/0004-buy-plan-tab-dual-ev-and-honest-pnl.md` (ADR-0004) · PRD: `PRD-buy-plan-tab.md` · glossary ใน CONTEXT.md: จัดชุดซื้อ, ชุดซื้อ, EV คู่, แก้เอง · client-side ล้วน (ใช้ fetch ที่ Decision Center ทำอยู่แล้ว ไม่มี endpoint ใหม่)
+
+- **ISSUE-17 — หน้า + โหมดแทงรายเลข:** seam `bpBuildPlan` (แบ่ง tier ตามความเสี่ยง, จัดสรรตามคะแนน Pick ×1.5 boost เลขแนะนำ, min/round/cap/drop/remainder ให้รวมเท่างบเป๊ะ) + EV คู่ (ทฤษฎีนำเสมอ −5%/บาท, adjusted เตือน noise เมื่อ ≥0) · config flyout + prefs ใน localStorage
+- **ISSUE-18 — แก้ก่อนเซฟ + ล็อก + resolve เป็นบาท + ledger:** แถวแก้ได้ (สtake/ลบ/เพิ่มเอง ติดป้าย **แก้เอง**), บันทึกเอง→immutable (`lottery_buyplan_history`), seam `bpResolvePlan` (ถูก×payout ที่ freeze ไว้, net = returned − spent) + `bpLedger` (สะสมทั้งหมด vs random-play) · resolve อัตโนมัติตอนเปิดหน้า, config เปลี่ยนไม่แตะแผนที่เซฟแล้ว
+- **ISSUE-19 — โหมดลอตเตอรี่ใบ:** งบ→จำนวนใบ, รายการเลข 6 หลักจาก I/J2 pool6 + ทำนายรางวัลที่ 1 + Mix (เป็น source ไม่ใช่กลุ่มสูตร) พร้อมบันได เต็ม6→ท้าย3→ท้าย2 · EV จากตารางรางวัลรัฐบาล (คืนคาดหวัง 48฿/ใบ = −40% ที่ 80฿, เทียบ −5% ของแทงรายเลข ~8 เท่า) · `bpResolveTicket` เทียบตารางรางวัลเต็ม (ที่1/ข้างเคียง/ที่2–5/หน้า3/ท้าย3/ท้าย2), งวดที่ไม่มีคอลัมน์ Sanook ติดธง unverifiable ไม่นับเป็นพลาด
+- **ISSUE-20 — ปุ่มเชื่อมจาก Mix + เอกสาร:** ปุ่ม "จัดชุดซื้อจากเลขชุดนี้ →" บนหน้า Mix (`bpFromMix`, เปิดโหมดลอตเตอรี่ใบ) — budget-cuts ของ Mix ไม่ถูกแตะ · เอกสารปิดงาน (ไฟล์นี้ + CLAUDE.md + CHANGELOG.md)
+
+**เทส:** `scripts/test_buyplan_build.js` / `_resolve.js` / `_ticket.js` (vm-extracted, fixture-driven — seam ล้วน ไม่แตะ DOM/network) · CSS block `.bp-*` ท้าย `app.css` · bump `?v=buyplan1→4` ครบ 3 ไฟล์

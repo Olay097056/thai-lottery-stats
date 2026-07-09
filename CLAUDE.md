@@ -38,11 +38,26 @@ Open `http://localhost:8509`. On Windows, prefer the venv at `%LOCALAPPDATA%\lot
 
 Dev/debug/one-off scripts (not imported by production code) live in `scripts/`: `debug.py`, `sweep.py`, `_rebuild_analyzer.py`, `test_scrape.py`, `test_multi_year.py`, `scrape_all.py`. Run them from the project root, e.g. `python scripts/debug.py` — they add the project root to `sys.path` themselves.
 
-## Pages (5, sidebar order)
+## Pages (7, sidebar order)
 
-Dashboard · ทำนาย-สูตร (3 tabs: ทำนาย / สูตรคำนวณ / สรุปงวดนี้) · ตารางความถี่ · ผลย้อนหลัง · Backtest
+Dashboard · ตารางความถี่ · ทำนาย-สูตร (tabs: ทำนาย / สูตรคำนวณ / สรุปงวดนี้ / OLD VER) · ไม่รู้ซื้ออะไรดี (Mix) · **จัดชุดซื้อ (Buy Plan)** · ผลย้อนหลัง · Backtest
 
 Watchlist and ML Prediction pages were removed from the UI (2026-07-02, desktop-first cleanup) — backend endpoints remain for reference but nothing in the frontend calls them.
+
+## จัดชุดซื้อ (Buy Plan) page — `page-buyplan`, `loadBuyPlan` in `app.js`
+
+Turns Picks/เลขแนะนำ into an actual spending plan with honest EV and a real-money ledger (ISSUE-17→20, governing **ADR-0004** `docs/adr/0004-buy-plan-tab-dual-ev-and-honest-pnl.md`; glossary จัดชุดซื้อ/ชุดซื้อ/EV คู่/แก้เอง in CONTEXT.md). Client-side only — reuses the fetches the Decision Center already performs (formula batch, เลขแนะนำ, prize-1 predictions, prize history), no new backend endpoints. Two modes behind a toggle:
+
+- **แทงรายเลข (per-number betting)** — budget + risk preset (เซฟ 80/20, กลาง 50/50, ใจถึง 20/80 split between 2-digit `bottom2`/`prize1_last2` and 3-digit `back3` money); allocates proportional to Pick score with a ×1.5 เลขแนะนำ boost, min/round/cap/drop/remainder so stakes sum exactly to budget.
+- **ลอตเตอรี่ใบ (online tickets)** — budget → whole tickets at the configured price; ranked 6-digit list merged from I/J2 `pool6` + prize-1 beam predictions + **Mix (a labeled source, never a formula group)**, each with a เต็ม6 → ท้าย3 → ท้าย2 fallback ladder.
+
+**Two pure seams** (unit-tested in `scripts/test_buyplan_*.js`, vm-extracted, fixture-driven — no DOM/network):
+- `bpBuildPlan(input) → plan` — all allocation logic (both modes) behind one function.
+- `bpResolvePlan(plan, actualDrawRow) → resolution` — per-row baht outcome (stake × the payout **frozen in the plan**), per-plan net; ticket rows resolve against the full government prize table (`bpResolveTicket`), flagging sanook-missing draws `unverifiable` rather than missed. `bpLedger` aggregates saved plans (mode-aware random-play expectation: −5%/baht vs −40%/ticket).
+
+**EV คู่** — theoretical headline always leads (pure baselines: −5%/baht per-number at ×95/×950, ~−40%/ticket from the govt table); a backtest-adjusted secondary line renders a noise warning whenever it goes non-negative (ADR-0004).
+
+**localStorage keys (own, isolated from all DC/Mix snapshot stores):** `lottery_buyplan_history` (saved plans — manual save only, immutable, delete-whole-plan), `lottery_buyplan_config` (payouts/min/round/ticket price, copied by value into each saved plan), `lottery_buyplan_prefs` (last-used mode/budget/risk). The Mix page links in via a "จัดชุดซื้อจากเลขชุดนี้ →" button (`bpFromMix`, opens ใบ mode).
 
 ## Lottery Columns (`col` parameter)
 
@@ -69,6 +84,8 @@ A (กูชอบ) · B (ลอตโตพลัส) · C (พิชิตโ�
 FABLE (a rolling-history, prize-1–5-pool formula) was retired 2026-07-06 after failing its promotion gate — see DEVELOPMENT_PLAN.md and CHANGELOG.md for history. The `pool6`/`pool_tail3` backtest field types it introduced (hit = candidate matches anything in the previous draw's combined prize 1–5 pool) were kept and are now used by Group I above.
 
 **J (เจ้าสัว)** — 2026-07-08. Both legs ship under a **ทดลอง** (Experimental) badge — see `docs/adr/0003-group-j-promotion-gate-and-experimental-participation.md`. ทดลอง is display-only: it never gates participation in Picks or เลขแนะนำ, it just labels trust honestly, and it propagates onto any Pick/เลขแนะนำ chip a ทดลอง formula supports.
+**Mix (ไม่รู้ซื้อเหี้ยไรดี)** — 2026-07-08. Derived meta-formula, **not** a formula group (see CONTEXT.md): builds ~10 six-digit candidates by per-position digit voting over all A–J group outputs (one group = one vote per position; positions 1–3 from `front3` outputs only with I/J2 fallback; positions 4–6 from all tail-mappable fields + I/J2). `_mixCompute`/`_computeMixRow` in `formula-engine.js` — deliberately OUTSIDE `_computeFormulasBatch` so it can never leak into Picks/เลขแนะนำ (it would double-count its parent formulas); only the formula backtest and the ไม่รู้ซื้ออะไรดี sidebar page (`loadMixPage` in `app.js`, track record in localStorage `lottery_mix_snapshots`) call it. Backtest row under `pool6`, no ทดลอง badge (its own page communicates the trust level instead).
+
 - **J1 (bottom2 leg)** — `pad2(|BK2 − DSUM|)`, where `BK2` is the previous draw's `back3_2` and `DSUM` reuses Group D's `_dsumValue`. This is the finalist from a systematic arithmetic-family search (`_tycoonBottom2Formula` in `formula-engine.js`) — it **failed its holdout gate** (train Edge +0.72%, validation +1.67%, holdout −0.21%), so per ADR-0003 it ships anyway under ทดลอง rather than being deleted.
 - **J2 (pool6 leg)** — `_tycoonPool6Formula`, reuses Group I's `_buildPrize1to5Pool`/`_digitPosFreq`/`_imperialRoundRobin` directly, blended 80% frequency / 20% closeness to J1's own `|BK2 − DSUM|` atom (not Group D's, so it doesn't collapse to Group I's exact candidates). **Permanently ทดลอง** per ADR-0003 — at ~456 pool-covered draws, 10 candidates expect under 1 chance-hit across the whole history, so no gate could ever distinguish skill from luck on this field type.
 

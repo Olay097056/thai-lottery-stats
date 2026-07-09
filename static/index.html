@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<link rel="stylesheet" href="/static/app.css?v=group-j-tycoon1">
+<link rel="stylesheet" href="/static/app.css?v=buyplan4">
 </head>
 <body>
 
@@ -20,6 +20,8 @@
     <div class="nav-item active" role="button" tabindex="0" data-page="dashboard" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('dashboard')}"><span class="nav-icon">📊</span>Dashboard</div>
     <div class="nav-item" role="button" tabindex="0" data-page="frequency" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('frequency')}"><span class="nav-icon">📋</span>ตารางความถี่</div>
     <div class="nav-item" role="button" tabindex="0" data-page="predict" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('predict')}"><span class="nav-icon">🔮</span>ทำนาย / สูตร</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="mix" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('mix')}"><span class="nav-icon">🤷</span>ไม่รู้ซื้ออะไรดี</div>
+    <div class="nav-item" role="button" tabindex="0" data-page="buyplan" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('buyplan')}"><span class="nav-icon">🧾</span>จัดชุดซื้อ</div>
     <div class="nav-item" role="button" tabindex="0" data-page="history" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('history')}"><span class="nav-icon">📅</span>ผลย้อนหลัง</div>
     <div class="nav-item" role="button" tabindex="0" data-page="backtest" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('backtest')}"><span class="nav-icon">⚗️</span>Backtest</div>
   </div>
@@ -531,13 +533,72 @@
 </div>
 
 
+<!-- MIX — ไม่รู้ซื้ออะไรดี -->
+<div class="page" id="page-mix">
+  <div class="page-title">🤷 ไม่รู้ซื้ออะไรดี</div>
+  <div class="page-sub">สูตร "ไม่รู้ซื้อเหี้ยไรดี" (Mix) — โหวตรายหลักจากผลของทุกกลุ่มสูตร A–J · หนึ่งกลุ่มหนึ่งเสียง · ไม่รวมผลจากหน้าทำนาย · วัดผลกับ pool รางวัลที่ 1–5</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><label class="ctrl-label" for="mix-date">งวดเป้าหมาย</label><select id="mix-date" onchange="loadMixPage()"></select></div>
+    <button class="btn btn-primary" onclick="loadMixPage()">↻ ผสมเลขใหม่</button>
+  </div>
+  <div id="mix-root" class="dc-loading">กำลังผสมเลขจากทุกสูตร...</div>
+</div>
+
+<div class="page" id="page-buyplan">
+  <div class="page-title">🧾 จัดชุดซื้อ</div>
+  <div class="page-sub">มีงบเท่านี้ — ซื้ออะไร ตัวละเท่าไหร่ และระยะยาว "เสีย" เท่าไหร่จริงๆ · ระบบกระจายเงินตาม Pick/เลขแนะนำ พร้อม EV คู่ที่ไม่โกหกเรื่องแต้มต่อของบ้าน</div>
+  <div class="ctrl-row">
+    <div class="ctrl-group"><label class="ctrl-label" for="bp-date">งวดเป้าหมาย</label><select id="bp-date" onchange="loadBuyPlan()"></select></div>
+    <button class="btn" onclick="bpToggleConfig()">⚙ ตั้งค่าเรต</button>
+  </div>
+
+  <div class="bp-mode-toggle">
+    <button class="bp-mode-btn active" data-mode="perNumber" onclick="bpSetMode('perNumber')">แทงรายเลข</button>
+    <button class="bp-mode-btn" data-mode="ticket" onclick="bpSetMode('ticket')">ลอตเตอรี่ใบ</button>
+  </div>
+
+  <div id="bp-config-panel" class="bp-config-panel">
+    <div class="bp-config-title">ตั้งค่าเรตจ่าย (ของเจ้ามือคุณ) — เก็บไว้ในเครื่อง</div>
+    <div class="bp-config-grid">
+      <label>2 ตัว จ่าย ×<input id="bp-cfg-pay2" type="number" min="1" step="1"></label>
+      <label>3 ตัวตรง จ่าย ×<input id="bp-cfg-pay3" type="number" min="1" step="1"></label>
+      <label>ขั้นต่ำต่อเลข (฿)<input id="bp-cfg-min" type="number" min="1" step="1"></label>
+      <label>ปัดเงินเป็นหน่วย (฿)<input id="bp-cfg-round" type="number" min="1" step="1"></label>
+      <label>ราคาลอตเตอรี่ใบละ (฿)<input id="bp-cfg-ticket" type="number" min="1" step="1"></label>
+    </div>
+    <button class="btn btn-primary" onclick="bpSaveConfig()">บันทึกเรต</button>
+  </div>
+
+  <div class="bp-controls">
+    <div class="bp-control-block">
+      <div class="bp-control-label">งบทั้งหมด</div>
+      <div class="bp-budget-row">
+        <button class="bp-budget-quick" data-amt="200" onclick="bpSetBudget(200)">200</button>
+        <button class="bp-budget-quick" data-amt="500" onclick="bpSetBudget(500)">500</button>
+        <button class="bp-budget-quick" data-amt="1000" onclick="bpSetBudget(1000)">1,000</button>
+        <input id="bp-budget-input" class="bp-budget-input" type="number" min="0" step="10" placeholder="พิมพ์งบเอง" onchange="bpSetBudget(this.value)"> ฿
+      </div>
+    </div>
+    <div class="bp-control-block">
+      <div class="bp-control-label">ความเสี่ยง (สัดส่วนเงิน 2 ตัว / 3 ตัว)</div>
+      <div class="bp-risk-row">
+        <button class="bp-risk-btn" data-risk="safe" onclick="bpSetRisk('safe')">เซฟ · 80/20</button>
+        <button class="bp-risk-btn" data-risk="mid" onclick="bpSetRisk('mid')">กลาง · 50/50</button>
+        <button class="bp-risk-btn" data-risk="bold" onclick="bpSetRisk('bold')">ใจถึง · 20/80</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="bp-plan-root" class="dc-loading">กำลังจัดชุดซื้อ...</div>
+</div>
+
 </main>
 
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script src="/static/formula-engine.js?v=group-j-pool6-leg1"></script>
-<script src="/static/app.js?v=group-j-badge-propagation1"></script>
+<script src="/static/formula-engine.js?v=buyplan4"></script>
+<script src="/static/app.js?v=buyplan4"></script>
 
 </body>
 </html>
