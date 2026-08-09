@@ -801,11 +801,15 @@ function dcRecommendedNumbers(formulaResults,btMap){
   const byField=new Map();
   // ทดลอง badge propagation (ISSUE-14): a เลขแนะนำ candidate carries the badge if ANY of its
   // agreeing top-level groups has a ทดลอง formula — display-only, never affects ranking below.
-  const experimentalGroups=new Set((formulaResults||[]).filter(fr=>fr?.trust==='ทดลอง').map(fr=>String(fr?.name||'')[0]||'?'));
+  // Group key = explicit fr.group (HM · Hermes Pool 1-4, PRD-hermes-pool-1-4.md) else name[0]
+  // (J1/J2 → 'J', X1.. → 'X') — the explicit field stops 'HM' from collapsing into 'H'
+  // (มิสเตอร์ซี) and falsely badging H-supported เลขแนะนำ.
+  const groupKeyOf=fr=>fr?.group||String(fr?.name||'')[0]||'?';
+  const experimentalGroups=new Set((formulaResults||[]).filter(fr=>fr?.trust==='ทดลอง').map(groupKeyOf));
   (formulaResults||[]).forEach(fr=>{
     const field=fr?.field;
     if(!field)return;
-    const groupKey=String(fr?.name||'')[0]||'?';
+    const groupKey=groupKeyOf(fr);
     const bt=btMap&&typeof btMap.get==='function'?btMap.get(fr.name):undefined;
     const edge=typeof bt?.edge==='number'?bt.edge:0;
     (fr.preds||[]).forEach(n=>{
@@ -2961,19 +2965,21 @@ function bpBuildPlan(input){
 // ── Buy Plan rendering (light HTML string helpers, mirroring the DC/Mix prior art) ──
 const BP_FIELD_LABELS={bottom2:'2 ตัวล่าง',prize1_last2:'2 ตัวบน',back3:'3 ตัวบน'};
 // Mirror of formula-engine.js's function-local _GRP (group letter → [label,color]); Codex X* → F.
-// Kept in sync manually — groups A–J are stable. Change both if a new group is added.
+// Kept in sync manually — groups A–J + HM are stable. Change both if a new group is added.
 const BP_GROUP_MAP = {
   A: ['A · กูชอบ', 'var(--gold)'], B: ['B · ลอตโตพลัส', '#4d9de0'], C: ['C · พิชิตโชค', '#a855f7'],
   D: ['D · Claude', '#22d3ee'], X: ['F · Codex', '#a3e635'], G: ['G · แม่นขั้นเทพ', '#f05454'],
   H: ['H · มิสเตอร์ซี', '#f59e0b'], E: ['E · สายมู', '#ec4899'], I: ['I · จักรพรรดิ', '#c084fc'],
-  J: ['J · เจ้าสัว', '#10b981'],
+  J: ['J · เจ้าสัว', '#10b981'], HM: ['HM · Hermes Pool 1-4', '#2dd4bf'],
 };
 // Distinct top-level formula groups backing a number, derived from its source labels (name[0],
-// Codex X→F). Non-formula sources (Predict/รางวัลรอง/พิมพ์เอง) have no group letter → excluded.
+// Codex X→F; HM prefix → HM per PRD-hermes-pool-1-4.md). Non-formula sources
+// (Predict/รางวัลรอง/พิมพ์เอง) have no group letter → excluded.
 function bpGroupsForSources(sources){
   const seen = new Map();
   (sources || []).forEach(s => {
-    const letter = String(s || '').trim()[0];
+    const t = String(s || '').trim();
+    const letter = t.startsWith('HM') ? 'HM' : t[0];
     if (!letter || !BP_GROUP_MAP[letter] || seen.has(letter)) return;
     seen.set(letter, { letter, label: BP_GROUP_MAP[letter][0], color: BP_GROUP_MAP[letter][1] });
   });
@@ -3695,7 +3701,7 @@ function _renderBtTable(){
   };
   const thead=`<thead><tr>${th('Formula','name')}${th('Type','typeLabel')}${th('Draws','total','right')}${th('Hits','hits','right')}${th('Hit %','pct','right')}<th style="text-align:right;white-space:nowrap">95% CI</th>${th('Random baseline','baseP','right')}${th('Edge','edge','right')}<th style="text-align:right;white-space:nowrap">Rolling edge</th>${th('ถูกรอง','subPct','right')}<th style="text-align:center">Result</th></tr></thead>`;
   const btSummary=typeof _formulaBtSummaryHtml==='function'?_formulaBtSummaryHtml(sorted):'';
-  const boardOrder=['2-digit exact','3-digit exact','Run / digit','Prize1 tail','Pool 1-5','Other'];
+  const boardOrder=['2-digit exact','3-digit exact','Run / digit','Prize1 tail','Pool 1-5','Pool 1-4','Other'];
   const boardTables=boardOrder.map(board=>{
     const rows=sorted.filter(r=>r.board===board);
     if(!rows.length)return '';
@@ -3727,6 +3733,7 @@ function _renderBtTable(){
       ${typeof _formulaMappingBannerHtml==='function'?_formulaMappingBannerHtml(_btFieldCheck):''}
       ${btSummary}
       ${boardTables}
+      ${typeof _renderPool14Comparison==='function'?_renderPool14Comparison(sorted):''}
     </div>`;
 }
 

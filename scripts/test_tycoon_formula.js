@@ -129,11 +129,13 @@ if (j1Result.trust !== 'ทดลอง') throw new Error(`FAIL: J1 trust should
 if (!Array.isArray(j1Result.preds) || j1Result.preds.length !== 1 || !/^\d{2}$/.test(j1Result.preds[0])) {
   throw new Error(`FAIL: J1 preds should be a single 2-digit string, got ${JSON.stringify(j1Result.preds)}`);
 }
-const nonJTrusted = batchResults.filter(r => !String(r.name || '').startsWith('J') && r.trust);
-if (nonJTrusted.length) {
-  throw new Error(`FAIL: non-J formulas should have no trust value, but found: ${JSON.stringify(nonJTrusted.map(r => r.name))}`);
+// ทดลอง groups: J (เจ้าสัว) + HM (Hermes Pool 1-4, PRD-hermes-pool-1-4.md) — everything else
+// must stay trust-less so the badge never leaks onto A–I rows.
+const nonTrusted = batchResults.filter(r => !String(r.name || '').startsWith('J') && !String(r.name || '').startsWith('HM') && r.trust);
+if (nonTrusted.length) {
+  throw new Error(`FAIL: non-J/HM formulas should have no trust value, but found: ${JSON.stringify(nonTrusted.map(r => r.name))}`);
 }
-console.log(`OK: _computeFormulasBatch includes J1 (field=bottom2, trust=ทดลอง, preds=${JSON.stringify(j1Result.preds)}); no A-I formula carries a trust value`);
+console.log(`OK: _computeFormulasBatch includes J1 (field=bottom2, trust=ทดลอง, preds=${JSON.stringify(j1Result.preds)}); only J/HM formulas carry a trust value`);
 
 // --- 6. _GRP has a 'J' entry with a color distinct from every other group's color ---
 const grpMatch = /const _GRP=\{[^}]*\};/.exec(src);

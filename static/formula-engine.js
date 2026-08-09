@@ -28,6 +28,7 @@ const FORMULA_BT_FIELD_META={
   prize1_last4_digits:{typeLabel:'4หลักรางวัล',board:'Prize1 tail',widths:[1],base:()=>({baseP:(1-Math.pow(0.9,4))*100,baseLabel:'1-(0.9)^4≈34.4%'})},
   pool6:{typeLabel:'Pool 6หลัก',board:'Pool 1-5',widths:[6],base:(k)=>({baseP:(1-Math.pow(1-168/1e6,k))*100,baseLabel:`${k} vs pool168/10⁶`})},
   pool_tail3:{typeLabel:'Pool ท้าย3',board:'Pool 1-5',widths:[3],base:(k)=>{const p1=1000*(1-Math.pow(0.999,168))/1000;return {baseP:(1-Math.pow(1-p1,k))*100,baseLabel:`${k} vs ~155/1000`};}},
+  pool6_14:{typeLabel:'Pool 1-4',board:'Pool 1-4',widths:[6],base:(k)=>({baseP:(1-Math.pow(1-66/1e6,k))*100,baseLabel:`${k} vs pool66/10⁶`})},
 };
 
 function _formulaBtFieldMeta(field){
@@ -66,6 +67,7 @@ function _formulaHitForField(fr,actual,pools={}){
   if(fr.field==='prize1_last2')return preds.includes(p(actual.prize1,6).slice(-2));
   if(fr.field==='pool6')return preds.some(n=>pools.pool6Set?.has(n));
   if(fr.field==='pool_tail3')return preds.some(n=>pools.poolTail3Set?.has(n));
+  if(fr.field==='pool6_14')return preds.some(n=>pools.pool14Set?.has(n));
   return false;
 }
 
@@ -278,7 +280,7 @@ function switchFormulaTab(tab){
   // sync dropdown กลุ่มสูตร: เลือกกลุ่ม → โชว์ค่านั้น + ไฮไลต์, เลือก ALL/BT → กลับ placeholder
   const groupSel=document.getElementById('ftab-group-select');
   if(groupSel){
-    const isGroup=['A','B','C','D','F','G','H','E','I','J'].includes(tab);
+    const isGroup=['A','B','C','D','F','G','H','E','I','J','HM'].includes(tab);
     groupSel.value=isGroup?tab:'';
     groupSel.classList.toggle('ftab-select-active',isGroup);
   }
@@ -601,6 +603,7 @@ function _formulaGroupKey(source,title=''){
   if(s.startsWith('F.'))return 'F';
   if(s.startsWith('G.'))return 'G';
   if(s.startsWith('H.'))return 'H';
+  if(s.startsWith('HM'))return 'HM';
   if(title.startsWith('X'))return 'F';
   return 'A';
 }
@@ -628,7 +631,7 @@ function _groupFormulaCards(cards){
   return groups;
 }
 
-function _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,tycoonCards,targetDate}){
+function _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,tycoonCards,hermesCards,targetDate}){
   const el=document.getElementById('formula-summary');
   if(!el)return;
   const counts={
@@ -642,6 +645,7 @@ function _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,tycoonCa
     E:eCards.length,
     I:(imperialCards||[]).length,
     J:(tycoonCards||[]).length,
+    HM:(hermesCards||[]).length,
   };
   const total=Object.values(counts).reduce((a,b)=>a+b,0);
   const targetLabel=targetDate?(()=>{
@@ -654,6 +658,7 @@ function _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,tycoonCa
     ['สูตร 2 ตัว',counts.A+counts.B+counts.E,'พื้นบ้าน · Lottery+ · สายมู'],
     ['สูตร 3 ตัว/รางวัล',counts.C+counts.D+counts.F+counts.G+counts.H,'พิชิตโชค · Arithmetic · Rolling · แม่นขั้นเทพ · มิสเตอร์ซี'],
     ['สูตร 6 ตัว (pool 1-5)',counts.I,'จักรพรรดิ'],
+    ['สูตร 6 ตัว (pool 1-4)',counts.HM,'Hermes · ทดลอง'],
   ].map(([label,value,sub])=>`<div class="formula-summary-item"><div class="formula-summary-label">${label}</div><div class="formula-summary-value">${value}</div><div class="formula-summary-sub">${sub}</div></div>`).join('');
   el.classList.add('active');
 }
@@ -671,7 +676,7 @@ function _formulaEsc(v){
 function _formulaGroupLabel(group){
   return ({
     A:'A · พื้นบ้าน',B:'B · ล็อตเตอรี่พลัส',C:'C · พิชิตโชค',D:'D · Arithmetic',
-    E:'E · สายมู',F:'F · Rolling',G:'G · แม่นขั้นเทพ',H:'H · มิสเตอร์ซี',I:'I · จักรพรรดิ',J:'J · เจ้าสัว'
+    E:'E · สายมู',F:'F · Rolling',G:'G · แม่นขั้นเทพ',H:'H · มิสเตอร์ซี',I:'I · จักรพรรดิ',J:'J · เจ้าสัว',HM:'HM · Hermes Pool 1-4'
   })[group]||group||'-';
 }
 
@@ -1166,6 +1171,52 @@ function _buildPrize1to5Pool(row){
   return pool; // near1+prize2-5 pool; excludes prize1 itself
 }
 
+// ─── HM. Hermes Pool 1-4 — value-weighted digit-position frequency (PRD-hermes-pool-1-4.md) ─
+// Builds the previous draw's prize 1-4 pool as [{num, w}]: prize2 (5 เลข) + prize3 (10 เลข) +
+// prize4 (50 เลข, string คั่น space) = 65 เลข — EXCLUDES near1/prize1/prize5 (เป้าเคร่งครัด
+// รางวัล 1–4 ตามเจ้าของ) โดยแต่ละตัวพกน้ำหนักถ่วงมูลค่าเงินจริง 5:2:1 (200k/80k/40k →
+// W2=1.0, W3=0.4, W4=0.2) — ค่าคงที่ design decision ประกาศล่วงหน้า ไม่ search (ADR-0003)
+// field ว่าง = ข้าม ไม่ padStart กลบ (convention เดียวกับ _buildPrize1to5Pool)
+const HERMES_POOL14_WEIGHTS = { prize2: 1.0, prize3: 0.4, prize4: 0.2 };
+function _buildPrize1to4Pool(row){
+  const pool=[];
+  const W=HERMES_POOL14_WEIGHTS;
+  [['prize2_1','prize2_2','prize2_3','prize2_4','prize2_5',W.prize2],
+   ['prize3_1','prize3_2','prize3_3','prize3_4','prize3_5','prize3_6','prize3_7','prize3_8','prize3_9','prize3_10',W.prize3]
+  ].forEach(cols=>{
+    const w=cols[cols.length-1];
+    cols.slice(0,-1).forEach(k=>{
+      const raw=String(row?.[k]||'').trim();
+      if(!raw)return;
+      const v=raw.padStart(6,'0');
+      if(/^\d{6}$/.test(v))pool.push({num:v,w});
+    });
+  });
+  for(const tok of String(row?.prize4||'').trim().split(/\s+/)){
+    if(/^\d{6}$/.test(tok))pool.push({num:tok,w:W.prize4});
+  }
+  return pool;
+}
+
+// Hermes Pool 1-4 — นับความถี่รายหลัก (ตำแหน่ง 0-5) ถ่วงน้ำหนักตามมูลค่ารางวัลของแต่ละเลขใน
+// pool 1-4 ของงวดก่อนหน้า จัดอันดับ 0-9 ต่อหลัก (tie-break digit น้อยก่อน เหมือน _digitPosFreq)
+// แล้วประกอบ topN ชุดผ่าน _imperialRoundRobin (K=8) — ลายเซ็น Hermes: เน้นสัญญาณจากรางวัลใหญ่
+// (prize2/3) ที่ freq ล้วนแบบ I1 กลบด้วย prize4 50 เลข; ต่างจาก I2/J2 ที่ blend เลขคณิต
+// (Hermes ไม่ใช้เลขคณิต/วันที่เลย — อินพุต = งวดก่อนหน้า 1 งวดเท่านั้น)
+function _hermesPool14Formula(prevRow, topN=10){
+  const pool=_buildPrize1to4Pool(prevRow);
+  if(pool.length===0)return [];
+  const counts=Array.from({length:6},()=>new Array(10).fill(0));
+  for(const e of pool){
+    for(let pos=0;pos<6;pos++)counts[pos][Number(e.num[pos])]+=e.w;
+  }
+  const ranked=counts.map(posCounts=>
+    posCounts.map((count,digit)=>({digit:String(digit),count}))
+      .sort((a,b)=>b.count-a.count || Number(a.digit)-Number(b.digit))
+  );
+  return _imperialRoundRobin(ranked.map(posRanked=>posRanked.map(e=>e.digit)),topN,8);
+}
+
 // Reusable digit-position frequency scorer — counts digit occurrences per
 // position (0-5) across a pool of 6-digit numbers, ranks digits per position
 // by frequency (ties broken by ascending digit value). Reused by จักรพรรดิ and
@@ -1469,6 +1520,25 @@ function _imperialCards(prevRow,nextDay,nextMonth,nextYear2){
     ));
   }
   return cards;
+}
+
+// ─── HM. Hermes Pool 1-4 — การ์ดอธิบายวิธีคิด (tab สูตรคำนวณ) ───────────────────
+// เจ้าของต้องการเห็นวิธีคำนวณสูตรที่คิดค้นใหม่: pool 1-4 (65 เลข) → ถ่วงน้ำหนักมูลค่าเงิน 5:2:1
+// → จัดอันดับรายหลัก → ประกอบ 10 ชุด round-robin (K=8) — data-group="HM" ต้องตรงกับ
+// _formulaGroupKey (ไม่งั้นไปปนกลุ่ม A)
+function _hermesCards(prevRow){
+  const preds=_hermesPool14Formula(prevRow,10);
+  if(!preds.length)return [];
+  const numRow=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(45,212,191,.10);border:1px solid #2dd4bf66;color:#2dd4bf;padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
+  return [_mkFormulaCard(
+    'HM · Hermes Pool 1-4','HM · Hermes Pool 1-4',
+    ['รวม pool รางวัลที่ 2/3/4 ของงวดก่อนหน้าเดียว (65 เลข — ไม่รวมที่ 1/ข้างเคียง/ที่ 5 เพราะเป้าเคร่งครัดรางวัล 1–4)',
+     'นับความถี่รายหลัก (ตำแหน่ง 1-6) ถ่วงน้ำหนักตามมูลค่าเงินรางวัล: ที่2 ×1.0 · ที่3 ×0.4 · ที่4 ×0.2 (สัดส่วน 5:2:1 ตามเงินจริง 200k/80k/40k — กัน prize4 จำนวน 50 เลขกลบสัญญาณรางวัลใหญ่)',
+     'จัดอันดับเลข 0-9 ต่อหลัก แล้วประกอบ 10 ชุดแบบ round-robin (K=8 หลักไม่ซ้ำต่อตำแหน่ง)',
+     `เกณฑ์ถูก (backtest): เลขตรงกับตัวใดตัวหนึ่งใน pool รางวัล 1-4 ของงวดนั้น (${preds.length} ชุด · 66/10⁶)`],
+    [],numRow(preds),
+    'ทดลอง — ทดลองถาวรตาม ADR-0003: เป้า 66/1,000,000 × 458 งวด ≈ 0.30 ครั้งที่คาดถูกโดยบังเอิญตลอดประวัติศาสตร์ ไม่มี gate ใดพิสูจน์ฝีมือจากโชคได้ (เช่นเดียวกับ J2)'
+  )];
 }
 
 // เจ้าสัว pool6 leg (ISSUE-15) — reuses จักรพรรดิทองคำ's per-position blend structure
@@ -1802,6 +1872,7 @@ function runAllFormulas(){
   const imperialPrevRow=_codexHistoryForTarget(predDateStr)[0]||null;
   const imperialCards=imperialPrevRow?_imperialCards(imperialPrevRow,nextDay,nextMonth,nextYear2):[];
   const tycoonCards=imperialPrevRow?_tycoonCards(imperialPrevRow,nextDay,nextMonth,nextYear2):[];
+  const hermesCards=imperialPrevRow?_hermesCards(imperialPrevRow):[];
 
   // กระจายการ์ดเข้า container ตามกลุ่ม
   const grouped=_groupFormulaCards(cards.concat(thepCards,misterCCards));
@@ -1814,8 +1885,9 @@ function runAllFormulas(){
   const groupF=codexCards.concat(patternCards).join('');
   const groupI=imperialCards.join('');
   const groupJ=tycoonCards.join('');
-  const groupAll=cards.concat(codexCards,patternCards,thepCards,misterCCards,eCards,imperialCards,tycoonCards).join('');
-  _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,tycoonCards,targetDate:predDateStr});
+  const groupHM=hermesCards.join('');
+  const groupAll=cards.concat(codexCards,patternCards,thepCards,misterCCards,eCards,imperialCards,tycoonCards,hermesCards).join('');
+  _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,tycoonCards,hermesCards,targetDate:predDateStr});
 
   document.getElementById('formula-results-A').innerHTML=_formulaPanelHtml(groupA,'A');
   document.getElementById('formula-results-B').innerHTML=_formulaPanelHtml(groupB,'B');
@@ -1827,6 +1899,7 @@ function runAllFormulas(){
   document.getElementById('formula-results-E').innerHTML=_formulaPanelHtml(eCards.join(''),'สายมู');
   document.getElementById('formula-results-I').innerHTML=_formulaPanelHtml(groupI,'จักรพรรดิ');
   document.getElementById('formula-results-J').innerHTML=_formulaPanelHtml(groupJ,'เจ้าสัว');
+  document.getElementById('formula-results-HM').innerHTML=_formulaPanelHtml(groupHM,'Hermes Pool 1-4');
   document.getElementById('formula-results-ALL').innerHTML=_formulaPanelHtml(groupAll,'รวมทุกสูตร');
   document.getElementById('formula-empty').style.display='none';
   _formulaHasRun=true;
@@ -2097,6 +2170,14 @@ function _computeFormulasBatch(prev, nextDateStr, historyCtx=[]){
     if(_J2.length)results.push({name:'J2 เจ้าสัว · เลขเต็ม6หลัก',preds:_J2,field:'pool6',baseline:_J2.length,trust:'ทดลอง'});
   }catch(e){}
 
+  // ══ HM. Hermes Pool 1-4 — value-weighted digit freq เป้า pool รางวัล 1-4 (PRD-hermes-pool-1-4.md) ══
+  // ทดลองถาวร per ADR-0003 (66/1e6 × 458 งวด ≈ 0.30 expected chance hits — no gate possible);
+  // group:'HM' explicit เพื่อไม่ให้ 'H' ปน experimentalGroups ของ dcRecommendedNumbers (มิสเตอร์ซี)
+  try{
+    const _HM=_hermesPool14Formula(prev,10);
+    if(_HM.length)results.push({name:'HM · Hermes Pool 1-4',group:'HM',preds:_HM,field:'pool6_14',baseline:_HM.length,trust:'ทดลอง'});
+  }catch(e){}
+
   // ══ F. Pattern Link — train/test derived transition links (ไม่มองอนาคต) ══
   try{
     const _P=_patternLinkFormulas({date:prev.date,prize1:p6,top3:t3,bottom2:b2,front3_1:f31,front3_2:f32,back3_1:bk1,back3_2:bk2},nextDateStr);
@@ -2170,6 +2251,17 @@ async function runFormulaBacktest(){
     const pool6Set=new Set(secondary6);
     if(/^\d{6}$/.test(curr.prize1||''))pool6Set.add(curr.prize1);
     const poolTail3Set=new Set([...pool6Set].map(v=>v.slice(-3)));
+    // pool 1-4 (HM · Hermes Pool 1-4, PRD-hermes-pool-1-4.md): prize1 + prize2×5 + prize3×10 +
+    // prize4×50 = 66 เลข — ไม่รวม near1/prize5 (board แยกตามกติกาคงที่ข้อ 1)
+    const pool14Set=new Set();
+    if(/^\d{6}$/.test(curr.prize1||''))pool14Set.add(curr.prize1);
+    ['prize2_1','prize2_2','prize2_3','prize2_4','prize2_5','prize3_1','prize3_2','prize3_3','prize3_4','prize3_5','prize3_6','prize3_7','prize3_8','prize3_9','prize3_10'].forEach(k=>{
+      const v=(curr[k]||'').padStart(6,'0');
+      if(v.length===6&&/^\d{6}$/.test(v))pool14Set.add(v);
+    });
+    for(const tok of String(curr.prize4||'').trim().split(/\s+/)){
+      if(/^\d{6}$/.test(tok))pool14Set.add(tok);
+    }
     const formulaResults=_computeFormulasBatch(prev,isoDate,historyCtx);
     // Mix เข้าตาราง backtest เฉพาะงวดที่มี pool6 producer (I/J มีข้อมูล Sanook) — เงื่อนไข
     // เดียวกับที่ I1/I2/J2 ข้ามงวดไร้ pool เพื่อให้ baseline pool6 เทียบกันแฟร์
@@ -2179,11 +2271,11 @@ async function runFormulaBacktest(){
     }
     for(const fr of formulaResults){
       if(!stats[fr.name]){
-        stats[fr.name]={hits:0,total:0,preds_n:fr.baseline,field:fr.field,trust:fr.trust||null,mix:fr.mix||false,subHits:0,subTotal:0,slots:fr.slots||2,windows:{}};
+        stats[fr.name]={hits:0,total:0,preds_n:fr.baseline,field:fr.field,trust:fr.trust||null,mix:fr.mix||false,group:fr.group||null,subHits:0,subTotal:0,slots:fr.slots||2,pool14:{hits:0,total:0},windows:{}};
         FORMULA_BT_WINDOWS.forEach(w=>{stats[fr.name].windows[w]={hits:0,total:0};});
       }
       const s=stats[fr.name];
-      const hit=_formulaHitForField(fr,curr,{pool6Set,poolTail3Set});
+      const hit=_formulaHitForField(fr,curr,{pool6Set,poolTail3Set,pool14Set});
       const subHit=hasSecondary?_formulaSecondaryHit(fr,secondary6,secTail2,secTail3):false;
       if(tested<=n){
         s.total++;
@@ -2192,6 +2284,11 @@ async function runFormulaBacktest(){
         if(hasSecondary){
           s.subTotal++;
           if(subHit)s.subHits++;
+        }
+        // Board Pool 1-4 (เปรียบเทียบทุก pool6 producer ด้วยเกณฑ์เดียวกัน — กติกาคงที่ข้อ 1)
+        if(pool14Set.size){
+          s.pool14.total++;
+          if(fr.preds.some(p=>pool14Set.has(String(p))))s.pool14.hits++;
         }
       }
       FORMULA_BT_WINDOWS.forEach(w=>{
@@ -2220,12 +2317,13 @@ async function runFormulaBacktest(){
       const wpct=ws.total?ws.hits/ws.total*100:null;
       rolling[w]={hits:ws.hits,total:ws.total,pct:wpct,edge:wpct==null?null:wpct-baseP};
     });
-    const _GRP={'A':['A · กูชอบ','var(--gold)'],'B':['B · ลอตโตพลัส','#4d9de0'],'C':['C · พิชิตโชค','#a855f7'],'D':['D · Claude','#22d3ee'],'X':['F · Codex','#a3e635'],'G':['G · แม่นขั้นเทพ','#f05454'],'H':['H · มิสเตอร์ซี','#f59e0b'],'E':['E · สายมู','#ec4899'],'I':['I · จักรพรรดิ','#c084fc'],'J':['J · เจ้าสัว','#10b981']};
-    const [group,groupColor]=s.mix?['MIX · รวมทุกสูตร','#f2ca73']:(_GRP[name[0]]||[name[0],'var(--text3)']);
+    const _GRP={'A':['A · กูชอบ','var(--gold)'],'B':['B · ลอตโตพลัส','#4d9de0'],'C':['C · พิชิตโชค','#a855f7'],'D':['D · Claude','#22d3ee'],'X':['F · Codex','#a3e635'],'G':['G · แม่นขั้นเทพ','#f05454'],'H':['H · มิสเตอร์ซี','#f59e0b'],'E':['E · สายมู','#ec4899'],'I':['I · จักรพรรดิ','#c084fc'],'J':['J · เจ้าสัว','#10b981'],'HM':['HM · Hermes Pool 1-4','#2dd4bf']};
+    const gKey=s.group||name[0];
+    const [group,groupColor]=s.mix?['MIX · รวมทุกสูตร','#f2ca73']:(_GRP[gKey]||[gKey,'var(--text3)']);
     const subPct=s.subTotal>0?s.subHits/s.subTotal*100:null;
     const edge50=rolling[50]?.edge??null,edge100=rolling[100]?.edge??null,edge200=rolling[200]?.edge??null;
     const degraded=rolling[200]?.total>=180&&edge200!=null&&edge200<-5;
-    return {name,group,groupColor,field:s.field,typeLabel,board,total:s.total,hits:s.hits,pct,baseP,baseLabel,edge,ciLow,ciHigh,subHits:s.subHits||0,subTotal:s.subTotal||0,subPct,rolling,edge50,edge100,edge200,degraded,trust:s.trust||null};
+    return {name,group,groupColor,field:s.field,typeLabel,board,total:s.total,hits:s.hits,pct,baseP,baseLabel,edge,ciLow,ciHigh,subHits:s.subHits||0,subTotal:s.subTotal||0,subPct,rolling,edge50,edge100,edge200,degraded,trust:s.trust||null,preds_n:s.preds_n,pool14Hits:s.pool14?.hits||0,pool14Total:s.pool14?.total||0};
   });
   _btSortKey='edge';_btSortAsc=false;
   _renderBtTable();
@@ -2307,5 +2405,44 @@ function _renderBtTableLegacy(){
         <span style="background:rgba(240,84,84,.18);color:var(--red);padding:0 5px;border-radius:3px">หลักหน่วย</span> baseline สูง → edge มักต่ำ
       </div>
       <div class="tbl-wrap"><table>${thead}<tbody>${rows.join('')}</tbody></table></div>
-    </div>`;
+    </div>
+    ${_renderPool14Comparison(sorted)}
+  `;
+}
+
+// ตารางเปรียบเทียบ Board Pool 1-4 (PRD-hermes-pool-1-4.md) — ทุกสูตรที่ทายเลขเต็ม 6 หลัก
+// (I1/I2/J2/Mix/Hermes) ถูกวัดซ้ำกับ hit-set รางวัลที่ 1/2/3/4 (66 เลข) ด้วยเกณฑ์เดียวกัน
+// 10 ชุด/งวด — พื้นที่พิสูจน์ "เหนือกว่าทุกสูตร" แบบตรงไปตรงมา (กติกาคงที่ข้อ 1: board แยก)
+function _renderPool14Comparison(rows){
+  const cands=rows.filter(r=>(r.field==='pool6'||r.field==='pool6_14')&&r.pool14Total>0);
+  if(!cands.length)return '';
+  const sorted=[...cands].sort((a,b)=>b.pool14Hits-a.pool14Hits||b.pool14Total-a.pool14Total);
+  const k=Math.max(...cands.map(r=>r.preds_n||10)); // ทุก pool6 producer ปล่อย 10 ชุด (Hermes/I/J/Mix)
+  const baseP=(1-Math.pow(1-66/1e6,k))*100;
+  const tested14=Math.max(...sorted.map(r=>r.pool14Total));
+  const tr=r=>{
+    const pct=r.pool14Total?r.pool14Hits/r.pool14Total*100:0;
+    const edge=pct-baseP;
+    const ec=edge>0?'var(--green)':edge<0?'var(--red)':'var(--text2)';
+    return `<tr>
+      <td><span style="background:${r.groupColor}22;color:${r.groupColor};padding:1px 7px;border-radius:4px;font-size:.7rem;white-space:nowrap;font-weight:600;margin-right:5px">${r.group}</span>${r.name}${r.trust?` <span class="trust-badge">${r.trust}</span>`:''}</td>
+      <td style="text-align:right;font-weight:700;color:${ec}">${r.pool14Hits}</td>
+      <td style="text-align:right">${r.pool14Total}</td>
+      <td style="text-align:right;font-weight:700;color:${ec}">${pct.toFixed(3)}%</td>
+      <td style="text-align:right;font-size:.72rem;color:var(--text3)">${baseP.toFixed(3)}%</td>
+      <td style="text-align:right;font-weight:700;color:${ec}">${edge>=0?'+':''}${edge.toFixed(3)}%</td>
+    </tr>`;
+  };
+  return `<div class="card" style="margin-top:12px">
+    <div class="card-title">🏆 ตารางเปรียบเทียบ Board Pool 1-4 (รางวัลที่ 1/2/3/4 · 66 เลข)</div>
+    <div style="font-size:.72rem;color:var(--text3);margin-bottom:10px">
+      ทุกสูตรที่ทายเลขเต็ม 6 หลักวัดซ้ำด้วยเกณฑ์เดียวกัน — ถูก = เลขตรงตัวใดตัวหนึ่งใน pool รางวัล 1–4 ของงวดนั้น ·
+      baseline สุ่ม ${k} ชุด = ${baseP.toFixed(3)}%/งวด (66/1,000,000) · ${tested14} งวดที่วัดได้ ≈ คาดถูกโดยบังเอิญ ${(tested14*k*66/1e6).toFixed(2)} ครั้งตลอด —
+      ผล "0 hit ทุกสูตร / เทียบไม่ได้" คือผลที่คาดไว้ตาม PRD ไม่ใช่ความล้มเหลว
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>สูตร</th><th style="text-align:right">ถูก</th><th style="text-align:right">งวด</th><th style="text-align:right">%แม่น</th><th style="text-align:right">Baseline</th><th style="text-align:right">Edge</th></tr></thead>
+      <tbody>${sorted.map(tr).join('')}</tbody>
+    </table></div>
+  </div>`;
 }

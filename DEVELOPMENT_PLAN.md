@@ -1,6 +1,6 @@
 # แผนพัฒนา — Thai Lottery Intelligence Dashboard
 
-> อัปเดตล่าสุด: 2026-07-09 · Phase 1–3.7 เสร็จสมบูรณ์ · Phase 4 (FABLE) ถูกยกเลิก · Phase 5 (จักรพรรดิ/จักรพรรดิทองคำ) เสร็จสมบูรณ์ (รวม candidate diversity fix รอบ 2 — round-robin ต่อหลัก) · Phase 6 (เจ้าสัว J1/J2 + ป้ายทดลองบน Picks/เลขแนะนำ) เสร็จสมบูรณ์ · **Phase 7 (จัดชุดซื้อ/Buy Plan — 2 โหมด, EV คู่, ledger บาทจริง) เสร็จสมบูรณ์** · frontend แยกไฟล์ + จัดระเบียบ path เสร็จ · หน้า "สรุปงวดนี้" (Decision Center) ปรับปรุงใหม่ (ตัดซ้ำซ้อน + track record + edge badge) เสร็จสมบูรณ์ — ดู [CHANGELOG.md](CHANGELOG.md) สำหรับประวัติละเอียด
+> อัปเดตล่าสุด: 2026-07-09 · Phase 1–3.7 เสร็จสมบูรณ์ · Phase 4 (FABLE) ถูกยกเลิก · Phase 5 (จักรพรรดิ/จักรพรรดิทองคำ) เสร็จสมบูรณ์ (รวม candidate diversity fix รอบ 2 — round-robin ต่อหลัก) · Phase 6 (เจ้าสัว J1/J2 + ป้ายทดลองบน Picks/เลขแนะนำ) เสร็จสมบูรณ์ · **Phase 7 (จัดชุดซื้อ/Buy Plan — 2 โหมด, EV คู่, ledger บาทจริง) เสร็จสมบูรณ์** · **Phase 8 (Hermes Pool 1-4 — สูตรทายเลขเต็ม 6 หลัก เป้า pool รางวัล 1-4 ถ่วงน้ำหนักมูลค่าเงิน 5:2:1, ทดลองถาวรตาม ADR-0003) เสร็จสมบูรณ์** · frontend แยกไฟล์ + จัดระเบียบ path เสร็จ · หน้า "สรุปงวดนี้" (Decision Center) ปรับปรุงใหม่ (ตัดซ้ำซ้อน + track record + edge badge) เสร็จสมบูรณ์ — ดู [CHANGELOG.md](CHANGELOG.md) สำหรับประวัติละเอียด
 
 ## สถานะปัจจุบัน
 
@@ -55,3 +55,14 @@ FABLE (สูตรที่ใช้ rolling history หลายงวด + po
 - **ISSUE-20 — ปุ่มเชื่อมจาก Mix + เอกสาร:** ปุ่ม "จัดชุดซื้อจากเลขชุดนี้ →" บนหน้า Mix (`bpFromMix`, เปิดโหมดลอตเตอรี่ใบ) — budget-cuts ของ Mix ไม่ถูกแตะ · เอกสารปิดงาน (ไฟล์นี้ + CLAUDE.md + CHANGELOG.md)
 
 **เทส:** `scripts/test_buyplan_build.js` / `_resolve.js` / `_ticket.js` (vm-extracted, fixture-driven — seam ล้วน ไม่แตะ DOM/network) · CSS block `.bp-*` ท้าย `app.css` · bump `?v=buyplan1→4` ครบ 3 ไฟล์
+
+## Phase 8 — Hermes Pool 1-4 (HM): สูตรทายเลขเต็ม 6 หลัก เป้า pool รางวัล 1–4 (เสร็จสมบูรณ์, 2026-08-08)
+
+สูตรที่เจ้าของสั่งคิดค้น (PRD: `PRD-hermes-pool-1-4.md`, สเปกตกลงผ่าน grilling ครบ 5 ข้อ) — ตอบเป้าหมาย "ทำนายเพื่อถูกรางวัลที่ 1/2/3/4" โดย**จำกัดเป้าเป็น pool 1–4 (66 เลข)** ตัด prize5 (100 เลขที่เจือจาง) และข้างเคียงออก ต่างจาก I1/I2/J2/Mix ที่ทาย pool 1–5 (168 เลข)
+
+- **สูตร:** `_hermesPool14Formula` — ความถี่รายหลัก (ตำแหน่ง 1–6) จาก pool รางวัล 2/3/4 ของงวดก่อนหน้า (65 เลข) **ถ่วงน้ำหนักตามมูลค่าเงินจริง 5:2:1** (prize2 ×1.0 / prize3 ×0.4 / prize4 ×0.2 — ค่าคงที่ design, ไม่ search ตาม ADR-0003) → จัดอันดับ 0–9 ต่อหลัก → ประกอบ 10 ชุดผ่าน `_imperialRoundRobin` (K=8) · อินพุต = งวดก่อนหน้า 1 งวดเท่านั้น ไม่ใช้เลขคณิต/วันที่
+- **สถานะ: ทดลองถาวร** per ADR-0003 (J2 precedent) — 457 งวด × 10 ชุด × 66/10⁶ ≈ 0.30 hit ที่คาดโดยบังเอิญตลอดประวัติ → ไม่มี gate พิสูจน์ได้
+- **ผลจริง (ยืนยันตรง engine + ข้อมูลจริง):** ถูก **2 ครั้ง** (คาด 0.30) — `685863` @ 01/02/2024, `086093` @ 30/12/2021 ทั้งคู่เป็นรางวัลที่ 4 · edge **+0.37%** (~6.7× สุ่ม, P(≥2|λ=0.30)≈3.7%) — น่าสนใจแต่ n=2 เล็กเกินจะสรุปอะไร · ตารางเปรียบเทียบ 50 งวดล่าสุด: 0 hit ทุกสูตร = "เทียบไม่ได้" ตามที่ PRD ประกาศ
+- **Refactor ที่มาพร้อมกัน:** `dcRecommendedNumbers` group key = `fr.group || name[0]` (กัน 'HM' → 'H' ปน experimentalGroups → มิสเตอร์ซีไม่ติดป้ายทดลองปลอม) · `_formulaGroupKey` รู้จัก 'HM' · `_GRP['HM']` + `BP_GROUP_MAP.HM` (drift-guard) · `bpGroupsForSources` รู้จัก prefix HM
+- **พื้นผิว:** การ์ดอธิบายวิธีคิด 4 ขั้นตอน (tab สูตรคำนวณ, panel `formula-results-HM` + dropdown) · batch ทำนาย · backtest แถว field `pool6_14` (board "Pool 1-4", baseline 66/10⁶) + **ตารางเปรียบเทียบ Board Pool 1-4** (I1/I2/J2/Mix/Hermes วัดซ้ำเกณฑ์เดียวกัน — พื้นที่พิสูจน์ "เหนือกว่าทุกสูตร")
+- **เทส:** `scripts/test_hermes_pool14.js` ใหม่ (40 checks) + อัปเดต `test_tycoon_formula.js` (trust groups = J+HM) · suite 15 ไฟล์เขียว · browser verify ครบ · bump `?v=macos6 → hermes1`

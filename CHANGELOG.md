@@ -2,6 +2,22 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-08-08 — Hermes Pool 1-4 (HM): สูตรทายเลขเต็ม 6 หลัก เป้า pool รางวัล 1–4 — ทดลองถาวร
+
+PRD: `PRD-hermes-pool-1-4.md` · สเปกตกลงผ่าน grilling ครบ 5 ข้อ (ล่าโจ๊กเกอร์ cover / 66 เลขเคร่งครัด ไม่รวมข้างเคียง / น้ำหนัก 5:2:1 ตามเงินจริง / เข้า batch ด้วย group `'HM'` / การ์ดอธิบายวิธีคิดบน tab สูตรคำนวณ — เจ้าของสั่ง) · ตอบเป้าหมาย "ทำนายเพื่อถูกรางวัลที่ 1/2/3/4"
+
+**สูตร:** `_hermesPool14Formula` — นับความถี่รายหลัก (ตำแหน่ง 1-6) จาก pool รางวัล 2/3/4 ของงวดก่อนหน้า (65 เลข — `_buildPrize1to4Pool` คืน `[{num, w}]`, ไม่รวมที่1/ข้างเคียง/ที่5) **ถ่วงน้ำหนักตามมูลค่าเงินจริง 5:2:1** (prize2 ×1.0 / prize3 ×0.4 / prize4 ×0.2 — ค่าคงที่ design ประกาศล่วงหน้า ไม่ search ตาม ADR-0003) → จัดอันดับ 0–9 ต่อหลัก → ประกอบ 10 ชุดผ่าน `_imperialRoundRobin` (K=8) — ไม่ใช้เลขคณิต/วันที่ (อินพุต = งวดก่อนหน้า 1 งวดเท่านั้น) · **ทดลองถาวร** per ADR-0003 (J2 precedent: 457 งวด × 10 ชุด × 66/10⁶ ≈ 0.30 expected chance hits → ไม่มี gate แยกฝีมือจากโชคได้)
+
+**ผลจริง (ยืนยันด้วยสคริปต์ตรง — engine จริง + ข้อมูล API, 457 งวดที่มี pool 1-4):** ถูก **2 ครั้ง** (คาดโดยบังเอิญ 0.30) — `685863` @ งวด 01/02/2024 และ `086093` @ งวด 30/12/2021 **ทั้งคู่เป็นรางวัลที่ 4 (40,000฿)** · pct 0.438% vs baseline 0.066% → **edge +0.37%** (~6.7× อัตราสุ่ม; P(≥2 hits | λ=0.30) ≈ 3.7%) — น่าสนใจแต่ n=2 เล็กเกินกว่าจะสรุป → คำตัดสินทดลองถาวรไม่เปลี่ยน · ตารางเปรียบเทียบ Board Pool 1-4 (50 งวดล่าสุด): 0 hit ทุกสูตร (I1/I2/J2/Mix/Hermes) = "เทียบไม่ได้" ตามที่ PRD ประกาศ — 2 hits อยู่นอก window นี้
+
+**Refactor group key (กัน H ปน — mine ที่เจอตอน grill):** `dcRecommendedNumbers` (app.js) เปลี่ยน extraction เป็น `fr.group || name[0]` — Hermes carry `group:'HM'` → 'H' (มิสเตอร์ซี) ไม่เข้า `experimentalGroups` → เลขแนะนำของมิสเตอร์ซีไม่ติดป้ายทดลองปลอม (H-pollution test) · `_formulaGroupKey` รู้จัก 'HM' (การ์ดไม่ตก data-group='A' ไปปนพื้นบ้าน) · `_GRP['HM']` + `BP_GROUP_MAP.HM` สี `#2dd4bf` (drift-guard `test_bp_group_map_sync.js` บังคับ sync) · `bpGroupsForSources` รู้จัก prefix HM
+
+**พื้นผิว:** การ์ดอธิบายวิธีคิด 4 ขั้นตอน (tab สูตรคำนวณ — panel `formula-results-HM` ใหม่ + dropdown "HM · Hermes Pool 1-4 (ทดลอง)", render เป็น section แยกแบบ I/J) · batch ทำนาย (การ์ด + badge ทดลอง) · backtest แถว field **`pool6_14`** (board "Pool 1-4", baseline 66/10⁶ ต่อ candidate) + **ตารางเปรียบเทียบ Board Pool 1-4** (`_renderPool14Comparison` — ทุก pool6 producer วัดซ้ำกับ hit-set 66 เลข เกณฑ์เดียวกัน) · เข้า Picks/เลขแนะนำ computation ระดับเดียวกับ J2 (pool6 family ไม่อยู่ใน `DC_RECO_FIELDS` — design เดิม ไม่แก้)
+
+**เทส:** `scripts/test_hermes_pool14.js` ใหม่ (40 checks: pool builder/น้ำหนัก 1.0-0.4-0.2/10 ชุด K=8/distinct จาก I1-I2-J2-Mix/skip/H-pollution/backward-compat group key/การ์ด/bpGroupsForSources) + อัปเดต `test_tycoon_formula.js` (trust groups = J + HM) · suite **15 ไฟล์เขียว** · browser verify ครบ (dropdown/การ์ด/backtest/ตารางเปรียบเทียบ — 0 hit 50 งวด แสดงผลถูก, ไม่มี console error) · bump `?v=macos6 → hermes1`
+
+**หมายเหตุ dev:** `_renderBtTable` ตัวจริงอยู่ที่ **app.js** (formula-engine.js มี `_renderBtTableLegacy` = dead code) — boardOrder ต้องเพิ่ม 'Pool 1-4' และเรียก `_renderPool14Comparison` ที่ app.js; ถ้าจะแตะตาราง backtest ระวังเผลอไปแก้ Legacy
+
 ## 2026-07-09 — จัดชุดซื้อ: อธิบายเหตุผลรายเลข/รายบาท (explainability layer)
 
 จัดชุดซื้อ: อธิบายเหตุผลรายเลข/รายบาท — group dots, strength word (หนุนแรง/กลาง/เบา), ⭐ เลขแนะนำ, และแถวกาง "ทำไมได้เลขนี้/เงินเท่านี้" ทั้งโหมดแทงรายเลขและลอตเตอรี่ใบ. Display-only, ไม่แตะ logic เลข/เงิน. เพิ่ม helper `bpGroupsForSources`/`bpStrengthWord`/`bpRowExplainHtml`/`bpTicketExplainHtml`; ทดสอบใน test_buyplan_build.js (+25) / test_buyplan_ticket.js (+6).

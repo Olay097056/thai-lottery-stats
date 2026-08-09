@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<link rel="stylesheet" href="/static/app.css?v=macos6">
+<link rel="stylesheet" href="/static/app.css?v=hermes1">
 </head>
 <body>
 
@@ -420,6 +420,7 @@
       <option value="E">E · สายมู/ความเชื่อ</option>
       <option value="I">I · จักรพรรดิ</option>
       <option value="J">J · เจ้าสัว (ทดลอง)</option>
+      <option value="HM">HM · Hermes Pool 1-4 (ทดลอง)</option>
     </select>
     <button id="ftab-btn-BT" class="ftab-btn" role="tab" aria-selected="false" aria-controls="formula-results-BT" data-color="orange" data-ftab="BT" onclick="switchFormulaTab('BT')">Backtest</button>
   </div>
@@ -456,6 +457,7 @@
   <div id="formula-results-E" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-E"></div>
   <div id="formula-results-I" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-I"></div>
   <div id="formula-results-J" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-J"></div>
+  <div id="formula-results-HM" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-group-select"></div>
   <div id="formula-results-BT" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-BT">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
       <div class="ctrl-group"><label class="ctrl-label" for="bt-formula-n">จำนวนงวดย้อนหลัง</label><select id="bt-formula-n"><option value="20">20 งวด</option><option value="50" selected>50 งวด</option><option value="100">100 งวด</option><option value="200">200 งวด</option></select></div>
@@ -597,8 +599,8 @@
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script src="/static/formula-engine.js?v=macos6"></script>
-<script src="/static/app.js?v=macos6"></script>
+<script src="/static/formula-engine.js?v=hermes1"></script>
+<script src="/static/app.js?v=hermes1"></script>
 
 </body>
 </html>
