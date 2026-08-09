@@ -1213,7 +1213,7 @@ async function loadDecisionCenter(){
       opts.scales.y.min=0;opts.scales.y.max=100;
       mkChart('dc-trend-chart',{type:'line',data:{
         labels:trend.map(t=>fmtDate(t.date)),
-        datasets:[{label:'% ถูก (rolling 5 งวด)',data:trend.map(t=>t.value),borderColor:'#3dd68c',backgroundColor:'rgba(61,214,140,.15)',tension:.3,fill:true,pointRadius:2}]
+        datasets:[{label:'% ถูก (rolling 5 งวด)',data:trend.map(t=>t.value),borderColor:'#30d158',backgroundColor:'rgba(48,209,88,.15)',tension:.3,fill:true,pointRadius:2}]
       },options:opts});
     }
     if(recoTrend.length){
@@ -1221,7 +1221,7 @@ async function loadDecisionCenter(){
       opts.scales.y.min=0;opts.scales.y.max=100;
       mkChart('dc-reco-trend-chart',{type:'line',data:{
         labels:recoTrend.map(t=>fmtDate(t.date)),
-        datasets:[{label:'เลขแนะนำ % ถูก (rolling 5 งวด)',data:recoTrend.map(t=>t.value),borderColor:'#f2ca73',backgroundColor:'rgba(233,182,77,.15)',tension:.3,fill:true,pointRadius:2}]
+        datasets:[{label:'เลขแนะนำ % ถูก (rolling 5 งวด)',data:recoTrend.map(t=>t.value),borderColor:'#0a84ff',backgroundColor:'rgba(10,132,255,.15)',tension:.3,fill:true,pointRadius:2}]
       },options:opts});
     }
   }catch(e){
@@ -1890,7 +1890,7 @@ async function loadDecisionCenterOld(){
       opts.scales.y.min=0;opts.scales.y.max=100;
       mkChart('dc-trend-chart-old',{type:'line',data:{
         labels:trend.map(t=>fmtDate(t.date)),
-        datasets:[{label:'% ถูก (rolling 5 งวด)',data:trend.map(t=>t.value),borderColor:'#3dd68c',backgroundColor:'rgba(61,214,140,.15)',tension:.3,fill:true,pointRadius:2}]
+        datasets:[{label:'% ถูก (rolling 5 งวด)',data:trend.map(t=>t.value),borderColor:'#30d158',backgroundColor:'rgba(48,209,88,.15)',tension:.3,fill:true,pointRadius:2}]
       },options:opts});
     }
   }catch(e){
@@ -2083,7 +2083,7 @@ async function loadFreq(){
         ? `<div style="color:var(--text3);font-size:.78rem;margin-bottom:8px">ไม่เคยออก ${never.length} เลข:</div>`+never.map(n=>`<span class="num-badge" style="border-color:var(--text3);color:var(--text3)">${n}</span>`).join('')
         : '<span style="color:var(--text3)">ทุกเลขเคยออกแล้ว</span>');
   mkChart('freq-chart',{type:'bar',
-    data:{labels:rows.slice(0,20).map(r=>String(r['เลข']||'')),datasets:[{data:rows.slice(0,20).map(r=>r['จำนวนครั้ง']||0),backgroundColor:'rgba(200,168,75,0.7)',borderWidth:0}]},
+    data:{labels:rows.slice(0,20).map(r=>String(r['เลข']||'')),datasets:[{data:rows.slice(0,20).map(r=>r['จำนวนครั้ง']||0),backgroundColor:'rgba(255,214,10,0.7)',borderWidth:0}]},
     options:chartOpts('ครั้ง')});
 }
 
@@ -3636,7 +3636,7 @@ async function loadMixPage(){
       opts.scales.y.min=0;opts.scales.y.max=100;
       mkChart('mix-trend-chart',{type:'line',data:{
         labels:trend.map(t=>fmtDate(t.date)),
-        datasets:[{label:'Mix % ถูก (rolling 5 งวด)',data:trend.map(t=>t.value),borderColor:'#f2ca73',backgroundColor:'rgba(233,182,77,.15)',tension:.3,fill:true,pointRadius:2}]
+        datasets:[{label:'Mix % ถูก (rolling 5 งวด)',data:trend.map(t=>t.value),borderColor:'#0a84ff',backgroundColor:'rgba(10,132,255,.15)',tension:.3,fill:true,pointRadius:2}]
       },options:opts});
     }
   }catch(e){
@@ -3762,7 +3762,7 @@ async function loadBacktest(){
   document.getElementById('bt-results').style.display='block';
   const pct=v=>v!=null?(v*100).toFixed(2)+'%':'—';
   const lx=v=>v!=null?v.toFixed(2)+'x':'—';
-  const liftColor=v=>v>=2?'#3dd68c':v>=1.2?'#c8a84b':'#f05454';
+  const liftColor=v=>v>=2?'#30d158':v>=1.2?'#ff9f0a':'#ff453a';
   document.getElementById('bt-metrics').innerHTML=`
     <div class="card">
       <div class="card-title">🎯 Front3 Hit Rate (Top-${topn})</div>
@@ -3793,7 +3793,7 @@ async function loadBacktest(){
     data:{labels:['Front3 Lift','Back3 Lift','Combined Lift','Random (1x)'],datasets:[
       {label:'Lift vs Random',
        data:[+(d.front3_lift||0).toFixed(3),+(d.back3_lift||0).toFixed(3),+(d.lift||0).toFixed(3),1],
-       backgroundColor:['rgba(61,214,140,0.7)','rgba(77,157,224,0.7)','rgba(200,168,75,0.7)','rgba(120,120,120,0.4)'],
+       backgroundColor:['rgba(48,209,88,0.7)','rgba(10,132,255,0.7)','rgba(255,214,10,0.7)','rgba(120,120,120,0.4)'],
        borderWidth:0}
     ]},
     options:{...chartOpts('x',true),scales:{y:{min:0,ticks:{callback:v=>v+'x'}}}}});
@@ -3801,8 +3801,23 @@ async function loadBacktest(){
 
 
 // ─── Chart defaults ───────────────────────────────────────────────────────────
+// ธีม macOS แท้ (design-system.md): grid --border2, label --text3 ฟอนต์ระบบ,
+// tooltip พื้น surface ทึบ radius 8. อ่านค่าจาก CSS variables จริงตอน runtime
+const _sysFont="-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI','Noto Sans Thai',sans-serif";
+function _cssVar(name,fallback){
+  const v=getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v||fallback;
+}
 function chartOpts(yLabel='',legend=false){
-  return{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:legend,labels:{color:'#9090a8',font:{size:11}}},tooltip:{callbacks:{label:ctx=>` ${ctx.parsed.y??ctx.parsed.x}`}}},scales:{x:{ticks:{color:'#9090a8',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'}},y:{ticks:{color:'#9090a8',font:{size:10}},grid:{color:'rgba(255,255,255,0.04)'},title:{display:!!yLabel,text:yLabel,color:'#5a5a72'}}}};
+  const tick=_cssVar('--text3','#8e8e93'), grid='rgba(255,255,255,0.09)', title=_cssVar('--text3','#8e8e93');
+  const surf=_cssVar('--surface2','#28282c'), border='rgba(255,255,255,0.14)', txt=_cssVar('--text','#f5f5f7');
+  return{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:legend,labels:{color:tick,font:{family:_sysFont,size:11}}},
+      tooltip:{backgroundColor:surf,borderColor:border,borderWidth:1,cornerRadius:8,padding:9,
+        titleColor:txt,bodyColor:txt,titleFont:{family:_sysFont},bodyFont:{family:_sysFont},
+        callbacks:{label:ctx=>` ${ctx.parsed.y??ctx.parsed.x}`}}},
+    scales:{x:{ticks:{color:tick,font:{family:_sysFont,size:10}},grid:{color:grid}},
+      y:{ticks:{color:tick,font:{family:_sysFont,size:10}},grid:{color:grid},title:{display:!!yLabel,text:yLabel,color:title,font:{family:_sysFont}}}}};
 }
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────

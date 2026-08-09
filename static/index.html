@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<link rel="stylesheet" href="/static/app.css?v=buyplan5">
+<link rel="stylesheet" href="/static/app.css?v=macos6">
 </head>
 <body>
 
@@ -38,7 +38,7 @@
 <!-- DASHBOARD -->
 <div class="page active" id="page-dashboard">
   <div class="dash-hero">
-    <div class="card dash-hero-main">
+    <div class="card card-glass dash-hero-main">
       <div class="dash-hero-top">
         <div>
           <div class="page-title" style="margin-bottom:2px">Dashboard</div>
@@ -60,17 +60,17 @@
       </div>
     </div>
     <div class="dash-side-stack">
-      <div class="card dash-kpi">
+      <div class="card card-glass dash-kpi">
         <div class="card-title">งวดถัดไป</div>
         <div id="countdown-val" style="font-family:'IBM Plex Mono',monospace;font-size:1.4rem;font-weight:700;color:var(--gold2);letter-spacing:1px">—</div>
         <div id="countdown-date" style="font-size:.78rem;color:var(--text3);margin-top:4px"></div>
       </div>
-      <div class="card dash-kpi">
+      <div class="card card-glass dash-kpi">
         <div class="card-title">ข้อมูลล่าสุด</div>
         <div class="stat-val" id="s-date" style="font-size:1.05rem">—</div>
         <div class="stat-sub" id="dash-cache-info">—</div>
       </div>
-      <div class="card dash-kpi">
+      <div class="card card-glass dash-kpi">
         <div class="card-title">งวดทั้งหมด</div>
         <div class="stat-val" id="s-total">—</div>
         <div class="stat-sub" id="dash-range">—</div>
@@ -227,7 +227,7 @@
   <div id="all-pred-grid" style="display:none;margin-top:16px">
     <!-- รางวัลที่ 1 -->
     <div style="margin-bottom:20px">
-      <div class="section-h" style="background:linear-gradient(90deg,#c8a84b22,transparent);border-left:3px solid var(--accent)">🏆 รางวัลที่ 1 (6 หลัก)</div>
+      <div class="section-h" style="background:linear-gradient(90deg,rgba(255,214,10,.12),transparent);border-left:3px solid var(--accent)">🏆 รางวัลที่ 1 (6 หลัก)</div>
       <div class="card predict-card" data-pred-group="prize1" style="border:1px solid var(--accent)44">
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px" id="p1-badges"></div>
         <div class="tbl-wrap" style="max-height:320px;overflow-y:auto">
@@ -597,8 +597,8 @@
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script src="/static/formula-engine.js?v=buyplan5"></script>
-<script src="/static/app.js?v=buyplan5"></script>
+<script src="/static/formula-engine.js?v=macos6"></script>
+<script src="/static/app.js?v=macos6"></script>
 
 </body>
 </html>
