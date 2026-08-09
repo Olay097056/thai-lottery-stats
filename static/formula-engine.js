@@ -612,6 +612,8 @@ function _formulaTargetLabel(title,source,highlights=[]){
   if(title.startsWith('D2')||title.startsWith('X2'))return 'Target: front 3';
   if(title.startsWith('D3')||title.startsWith('X3')||title.startsWith('C3'))return 'Target: back 3';
   if(title.startsWith('D4')||title.startsWith('X4')||title.includes('2530'))return 'Target: prize1 tail';
+  if(/Pool 1-4/.test(title))return 'Target: เลขเต็ม 6 หลัก (pool 1-4 · 66 เลข)';
+  if(/เลขเต็ม6หลัก/.test(title))return 'Target: เลขเต็ม 6 หลัก (pool 1-5 · 168 เลข)';
   if(highlights.some(h=>String(h).length===1))return 'Target: digit/run';
   if(highlights.some(h=>String(h).length===3))return 'Target: 3-digit';
   if(highlights.some(h=>String(h).length>=4))return 'Target: prize1';
@@ -2362,52 +2364,6 @@ function _formulaBtSummaryHtml(rows){
     ${card('ชุดน้อยแต่น่าสนใจ',`${focused.edge>=0?'+':''}${focused.edge.toFixed(1)}%`,focused.name,focused.edge>0?'pos':'')}
     ${card('ควรระวัง',`${risky.edge>=0?'+':''}${risky.edge.toFixed(1)}%`,risky.name,'neg')}
   </div>`;
-}
-
-function _renderBtTableLegacy(){
-  if(!_btRowData.length)return;
-  const sorted=[..._btRowData].sort((a,b)=>{
-    const av=a[_btSortKey],bv=b[_btSortKey];
-    if(typeof av==='string')return _btSortAsc?av.localeCompare(bv):bv.localeCompare(av);
-    return _btSortAsc?av-bv:bv-av;
-  });
-  const arr=k=>k===_btSortKey?(_btSortAsc?' ▲':' ▼'):' ⇅';
-  const th=(label,key,align)=>`<th style="cursor:pointer;user-select:none;white-space:nowrap${align?';text-align:'+align:''}" onclick="btSort('${key}')">${label}${arr(key)}</th>`;
-  const typeColor=t=>t==='หลักหน่วย'?'rgba(240,84,84,.18);color:var(--red)':t==='วิ่ง'?'rgba(168,85,247,.18);color:var(--purple)':'var(--surface2);color:var(--text2)';
-  const rows=sorted.map(r=>{
-    const ec=r.edge>3?'var(--green)':r.edge<-3?'var(--red)':'var(--text2)';
-    const pc=r.edge>3?'var(--green)':r.edge<-3?'var(--red)':'var(--text1)';
-    const badge=r.edge>5?'⭐':r.edge>0?'✓':r.edge<-5?'✗':'~';
-    const bc=r.edge>0?'var(--green)':r.edge<-5?'var(--red)':'var(--text3)';
-    const tc=typeColor(r.typeLabel);
-    return `<tr>
-      <td><span style="background:${r.groupColor}22;color:${r.groupColor};padding:1px 7px;border-radius:4px;font-size:.7rem;white-space:nowrap;font-weight:600;margin-right:5px">${r.group}</span>${r.name}</td>
-      <td><span style="background:${tc};padding:1px 6px;border-radius:3px;font-size:.7rem;white-space:nowrap">${r.typeLabel}</span></td>
-      <td style="text-align:right">${r.total}</td>
-      <td style="text-align:right;font-weight:700;color:${pc}">${r.hits}</td>
-      <td style="text-align:right;font-weight:700;color:${pc}">${r.pct.toFixed(1)}%</td>
-      <td style="text-align:right;font-size:.72rem;color:var(--text3)">${r.baseLabel} = ${r.baseP.toFixed(1)}%</td>
-      <td style="text-align:right;font-weight:700;color:${ec}">${r.edge>=0?'+':''}${r.edge.toFixed(1)}%</td>
-      <td style="text-align:center;font-weight:700;color:${bc}">${badge}</td>
-    </tr>`;
-  });
-  const thead=`<thead><tr>${th('สูตร','name')}${th('ประเภท','typeLabel')}${th('งวด','total','right')}${th('ถูก','hits','right')}${th('%แม่น','pct','right')}${th('Baseline(สุ่ม)','baseP','right')}${th('Edge','edge','right')}<th style="text-align:center">ผล</th></tr></thead>`;
-  document.getElementById('formula-bt-table').innerHTML=`
-    ${_formulaBtSummaryHtml(sorted)}
-    <div class="card">
-      <div class="card-title" style="margin-bottom:6px">ผล Backtest ${_btTested} งวดย้อนหลัง — คลิกหัวตารางเพื่อเรียงลำดับ</div>
-      <div style="font-size:.72rem;color:var(--text3);margin-bottom:12px;display:flex;gap:14px;flex-wrap:wrap">
-        <span><b>Edge</b> = %แม่นจริง − Baseline สุ่ม (เปรียบเทียบ fair ข้ามประเภท)</span>
-        <span style="color:var(--green)">⭐ Edge&gt;5%</span>
-        <span style="color:var(--green)">✓ Edge&gt;0%</span>
-        <span style="color:var(--text3)">~ ≈สุ่ม</span>
-        <span style="color:var(--red)">✗ ต่ำกว่าสุ่ม</span>
-        <span style="background:rgba(240,84,84,.18);color:var(--red);padding:0 5px;border-radius:3px">หลักหน่วย</span> baseline สูง → edge มักต่ำ
-      </div>
-      <div class="tbl-wrap"><table>${thead}<tbody>${rows.join('')}</tbody></table></div>
-    </div>
-    ${_renderPool14Comparison(sorted)}
-  `;
 }
 
 // ตารางเปรียบเทียบ Board Pool 1-4 (PRD-hermes-pool-1-4.md) — ทุกสูตรที่ทายเลขเต็ม 6 หลัก
