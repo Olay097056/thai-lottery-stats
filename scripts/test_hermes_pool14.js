@@ -160,8 +160,11 @@ check('backward compat: name[0] group key still works (J1 → J, badge propagate
   b2Entry && b2Entry.groups.includes('J') && b2Entry.trust === 'ทดลอง');
 
 // ═══ E. สูตรคำนวณ tab card ═══════════════════════════════════════════════════
+// Note: _hermesCards now returns 3 cards — HM (full 6-digit) + HM2 (ท้าย3 ใต้ดิน) + HM3
+// (ท้าย3 ทางการ) per PRD-hm2-hermes-tail3.md. Card[0] remains HM; new cards are covered by
+// test_hermes_tail3.js (section F).
 const cards = sandbox._hermesCards(prevFull);
-check('_hermesCards returns exactly 1 card', Array.isArray(cards) && cards.length === 1);
+check('_hermesCards returns 3 cards (HM + HM2 + HM3)', Array.isArray(cards) && cards.length === 3);
 check('card contains formula name', cards[0].includes('HM · Hermes Pool 1-4'));
 check('card carries trust-badge', cards[0].includes('trust-badge') && cards[0].includes('ทดลอง'));
 check('card data-group="HM"', cards[0].includes('data-group="HM"'));

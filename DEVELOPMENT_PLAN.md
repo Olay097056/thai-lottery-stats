@@ -1,6 +1,6 @@
 # แผนพัฒนา — Thai Lottery Intelligence Dashboard
 
-> อัปเดตล่าสุด: 2026-07-09 · Phase 1–3.7 เสร็จสมบูรณ์ · Phase 4 (FABLE) ถูกยกเลิก · Phase 5 (จักรพรรดิ/จักรพรรดิทองคำ) เสร็จสมบูรณ์ (รวม candidate diversity fix รอบ 2 — round-robin ต่อหลัก) · Phase 6 (เจ้าสัว J1/J2 + ป้ายทดลองบน Picks/เลขแนะนำ) เสร็จสมบูรณ์ · **Phase 7 (จัดชุดซื้อ/Buy Plan — 2 โหมด, EV คู่, ledger บาทจริง) เสร็จสมบูรณ์** · **Phase 8 (Hermes Pool 1-4 — สูตรทายเลขเต็ม 6 หลัก เป้า pool รางวัล 1-4 ถ่วงน้ำหนักมูลค่าเงิน 5:2:1, ทดลองถาวรตาม ADR-0003) เสร็จสมบูรณ์** · frontend แยกไฟล์ + จัดระเบียบ path เสร็จ · หน้า "สรุปงวดนี้" (Decision Center) ปรับปรุงใหม่ (ตัดซ้ำซ้อน + track record + edge badge) เสร็จสมบูรณ์ — ดู [CHANGELOG.md](CHANGELOG.md) สำหรับประวัติละเอียด
+> อัปเดตล่าสุด: 2026-07-09 · Phase 1–3.7 เสร็จสมบูรณ์ · Phase 4 (FABLE) ถูกยกเลิก · Phase 5 (จักรพรรดิ/จักรพรรดิทองคำ) เสร็จสมบูรณ์ (รวม candidate diversity fix รอบ 2 — round-robin ต่อหลัก) · Phase 6 (เจ้าสัว J1/J2 + ป้ายทดลองบน Picks/เลขแนะนำ) เสร็จสมบูรณ์ · **Phase 7 (จัดชุดซื้อ/Buy Plan — 2 โหมด, EV คู่, ledger บาทจริง) เสร็จสมบูรณ์** · **Phase 8 (Hermes Pool 1-4 — สูตรทายเลขเต็ม 6 หลัก เป้า pool รางวัล 1-4 ถ่วงน้ำหนักมูลค่าเงิน 5:2:1, ทดลองถาวรตาม ADR-0003) เสร็จสมบูรณ์** · **Phase 9 (Hermes ท้าย3 ×2 — HM2 ใต้ดิน ท้าย 3 ของ pool 1-4 + HM3 ทางการ เลขท้าย 3 ตัว 4,000฿, ทดลองถาวรตาม ADR-0003) เสร็จสมบูรณ์** · frontend แยกไฟล์ + จัดระเบียบ path เสร็จ · หน้า "สรุปงวดนี้" (Decision Center) ปรับปรุงใหม่ (ตัดซ้ำซ้อน + track record + edge badge) เสร็จสมบูรณ์ — ดู [CHANGELOG.md](CHANGELOG.md) สำหรับประวัติละเอียด
 
 ## สถานะปัจจุบัน
 
@@ -66,3 +66,12 @@ FABLE (สูตรที่ใช้ rolling history หลายงวด + po
 - **Refactor ที่มาพร้อมกัน:** `dcRecommendedNumbers` group key = `fr.group || name[0]` (กัน 'HM' → 'H' ปน experimentalGroups → มิสเตอร์ซีไม่ติดป้ายทดลองปลอม) · `_formulaGroupKey` รู้จัก 'HM' · `_GRP['HM']` + `BP_GROUP_MAP.HM` (drift-guard) · `bpGroupsForSources` รู้จัก prefix HM
 - **พื้นผิว:** การ์ดอธิบายวิธีคิด 4 ขั้นตอน (tab สูตรคำนวณ, panel `formula-results-HM` + dropdown) · batch ทำนาย · backtest แถว field `pool6_14` (board "Pool 1-4", baseline 66/10⁶) + **ตารางเปรียบเทียบ Board Pool 1-4** (I1/I2/J2/Mix/Hermes วัดซ้ำเกณฑ์เดียวกัน — พื้นที่พิสูจน์ "เหนือกว่าทุกสูตร")
 - **เทส:** `scripts/test_hermes_pool14.js` ใหม่ (40 checks) + อัปเดต `test_tycoon_formula.js` (trust groups = J+HM) · suite 15 ไฟล์เขียว · browser verify ครบ · bump `?v=macos6 → hermes1`
+
+## Phase 9 — Hermes ท้าย3 ×2: HM2 (ใต้ดิน · ท้าย 3 ของ pool 1-4) + HM3 (ทางการ · เลขท้าย 3 ตัว 4,000฿) (เสร็จสมบูรณ์, 2026-08-11)
+
+แตกเป้าท้าย 3 ตัวจากผลจริงของ HM (PRD: `PRD-hm2-hermes-tail3.md`, grilling ครบ 12 ข้อ) — HM ถูก 2/457 (6.6× chance) แต่เป้าเต็ม 6 หลักโหดเกินไป → เป้าซอฟต์ลง 1,000 เท่า 2 สนาม
+
+- **HM2 (ใต้ดิน):** `_hermesTail3Formula` — weighted digit freq เฉพาะตำแหน่งท้าย (3,4,5) ของ pool 1-4 (65 เลข, 5:2:1) → ประกอบ 3 หลัก 10 ชุด (K=8) · field ใหม่ `pool14_tail3` (board "Pool 1-4", baseline ~48.3%/งวด — คาด ~221 hits/457) · mark "ใต้ดิน" ติดชื่อตามเจ้าของสั่ง (การ์ด note "สำหรับหวยใต้ดิน (ท้าย 3 ตัว)")
+- **HM3 (ทางการ):** `_hermesOfficialTail3Formula` — กระจกเงา (ตำแหน่งหน้า 0,1,2) → ยิง field `back3` เดิม (board ที่ C3 อยู่ — ไม่สร้าง field ใหม่) · เลขท้าย 3 ตัวทางการออกรางวัลแยกอิสระ uniform → ungateable by construction
+- **ผลจริง (457 งวด):** HM2 203 hits (คาด 220.9) = 0.92×, edge −3.9pts (noise) · HM3 9 hits (คาด 9.1) = 0.99× เป๊ะ — ยืนยันฟิสิกส์; โน้มว่า 6.6× ของ HM คือโชค
+- **เทส:** `scripts/test_hermes_tail3.js` ใหม่ (49 checks) + อัปเดต `test_hermes_pool14.js` (การ์ด 3 ใบ) · suite 17 ไฟล์เขียว · browser verify ครบ · bump `?v=hermes2 → hermes3`
