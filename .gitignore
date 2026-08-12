@@ -51,3 +51,7 @@ target/
 
 # Ralph backup directories (created by migration)
 .ralph_backup_*
+
+# Agent/tooling working dirs
+.superpowers/
+.scratch/
