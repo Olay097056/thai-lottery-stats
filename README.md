@@ -1,3 +1,5 @@
+*English · [ภาษาไทย](README.th.md)*
+
 # Thai Lottery Stats Dashboard
 
 A statistics and decision-support dashboard for Thai government lottery draws — built to answer one question honestly: **do any of these "lucky number formulas" actually beat random chance?**
