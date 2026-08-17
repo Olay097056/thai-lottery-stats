@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>thai-lottery-stats — backtest demo</title>
+<meta name="description" content="รัน backtest สูตรหวยกับผลรางวัลจริงในเบราว์เซอร์ แล้วดูว่าสูตรไหนชนะการสุ่มได้จริง">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0D1117;--panel:#161E2D;--panel-2:#1E283C;--edge:#32415A;
+  --txt:#E2E8F0;--dim:#64748B;
+  --green:#34D399;--green-bg:#0F3C2D;
+  --amber:#FBBF24;--amber-bg:#372A0A;
+  --red:#F87171;--red-bg:#3C0F0F;
+  --blue:#60A5FA;--blue-bg:#0F2850;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --sans:"IBM Plex Sans Thai","IBM Plex Sans",system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--ink);color:var(--txt);font-family:var(--sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:34px 22px 80px}
+a{color:var(--green)}
+h1{font-family:var(--mono);font-size:1.55rem;font-weight:600;letter-spacing:-.02em;margin-top:14px}
+.sub{color:var(--dim);margin-top:8px;max-width:64ch}
+.back{font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;color:var(--dim);text-decoration:none}
+.back:hover{color:var(--txt)}
+.note{margin-top:18px;border-left:2px solid var(--blue);background:rgba(15,40,80,.3);padding:11px 14px;border-radius:0 3px 3px 0;font-size:.88rem;color:#C7D2E0}
+.panel{border:1px solid var(--edge);background:var(--panel);border-radius:4px;padding:18px;margin-top:22px}
+.panel h2{font-family:var(--mono);font-size:.75rem;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin-bottom:14px}
+.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+button{font-family:var(--mono);font-size:.75rem;letter-spacing:.06em;padding:8px 15px;border-radius:3px;cursor:pointer;border:1px solid var(--edge);background:var(--panel-2);color:var(--txt);transition:border-color .2s,background .2s}
+button:hover:not(:disabled){border-color:var(--dim)}
+button:disabled{opacity:.45;cursor:default}
+button.on{background:var(--blue-bg);border-color:#1D4B8F;color:var(--blue)}
+button.go{background:var(--green-bg);border-color:#155E43;color:var(--green)}
+.hint{font-family:var(--mono);font-size:.7rem;color:var(--dim)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
+.tile{border:1px solid var(--edge);border-radius:3px;padding:12px 14px;background:var(--ink)}
+.tile b{display:block;font-family:var(--mono);font-size:1.45rem;font-weight:600;line-height:1.2}
+.tile span{font-family:var(--mono);font-size:.63rem;letter-spacing:.13em;text-transform:uppercase;color:var(--dim)}
+.tile.pos b{color:var(--green)} .tile.neg b{color:var(--red)}
+.verdict{font-family:var(--mono);font-size:.88rem;padding:12px 14px;border-radius:3px;border:1px solid var(--edge);background:var(--ink);margin-bottom:16px;line-height:1.75}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.78rem}
+th{text-align:left;font-weight:600;color:var(--dim);letter-spacing:.09em;text-transform:uppercase;font-size:.62rem;padding:7px 9px;border-bottom:1px solid var(--edge);white-space:nowrap}
+td{padding:7px 9px;border-bottom:1px solid rgba(50,65,90,.35);white-space:nowrap}
+td.nm{font-family:var(--sans);font-size:.82rem;white-space:normal;min-width:180px}
+td.num{text-align:right}
+.edge.pos{color:var(--green)} .edge.neg{color:var(--red)} .edge.zero{color:var(--dim)}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.bar{position:relative;height:5px;background:var(--edge);border-radius:2px;min-width:64px}
+.bar i{position:absolute;top:0;bottom:0;left:50%;border-radius:2px}
+.bar i.pos{background:var(--green)} .bar i.neg{background:var(--red);transform:translateX(-100%)}
+footer{margin-top:34px;font-family:var(--mono);font-size:.68rem;color:var(--dim);line-height:1.9;border-top:1px solid rgba(50,65,90,.45);padding-top:16px}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+@media (max-width:560px){.wrap{padding:24px 15px 60px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="https://github.com/Olay097056/thai-lottery-stats">&larr; GITHUB REPO</a>
+  <h1>thai-lottery-stats</h1>
+  <p class="sub">รัน backtest สูตรหวยกับ<strong>ผลรางวัลจริง</strong>ในเบราว์เซอร์ แล้วดูว่าสูตรไหน<strong>ชนะการสุ่มได้จริง</strong> — คำตอบที่ได้ส่วนใหญ่คือไม่ และนั่นคือประเด็นของโปรเจกต์นี้</p>
+
+  <div class="note">
+    ใช้ <code>static/formula-engine.js</code> ตัวจริงจาก repo นี้โดยตรง ไม่ได้เขียนใหม่ให้ demo
+    ข้อมูลคือผลรางวัลจริงที่ scrape มา <span id="drawinfo">กำลังโหลด…</span>
+    <br><strong>Edge = อัตราถูกจริง − อัตราที่ควรถูกด้วยการสุ่ม</strong> สำหรับการแทงประเภทนั้น —
+    ถ้าไม่หักเส้นฐาน สูตรที่ทายเลข 2 ตัวจะดูเก่งกว่าสูตรที่ทายเลข 3 ตัวเสมอ ทั้งที่ยากคนละระดับ
+    <br>สูตรที่เล็ง pool รางวัล (I / J2 / HM) ไม่อยู่ในหน้านี้ — ต้องประกอบ pool รางวัล 1–5 ต่องวด ซึ่งหนักเกินกว่าจะรันสดในเบราว์เซอร์
+  </div>
+
+  <div class="panel">
+    <h2>ช่วงที่ทดสอบ</h2>
+    <div class="row">
+      <button data-n="50" type="button">50 งวดล่าสุด</button>
+      <button data-n="100" type="button" class="on">100 งวด</button>
+      <button data-n="200" type="button">200 งวด</button>
+      <button data-n="400" type="button">400 งวด</button>
+      <span class="hint" id="status">พร้อม</span>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <span class="hint">ลองสลับช่วงดู — สูตรที่ Edge เป็นบวกในช่วงหนึ่ง มักพลิกเป็นลบในอีกช่วงหนึ่ง นั่นคือหน้าตาของ noise ไม่ใช่ฝีมือ</span>
+    </div>
+  </div>
+
+  <div id="out"></div>
+
+  <footer>
+    <div>เส้นฐานคิดจากประเภทการแทงจริง เช่น เลข 2 ตัวเป๊ะ k ตัว = k/100 · หลักหน่วย k ตัว = k/10 · เลขวิ่ง 1 ตัวใน 2 ช่อง = 1−(9/10)²</div>
+    <div>หน้านี้ทำงานในเบราว์เซอร์ล้วน ไม่มี backend · ผลรางวัลเป็นข้อมูลสาธารณะจากสำนักงานสลากฯ</div>
+  </footer>
+</div>
+
+<script src="../static/formula-engine.js"></script>
+<script>
+(function(){
+  "use strict";
+  var rows = [], N = 100, busy = false;
+
+  var esc = function(s){ return String(s).replace(/[&<>"]/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); };
+
+  /* pool-based fields need the prize 1–5 pool per draw — out of scope here */
+  var SKIP = {pool6:1, pool_tail3:1, pool6_14:1, pool14_tail3:1};
+
+  function parseCSV(text){
+    var lines = text.trim().split(/\r?\n/);
+    var head = lines[0].split(",");
+    var out = [];
+    for (var i = 1; i < lines.length; i++){
+      var c = lines[i].split(","), o = {};
+      for (var j = 0; j < head.length; j++) o[head[j]] = c[j] || "";
+      if (o.date && o.bottom2) out.push(o);
+    }
+    /* newest first — the engine expects rows[0] to be the latest draw */
+    out.sort(function(a,b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+    return out;
+  }
+
+  function backtest(n){
+    var acc = {};   /* name -> {hits, trials, baseSum, field} */
+    var usable = Math.min(n, rows.length - 202);
+    for (var i = 0; i < usable; i++){
+      var target = rows[i], prev = rows[i+1], hist = rows.slice(i+2, i+202);
+      var frs;
+      try { frs = _computeFormulasBatch(prev, target.date, hist) || []; }
+      catch(e){ continue; }
+
+      for (var k = 0; k < frs.length; k++){
+        var fr = frs[k];
+        if (!fr || !fr.preds || !fr.preds.length) continue;
+        if (SKIP[fr.field]) continue;
+        var a = acc[fr.name] || (acc[fr.name] = {hits:0, trials:0, baseSum:0, field:fr.field});
+        a.trials++;
+        if (_formulaHitForField(fr, target)) a.hits++;
+        var b = _formulaBaselineForField(fr.field, fr.preds.length);
+        a.baseSum += (b && typeof b.baseP === "number") ? b.baseP : 0;
+        a.board = b ? b.board : "-";
+        a.typeLabel = b ? b.typeLabel : "-";
+      }
+    }
+    return {acc:acc, draws:usable};
+  }
+
+  function render(res){
+    var acc = res.acc;
+    var list = Object.keys(acc).map(function(name){
+      var a = acc[name];
+      var hitPct = a.trials ? a.hits / a.trials * 100 : 0;
+      var basePct = a.trials ? a.baseSum / a.trials : 0;
+      return {name:name, hits:a.hits, trials:a.trials, hitPct:hitPct, basePct:basePct,
+              edge:hitPct - basePct, board:a.board, typeLabel:a.typeLabel};
+    }).filter(function(r){ return r.trials > 0; });
+
+    list.sort(function(x,y){ return y.edge - x.edge; });
+
+    var pos = list.filter(function(r){ return r.edge > 0; }).length;
+    var best = list[0], worst = list[list.length-1];
+    var maxAbs = Math.max.apply(null, list.map(function(r){ return Math.abs(r.edge); }).concat([1]));
+
+    var h = '<div class="panel"><h2>ผลลัพธ์ — ' + res.draws + ' งวด</h2>';
+    h += '<div class="tiles">'
+      + '<div class="tile"><b>' + list.length + '</b><span>สูตรที่ทดสอบ</span></div>'
+      + '<div class="tile ' + (pos ? "pos" : "") + '"><b>' + pos + '</b><span>Edge เป็นบวก</span></div>'
+      + '<div class="tile neg"><b>' + (list.length - pos) + '</b><span>Edge เป็นลบ</span></div>'
+      + '<div class="tile"><b>' + res.draws + '</b><span>งวดที่ใช้</span></div>'
+      + '</div>';
+
+    h += '<div class="verdict">'
+      + 'ดีที่สุด: <strong>' + esc(best.name) + '</strong> Edge ' + best.edge.toFixed(2) + ' จุด'
+      + ' &nbsp;·&nbsp; แย่ที่สุด: <strong>' + esc(worst.name) + '</strong> Edge ' + worst.edge.toFixed(2) + ' จุด'
+      + '<br><span style="color:var(--dim)">ถ้าไม่มีสูตรไหนมีฝีมือจริงเลย เราก็ยังคาดหวังว่าประมาณครึ่งหนึ่งจะได้ Edge เป็นบวกจากดวงล้วนๆ — '
+      + 'ตัวเลข ' + pos + ' จาก ' + list.length + ' จึงต้องอ่านเทียบกับ ' + Math.round(list.length/2) + ' ไม่ใช่เทียบกับศูนย์</span>'
+      + '</div>';
+
+    h += '<div class="scroll"><table><thead><tr>'
+      + '<th>สูตร</th><th>ประเภท</th><th class="num">งวด</th><th class="num">ถูก</th>'
+      + '<th class="num">อัตราถูก</th><th class="num">เส้นฐาน</th><th class="num">Edge</th><th></th>'
+      + '</tr></thead><tbody>';
+
+    list.forEach(function(r){
+      var cls = r.edge > 0.001 ? "pos" : (r.edge < -0.001 ? "neg" : "zero");
+      var w = Math.abs(r.edge) / maxAbs * 50;
+      h += '<tr>'
+        + '<td class="nm">' + esc(r.name) + '</td>'
+        + '<td style="color:var(--dim)">' + esc(r.typeLabel || "-") + '</td>'
+        + '<td class="num">' + r.trials + '</td>'
+        + '<td class="num">' + r.hits + '</td>'
+        + '<td class="num">' + r.hitPct.toFixed(2) + '%</td>'
+        + '<td class="num" style="color:var(--dim)">' + r.basePct.toFixed(2) + '%</td>'
+        + '<td class="num edge ' + cls + '">' + (r.edge > 0 ? "+" : "") + r.edge.toFixed(2) + '</td>'
+        + '<td><div class="bar"><i class="' + (r.edge >= 0 ? "pos" : "neg") + '" style="width:' + w + '%"></i></div></td>'
+        + '</tr>';
+    });
+
+    h += '</tbody></table></div></div>';
+    document.getElementById("out").innerHTML = h;
+  }
+
+  function run(){
+    if (busy || !rows.length) return;
+    busy = true;
+    var st = document.getElementById("status");
+    st.textContent = "กำลังคำนวณ " + N + " งวด…";
+    document.querySelectorAll("[data-n]").forEach(function(b){ b.disabled = true; });
+
+    setTimeout(function(){
+      var t0 = performance.now();
+      var res = backtest(N);
+      render(res);
+      st.textContent = "เสร็จใน " + Math.round(performance.now() - t0) + " ms";
+      document.querySelectorAll("[data-n]").forEach(function(b){ b.disabled = false; });
+      busy = false;
+    }, 20);
+  }
+
+  document.querySelectorAll("[data-n]").forEach(function(b){
+    b.addEventListener("click", function(){
+      document.querySelectorAll("[data-n]").forEach(function(x){ x.classList.remove("on"); });
+      b.classList.add("on");
+      N = +b.getAttribute("data-n");
+      run();
+    });
+  });
+
+  fetch("draws.csv")
+    .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
+    .then(function(t){
+      rows = parseCSV(t);
+      document.getElementById("drawinfo").textContent =
+        "— " + rows.length + " งวด ตั้งแต่ " + rows[rows.length-1].date + " ถึง " + rows[0].date;
+      run();
+    })
+    .catch(function(e){
+      document.getElementById("status").textContent = "โหลดข้อมูลไม่สำเร็จ: " + e.message;
+    });
+})();
+</script>
+</body>
+</html>
