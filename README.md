@@ -2,6 +2,14 @@
 
 # Thai Lottery Stats Dashboard
 
+### ▶ [Run the backtest in your browser](https://olay097056.github.io/thai-lottery-stats/demo/)
+
+Loads `static/formula-engine.js` — the real engine, not a rewrite — and scores
+every formula against 780 actual draws. Switch the window between 50 and 400
+draws and watch which formulas keep their edge. Most do not.
+
+---
+
 A statistics and decision-support dashboard for Thai government lottery draws — built to answer one question honestly: **do any of these "lucky number formulas" actually beat random chance?**
 
 The short answer the app arrives at is *mostly no*, and that is the point. Rather than shipping a prediction tool that flatters the user, this project puts every formula through a backtest against ~777 real historical draws and reports its **Edge** — accuracy *minus the random baseline for that bet type*. Formulas that can't clear that bar keep a permanent **ทดลอง (Experimental)** badge instead of quietly disappearing.
