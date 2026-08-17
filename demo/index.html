@@ -3,240 +3,486 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>thai-lottery-stats — backtest demo</title>
-<meta name="description" content="รัน backtest สูตรหวยกับผลรางวัลจริงในเบราว์เซอร์ แล้วดูว่าสูตรไหนชนะการสุ่มได้จริง">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<title>Thai Lottery Intelligence — demo</title>
+<meta name="description" content="เดินดูแดชบอร์ดสถิติหวยไทย ทำงานในเบราว์เซอร์ล้วนบนผลรางวัลจริง 780 งวด">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+/* palette ยกมาจาก static/app.css ของแอปจริง */
 :root{
-  --ink:#0D1117;--panel:#161E2D;--panel-2:#1E283C;--edge:#32415A;
-  --txt:#E2E8F0;--dim:#64748B;
-  --green:#34D399;--green-bg:#0F3C2D;
-  --amber:#FBBF24;--amber-bg:#372A0A;
-  --red:#F87171;--red-bg:#3C0F0F;
-  --blue:#60A5FA;--blue-bg:#0F2850;
-  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
-  --sans:"IBM Plex Sans Thai","IBM Plex Sans",system-ui,sans-serif;
+  --bg:#161618;--surface:#1e1e21;--surface2:#28282c;--surface3:#333338;
+  --gold:#ffd60a;--gold2:#ffe14d;--gold-dim:#8f7a10;
+  --text:#f5f5f7;--text2:#aeaeb4;--text3:#8e8e93;
+  --green:#30d158;--red:#ff453a;--orange:#ff9f0a;--blue:#0a84ff;--purple:#bf5af2;
+  --border:rgba(255,255,255,0.14);--border2:rgba(255,255,255,0.09);
+  --radius:12px;--radius-btn:8px;--radius-badge:6px;
+  --shadow-card:0 0 0 .5px rgba(255,255,255,.06) inset, 0 6px 18px rgba(0,0,0,.28);
+  --sidebar:220px;
+  --font:'Noto Sans Thai',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--ink);color:var(--txt);font-family:var(--sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
-.wrap{max-width:1080px;margin:0 auto;padding:34px 22px 80px}
-a{color:var(--green)}
-h1{font-family:var(--mono);font-size:1.55rem;font-weight:600;letter-spacing:-.02em;margin-top:14px}
-.sub{color:var(--dim);margin-top:8px;max-width:64ch}
-.back{font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;color:var(--dim);text-decoration:none}
-.back:hover{color:var(--txt)}
-.note{margin-top:18px;border-left:2px solid var(--blue);background:rgba(15,40,80,.3);padding:11px 14px;border-radius:0 3px 3px 0;font-size:.88rem;color:#C7D2E0}
-.panel{border:1px solid var(--edge);background:var(--panel);border-radius:4px;padding:18px;margin-top:22px}
-.panel h2{font-family:var(--mono);font-size:.75rem;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin-bottom:14px}
-.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
-button{font-family:var(--mono);font-size:.75rem;letter-spacing:.06em;padding:8px 15px;border-radius:3px;cursor:pointer;border:1px solid var(--edge);background:var(--panel-2);color:var(--txt);transition:border-color .2s,background .2s}
-button:hover:not(:disabled){border-color:var(--dim)}
-button:disabled{opacity:.45;cursor:default}
-button.on{background:var(--blue-bg);border-color:#1D4B8F;color:var(--blue)}
-button.go{background:var(--green-bg);border-color:#155E43;color:var(--green)}
-.hint{font-family:var(--mono);font-size:.7rem;color:var(--dim)}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:16px}
-.tile{border:1px solid var(--edge);border-radius:3px;padding:12px 14px;background:var(--ink)}
-.tile b{display:block;font-family:var(--mono);font-size:1.45rem;font-weight:600;line-height:1.2}
-.tile span{font-family:var(--mono);font-size:.63rem;letter-spacing:.13em;text-transform:uppercase;color:var(--dim)}
-.tile.pos b{color:var(--green)} .tile.neg b{color:var(--red)}
-.verdict{font-family:var(--mono);font-size:.88rem;padding:12px 14px;border-radius:3px;border:1px solid var(--edge);background:var(--ink);margin-bottom:16px;line-height:1.75}
-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.78rem}
-th{text-align:left;font-weight:600;color:var(--dim);letter-spacing:.09em;text-transform:uppercase;font-size:.62rem;padding:7px 9px;border-bottom:1px solid var(--edge);white-space:nowrap}
-td{padding:7px 9px;border-bottom:1px solid rgba(50,65,90,.35);white-space:nowrap}
-td.nm{font-family:var(--sans);font-size:.82rem;white-space:normal;min-width:180px}
-td.num{text-align:right}
-.edge.pos{color:var(--green)} .edge.neg{color:var(--red)} .edge.zero{color:var(--dim)}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+
+.ribbon{background:#2a2410;border-bottom:1px solid var(--gold-dim);color:var(--gold2);padding:9px 18px;font-size:.82rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.ribbon b{color:var(--gold)}
+.ribbon a{margin-left:auto;color:var(--gold);text-decoration:none;font-family:var(--mono);font-size:.7rem;border:1px solid var(--gold-dim);border-radius:var(--radius-badge);padding:4px 10px}
+.ribbon a:hover{background:var(--gold-dim);color:#000}
+
+.shell{display:grid;grid-template-columns:var(--sidebar) 1fr;min-height:calc(100% - 40px)}
+
+/* sidebar */
+.side{background:var(--surface);border-right:1px solid var(--border2);padding:20px 0;display:flex;flex-direction:column}
+.logo{padding:0 18px 20px}
+.logo-title{font-size:1.02rem;font-weight:700}
+.logo-sub{font-size:.72rem;color:var(--text3);margin-top:2px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 18px;color:var(--text2);cursor:pointer;font-size:.9rem;border-left:2px solid transparent;background:none;border-top:0;border-right:0;border-bottom:0;width:100%;text-align:left;font-family:inherit}
+.nav-item:hover{background:rgba(255,255,255,.05);color:var(--text)}
+.nav-item.active{background:rgba(255,214,10,.10);color:var(--gold);border-left-color:var(--gold)}
+.nav-icon{width:18px;text-align:center}
+.side-foot{margin-top:auto;padding:14px 18px 0;font-size:.68rem;color:var(--text3);line-height:1.7;border-top:1px solid var(--border2)}
+
+/* main */
+.main{padding:22px 26px 70px;min-width:0}
+.card{background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);box-shadow:var(--shadow-card);padding:20px;margin-bottom:16px}
+.card h2{font-size:1.05rem;font-weight:600}
+.card .sub{color:var(--text3);font-size:.84rem;margin-top:2px}
+
+.hero-top{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.status{margin-left:auto;font-size:.75rem;color:var(--green);background:rgba(48,209,88,.12);border:1px solid rgba(48,209,88,.3);border-radius:var(--radius-badge);padding:4px 10px;white-space:nowrap}
+
+.p1-label{font-size:.72rem;color:var(--text3);letter-spacing:.06em;margin:20px 0 8px}
+.digits{display:flex;gap:8px;flex-wrap:wrap}
+.digit{width:52px;height:66px;border-radius:10px;background:linear-gradient(180deg,var(--surface3),var(--surface2));border:1px solid var(--border);display:grid;place-items:center;font-family:var(--mono);font-size:1.9rem;font-weight:600;color:var(--gold);text-shadow:0 0 18px rgba(255,214,10,.25)}
+
+.subprizes{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px;margin-top:18px}
+.sp{background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:11px 13px}
+.sp .k{font-size:.7rem;color:var(--text3)}
+.sp .v{font-family:var(--mono);font-size:1.15rem;font-weight:600;color:var(--text);margin-top:3px}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px}
+.kpi .k{font-size:.75rem;color:var(--text3)}
+.kpi .v{font-family:var(--mono);font-size:1.7rem;font-weight:600;margin:5px 0 2px}
+.kpi .s{font-size:.72rem;color:var(--text3)}
+.kpi .v.gold{color:var(--gold)}
+
+.btnrow{display:flex;gap:9px;flex-wrap:wrap;margin-top:20px}
+.btn{font-family:inherit;font-size:.85rem;padding:9px 16px;border-radius:var(--radius-btn);cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text)}
+.btn:hover{background:var(--surface3)}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:#161618;font-weight:600}
+.btn.gold:hover{background:var(--gold2)}
+.btn:disabled{opacity:.5;cursor:default}
+
+table{width:100%;border-collapse:collapse;font-size:.83rem}
+th{text-align:left;font-size:.72rem;color:var(--text3);font-weight:500;padding:9px 11px;border-bottom:1px solid var(--border2)}
+td{padding:9px 11px;border-bottom:1px solid var(--border2)}
+td.num,th.num{text-align:right;font-family:var(--mono)}
+td.n{font-family:var(--mono);color:var(--gold);font-weight:600}
+tr:hover td{background:rgba(255,255,255,.03)}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-.bar{position:relative;height:5px;background:var(--edge);border-radius:2px;min-width:64px}
-.bar i{position:absolute;top:0;bottom:0;left:50%;border-radius:2px}
-.bar i.pos{background:var(--green)} .bar i.neg{background:var(--red);transform:translateX(-100%)}
-footer{margin-top:34px;font-family:var(--mono);font-size:.68rem;color:var(--dim);line-height:1.9;border-top:1px solid rgba(50,65,90,.45);padding-top:16px}
+.pos{color:var(--green)} .neg{color:var(--red)} .zero{color:var(--text3)}
+
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.chip{font-size:.8rem;color:var(--text2);background:var(--surface2);border:1px solid var(--border2);border-radius:16px;padding:6px 14px;cursor:pointer;font-family:inherit}
+.chip.on{background:rgba(255,214,10,.14);border-color:var(--gold-dim);color:var(--gold)}
+
+.note{border-left:2px solid var(--blue);background:rgba(10,132,255,.09);padding:11px 14px;border-radius:0 6px 6px 0;font-size:.85rem;color:#c9d9ee;margin-top:14px}
+.warn{border-left:2px solid var(--orange);background:rgba(255,159,10,.09);padding:11px 14px;border-radius:0 6px 6px 0;font-size:.85rem;color:#f0d9b0}
+
+.view{display:none} .view.on{display:block}
+.hint{font-size:.75rem;color:var(--text3)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+
+@media (max-width:860px){
+  :root{--sidebar:0px}
+  .shell{grid-template-columns:1fr}
+  .side{display:none}
+  .main{padding:16px 14px 60px}
+  .digit{width:44px;height:56px;font-size:1.5rem}
+}
 :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
-@media (max-width:560px){.wrap{padding:24px 15px 60px}}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <a class="back" href="https://github.com/Olay097056/thai-lottery-stats">&larr; GITHUB REPO</a>
-  <h1>thai-lottery-stats</h1>
-  <p class="sub">รัน backtest สูตรหวยกับ<strong>ผลรางวัลจริง</strong>ในเบราว์เซอร์ แล้วดูว่าสูตรไหน<strong>ชนะการสุ่มได้จริง</strong> — คำตอบที่ได้ส่วนใหญ่คือไม่ และนั่นคือประเด็นของโปรเจกต์นี้</p>
 
-  <div class="note">
-    ใช้ <code>static/formula-engine.js</code> ตัวจริงจาก repo นี้โดยตรง ไม่ได้เขียนใหม่ให้ demo
-    ข้อมูลคือผลรางวัลจริงที่ scrape มา <span id="drawinfo">กำลังโหลด…</span>
-    <br><strong>Edge = อัตราถูกจริง − อัตราที่ควรถูกด้วยการสุ่ม</strong> สำหรับการแทงประเภทนั้น —
-    ถ้าไม่หักเส้นฐาน สูตรที่ทายเลข 2 ตัวจะดูเก่งกว่าสูตรที่ทายเลข 3 ตัวเสมอ ทั้งที่ยากคนละระดับ
-    <br>สูตรที่เล็ง pool รางวัล (I / J2 / HM) ไม่อยู่ในหน้านี้ — ต้องประกอบ pool รางวัล 1–5 ต่องวด ซึ่งหนักเกินกว่าจะรันสดในเบราว์เซอร์
-  </div>
+<div class="ribbon">
+  <b>demo</b>
+  <span>หน้านี้เป็นแอปตัวจริงย่อส่วน ทำงานในเบราว์เซอร์ล้วน ไม่มี backend ข้อมูลคือผลรางวัลจริงที่ scrape มา 780 งวด</span>
+  <a href="https://github.com/Olay097056/thai-lottery-stats">GITHUB</a>
+</div>
 
-  <div class="panel">
-    <h2>ช่วงที่ทดสอบ</h2>
-    <div class="row">
-      <button data-n="50" type="button">50 งวดล่าสุด</button>
-      <button data-n="100" type="button" class="on">100 งวด</button>
-      <button data-n="200" type="button">200 งวด</button>
-      <button data-n="400" type="button">400 งวด</button>
-      <span class="hint" id="status">พร้อม</span>
+<div class="shell">
+  <aside class="side">
+    <div class="logo">
+      <div class="logo-title">🎯 Lottery Intel</div>
+      <div class="logo-sub">Thai Stats Dashboard</div>
     </div>
-    <div class="row" style="margin-top:12px">
-      <span class="hint">ลองสลับช่วงดู — สูตรที่ Edge เป็นบวกในช่วงหนึ่ง มักพลิกเป็นลบในอีกช่วงหนึ่ง นั่นคือหน้าตาของ noise ไม่ใช่ฝีมือ</span>
+    <button class="nav-item active" data-v="dashboard" type="button"><span class="nav-icon">📊</span>Dashboard</button>
+    <button class="nav-item" data-v="frequency" type="button"><span class="nav-icon">📋</span>ตารางความถี่</button>
+    <button class="nav-item" data-v="formula" type="button"><span class="nav-icon">🔮</span>ทำนาย / สูตร</button>
+    <button class="nav-item" data-v="history" type="button"><span class="nav-icon">📅</span>ผลย้อนหลัง</button>
+    <button class="nav-item" data-v="backtest" type="button"><span class="nav-icon">⚗️</span>Backtest</button>
+    <div class="side-foot">
+      หน้า “ไม่รู้ซื้ออะไรดี” กับ “จัดชุดซื้อ” ไม่ได้อยู่ใน demo
+      เพราะต้องใช้ backend ดูได้ใน repo
     </div>
-  </div>
+  </aside>
 
-  <div id="out"></div>
+  <main class="main">
+    <!-- ── dashboard ─────────────────────────────────────── -->
+    <div class="view on" id="v-dashboard">
+      <div class="card">
+        <div class="hero-top">
+          <div>
+            <h2>Dashboard</h2>
+            <div class="sub">ภาพรวมข้อมูลหวยไทยและจุดที่ควรดูต่อ</div>
+          </div>
+          <div class="status" id="status">กำลังโหลด…</div>
+        </div>
 
-  <footer>
-    <div>เส้นฐานคิดจากประเภทการแทงจริง เช่น เลข 2 ตัวเป๊ะ k ตัว = k/100 · หลักหน่วย k ตัว = k/10 · เลขวิ่ง 1 ตัวใน 2 ช่อง = 1−(9/10)²</div>
-    <div>หน้านี้ทำงานในเบราว์เซอร์ล้วน ไม่มี backend · ผลรางวัลเป็นข้อมูลสาธารณะจากสำนักงานสลากฯ</div>
-  </footer>
+        <div class="p1-label">รางวัลที่ 1 ล่าสุด</div>
+        <div class="digits" id="digits"></div>
+
+        <div class="subprizes" id="subprizes"></div>
+
+        <div class="btnrow">
+          <button class="btn gold" data-go="formula" type="button">ทำนายงวดถัดไป</button>
+          <button class="btn" data-go="backtest" type="button">ดู Backtest</button>
+          <button class="btn" data-go="history" type="button">ดูผลย้อนหลัง</button>
+        </div>
+      </div>
+
+      <div class="kpis">
+        <div class="card kpi"><div class="k">งวดถัดไป</div><div class="v gold" id="kpi-next">—</div><div class="s" id="kpi-next-sub">—</div></div>
+        <div class="card kpi"><div class="k">ข้อมูลล่าสุด</div><div class="v" id="kpi-latest">—</div><div class="s" id="kpi-latest-sub">—</div></div>
+        <div class="card kpi"><div class="k">งวดทั้งหมด</div><div class="v" id="kpi-total">—</div><div class="s" id="kpi-total-sub">—</div></div>
+      </div>
+
+      <div class="card">
+        <h2>เลข 3 ตัวบนที่ออกบ่อยสุด</h2>
+        <div class="sub">นับจาก 24 งวดล่าสุด</div>
+        <div class="scroll" style="margin-top:14px">
+          <table><thead><tr><th class="num">#</th><th>เลข</th><th class="num">ออกกี่ครั้ง</th><th>ออกล่าสุด</th></tr></thead>
+          <tbody id="hot"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── frequency ─────────────────────────────────────── -->
+    <div class="view" id="v-frequency">
+      <div class="card">
+        <h2>ตารางความถี่</h2>
+        <div class="sub">นับจากผลรางวัลจริงทั้งหมดที่มีในไฟล์</div>
+        <div class="chips" id="freq-chips" style="margin-top:16px"></div>
+        <div class="scroll">
+          <table><thead><tr><th class="num">อันดับ</th><th>เลข</th><th class="num">ออกกี่ครั้ง</th><th class="num">สัดส่วน</th><th>ออกล่าสุด</th></tr></thead>
+          <tbody id="freq"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── formula ───────────────────────────────────────── -->
+    <div class="view" id="v-formula">
+      <div class="card">
+        <h2>ทำนาย / สูตร</h2>
+        <div class="sub">เลขที่แต่ละสูตรให้สำหรับงวดถัดไป คำนวณสดจาก <code>formula-engine.js</code> ตัวจริง</div>
+        <div class="warn" style="margin-top:14px">
+          ตัวเลขพวกนี้ไม่ได้แปลว่าจะถูก ดูค่า Edge ของแต่ละสูตรได้ที่หน้า Backtest
+          ส่วนใหญ่ไม่ชนะการสุ่ม
+        </div>
+        <div class="scroll" style="margin-top:14px">
+          <table><thead><tr><th>สูตร</th><th>เล็งช่อง</th><th>เลขที่ให้</th></tr></thead>
+          <tbody id="formulas"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── history ───────────────────────────────────────── -->
+    <div class="view" id="v-history">
+      <div class="card">
+        <h2>ผลย้อนหลัง</h2>
+        <div class="sub">40 งวดล่าสุด</div>
+        <div class="scroll" style="margin-top:14px">
+          <table><thead><tr><th>งวด</th><th>รางวัลที่ 1</th><th>3 ตัวบน</th><th>3 ตัวหน้า</th><th>3 ตัวล่าง</th><th>2 ตัวล่าง</th></tr></thead>
+          <tbody id="history"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── backtest ──────────────────────────────────────── -->
+    <div class="view" id="v-backtest">
+      <div class="card">
+        <h2>Backtest</h2>
+        <div class="sub">ให้คะแนนทุกสูตรกับผลรางวัลจริง โดยหักเส้นฐานของการสุ่มออกแล้ว</div>
+        <div class="note" style="margin-top:14px">
+          <b>Edge = อัตราถูกจริง − อัตราที่ควรถูกด้วยการสุ่ม</b> ของการแทงประเภทนั้น
+          ถ้าไม่หักเส้นฐาน สูตรที่ทายเลข 2 ตัวจะดูเก่งกว่าสูตรที่ทายเลข 3 ตัวเสมอ
+          ทั้งที่ยากคนละระดับ
+          <br>สูตรที่เล็ง pool รางวัล (I / J2 / HM) ไม่อยู่ในหน้านี้
+          เพราะต้องประกอบ pool รางวัล 1–5 ต่องวด หนักเกินกว่าจะรันสดในเบราว์เซอร์
+        </div>
+        <div class="chips" style="margin-top:16px">
+          <button class="chip" data-n="50" type="button">50 งวดล่าสุด</button>
+          <button class="chip on" data-n="100" type="button">100 งวด</button>
+          <button class="chip" data-n="200" type="button">200 งวด</button>
+          <button class="chip" data-n="400" type="button">400 งวด</button>
+          <span class="hint" id="bt-status" style="align-self:center">พร้อม</span>
+        </div>
+        <div id="bt-out"></div>
+      </div>
+    </div>
+  </main>
 </div>
 
 <script src="../static/formula-engine.js"></script>
 <script>
 (function(){
   "use strict";
-  var rows = [], N = 100, busy = false;
+  var rows = [], N = 100, busy = false, freqCol = "top3";
 
-  var esc = function(s){ return String(s).replace(/[&<>"]/g,function(c){
-    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); };
+  var TH_MONTH = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+  function thDate(iso){
+    if (!iso) return "—";
+    var p = iso.split("-");
+    return (+p[2]) + " " + TH_MONTH[+p[1]-1] + " " + (+p[0] + 543);
+  }
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+  function pad(v,w){ return String(v||"").padStart(w,"0"); }
 
-  /* pool-based fields need the prize 1–5 pool per draw — out of scope here */
   var SKIP = {pool6:1, pool_tail3:1, pool6_14:1, pool14_tail3:1};
 
   function parseCSV(text){
-    var lines = text.trim().split(/\r?\n/);
-    var head = lines[0].split(",");
-    var out = [];
-    for (var i = 1; i < lines.length; i++){
+    var lines = text.trim().split(/\r?\n/), head = lines[0].split(","), out = [];
+    for (var i=1;i<lines.length;i++){
       var c = lines[i].split(","), o = {};
-      for (var j = 0; j < head.length; j++) o[head[j]] = c[j] || "";
+      for (var j=0;j<head.length;j++) o[head[j]] = c[j] || "";
       if (o.date && o.bottom2) out.push(o);
     }
-    /* newest first — the engine expects rows[0] to be the latest draw */
     out.sort(function(a,b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
     return out;
   }
 
-  function backtest(n){
-    var acc = {};   /* name -> {hits, trials, baseSum, field} */
-    var usable = Math.min(n, rows.length - 202);
-    for (var i = 0; i < usable; i++){
-      var target = rows[i], prev = rows[i+1], hist = rows.slice(i+2, i+202);
-      var frs;
-      try { frs = _computeFormulasBatch(prev, target.date, hist) || []; }
-      catch(e){ continue; }
+  /* ── dashboard ───────────────────────────────────────────── */
+  function nextDrawDate(){
+    var d = new Date(), y = d.getFullYear(), m = d.getMonth(), day = d.getDate();
+    if (day < 16) return new Date(y, m, 16);
+    return new Date(y, m+1, 1);
+  }
 
-      for (var k = 0; k < frs.length; k++){
+  function renderDashboard(){
+    var L = rows[0];
+    document.getElementById("status").textContent = "พร้อมใช้งาน · " + thDate(L.date);
+
+    document.getElementById("digits").innerHTML =
+      pad(L.prize1,6).split("").map(function(d){ return '<div class="digit">' + d + '</div>'; }).join("");
+
+    var sp = [
+      ["3 ตัวบน", pad(L.top3,3)],
+      ["2 ตัวบน", pad(L.top2,2)],
+      ["3 ตัวหน้า", pad(L.front3_1,3) + " / " + pad(L.front3_2,3)],
+      ["3 ตัวล่าง", pad(L.back3_1,3) + " / " + pad(L.back3_2,3)],
+      ["2 ตัวล่าง", pad(L.bottom2,2)],
+      ["วันที่", thDate(L.date)]
+    ];
+    document.getElementById("subprizes").innerHTML = sp.map(function(x){
+      return '<div class="sp"><div class="k">' + x[0] + '</div><div class="v">' + esc(x[1]) + '</div></div>';
+    }).join("");
+
+    var nd = nextDrawDate(), diff = nd - new Date();
+    var days = Math.max(0, Math.floor(diff/86400000));
+    var hrs = Math.max(0, Math.floor(diff/3600000) % 24);
+    document.getElementById("kpi-next").textContent = days + " วัน " + hrs + " ชม.";
+    document.getElementById("kpi-next-sub").textContent =
+      "งวด " + nd.getDate() + " " + TH_MONTH[nd.getMonth()] + " " + (nd.getFullYear()+543);
+
+    document.getElementById("kpi-latest").textContent = thDate(L.date);
+    document.getElementById("kpi-latest-sub").textContent = "งวดล่าสุดที่มีข้อมูล";
+    document.getElementById("kpi-total").textContent = rows.length.toLocaleString();
+    document.getElementById("kpi-total-sub").textContent = "ตั้งแต่ " + thDate(rows[rows.length-1].date);
+
+    /* hot top3 over the last 24 draws */
+    var win = rows.slice(0,24), c = {}, last = {};
+    win.forEach(function(r){
+      var v = pad(r.top3,3);
+      c[v] = (c[v]||0)+1;
+      if (!last[v]) last[v] = r.date;
+    });
+    var hot = Object.keys(c).sort(function(a,b){ return c[b]-c[a] || (last[b] < last[a] ? -1 : 1); }).slice(0,10);
+    document.getElementById("hot").innerHTML = hot.map(function(v,i){
+      return '<tr><td class="num">' + (i+1) + '</td><td class="n">' + v + '</td>'
+           + '<td class="num">' + c[v] + '</td><td>' + thDate(last[v]) + '</td></tr>';
+    }).join("");
+  }
+
+  /* ── frequency ───────────────────────────────────────────── */
+  var FREQ_COLS = [
+    {k:"top3", label:"3 ตัวบน", w:3},
+    {k:"bottom2", label:"2 ตัวล่าง", w:2},
+    {k:"top2", label:"2 ตัวบน", w:2},
+    {k:"front3_1", label:"3 ตัวหน้า (ใบ 1)", w:3},
+    {k:"back3_1", label:"3 ตัวล่าง (ใบ 1)", w:3}
+  ];
+  function renderFreqChips(){
+    document.getElementById("freq-chips").innerHTML = FREQ_COLS.map(function(c){
+      return '<button class="chip' + (c.k === freqCol ? " on" : "") + '" data-f="' + c.k + '" type="button">' + c.label + '</button>';
+    }).join("");
+    document.querySelectorAll("[data-f]").forEach(function(b){
+      b.addEventListener("click", function(){ freqCol = b.getAttribute("data-f"); renderFreqChips(); renderFreq(); });
+    });
+  }
+  function renderFreq(){
+    var meta = FREQ_COLS.filter(function(c){ return c.k === freqCol; })[0];
+    var c = {}, last = {}, total = 0;
+    rows.forEach(function(r){
+      var v = r[freqCol]; if (!v) return;
+      v = pad(v, meta.w);
+      c[v] = (c[v]||0)+1; total++;
+      if (!last[v]) last[v] = r.date;
+    });
+    var keys = Object.keys(c).sort(function(a,b){ return c[b]-c[a]; }).slice(0,40);
+    document.getElementById("freq").innerHTML = keys.map(function(v,i){
+      return '<tr><td class="num">' + (i+1) + '</td><td class="n">' + v + '</td>'
+           + '<td class="num">' + c[v] + '</td>'
+           + '<td class="num">' + (c[v]/total*100).toFixed(2) + '%</td>'
+           + '<td>' + thDate(last[v]) + '</td></tr>';
+    }).join("");
+  }
+
+  /* ── formula outputs for the next draw ───────────────────── */
+  function renderFormulas(){
+    var prev = rows[0], iso = (function(){
+      var d = nextDrawDate();
+      return d.getFullYear() + "-" + pad(d.getMonth()+1,2) + "-" + pad(d.getDate(),2);
+    })();
+    var frs;
+    try { frs = _computeFormulasBatch(prev, iso, rows.slice(1,201)) || []; }
+    catch(e){ document.getElementById("formulas").innerHTML =
+      '<tr><td colspan="3">คำนวณไม่สำเร็จ: ' + esc(e.message) + '</td></tr>'; return; }
+
+    document.getElementById("formulas").innerHTML = frs.filter(function(f){
+      return f && f.preds && f.preds.length;
+    }).map(function(f){
+      var meta = _formulaBaselineForField(f.field, f.preds.length);
+      return '<tr><td>' + esc(f.name) + '</td>'
+           + '<td style="color:var(--text3)">' + esc(meta && meta.typeLabel || f.field) + '</td>'
+           + '<td class="n">' + f.preds.slice(0,12).map(esc).join(" ") + '</td></tr>';
+    }).join("");
+  }
+
+  /* ── history ─────────────────────────────────────────────── */
+  function renderHistory(){
+    document.getElementById("history").innerHTML = rows.slice(0,40).map(function(r){
+      return '<tr><td>' + thDate(r.date) + '</td>'
+           + '<td class="n">' + pad(r.prize1,6) + '</td>'
+           + '<td class="n">' + pad(r.top3,3) + '</td>'
+           + '<td>' + pad(r.front3_1,3) + " / " + pad(r.front3_2,3) + '</td>'
+           + '<td>' + pad(r.back3_1,3) + " / " + pad(r.back3_2,3) + '</td>'
+           + '<td class="n">' + pad(r.bottom2,2) + '</td></tr>';
+    }).join("");
+  }
+
+  /* ── backtest ────────────────────────────────────────────── */
+  function backtest(n){
+    var acc = {}, usable = Math.min(n, rows.length - 202);
+    for (var i=0;i<usable;i++){
+      var target = rows[i], prev = rows[i+1], hist = rows.slice(i+2, i+202), frs;
+      try { frs = _computeFormulasBatch(prev, target.date, hist) || []; } catch(e){ continue; }
+      for (var k=0;k<frs.length;k++){
         var fr = frs[k];
-        if (!fr || !fr.preds || !fr.preds.length) continue;
-        if (SKIP[fr.field]) continue;
-        var a = acc[fr.name] || (acc[fr.name] = {hits:0, trials:0, baseSum:0, field:fr.field});
+        if (!fr || !fr.preds || !fr.preds.length || SKIP[fr.field]) continue;
+        var a = acc[fr.name] || (acc[fr.name] = {hits:0,trials:0,baseSum:0});
         a.trials++;
         if (_formulaHitForField(fr, target)) a.hits++;
         var b = _formulaBaselineForField(fr.field, fr.preds.length);
         a.baseSum += (b && typeof b.baseP === "number") ? b.baseP : 0;
-        a.board = b ? b.board : "-";
         a.typeLabel = b ? b.typeLabel : "-";
       }
     }
     return {acc:acc, draws:usable};
   }
 
-  function render(res){
-    var acc = res.acc;
-    var list = Object.keys(acc).map(function(name){
-      var a = acc[name];
-      var hitPct = a.trials ? a.hits / a.trials * 100 : 0;
-      var basePct = a.trials ? a.baseSum / a.trials : 0;
-      return {name:name, hits:a.hits, trials:a.trials, hitPct:hitPct, basePct:basePct,
-              edge:hitPct - basePct, board:a.board, typeLabel:a.typeLabel};
+  function renderBacktest(res){
+    var list = Object.keys(res.acc).map(function(name){
+      var a = res.acc[name];
+      var hit = a.trials ? a.hits/a.trials*100 : 0, base = a.trials ? a.baseSum/a.trials : 0;
+      return {name:name, hits:a.hits, trials:a.trials, hit:hit, base:base, edge:hit-base, typeLabel:a.typeLabel};
     }).filter(function(r){ return r.trials > 0; });
-
     list.sort(function(x,y){ return y.edge - x.edge; });
 
     var pos = list.filter(function(r){ return r.edge > 0; }).length;
-    var best = list[0], worst = list[list.length-1];
-    var maxAbs = Math.max.apply(null, list.map(function(r){ return Math.abs(r.edge); }).concat([1]));
+    var half = Math.round(list.length/2);
 
-    var h = '<div class="panel"><h2>ผลลัพธ์ — ' + res.draws + ' งวด</h2>';
-    h += '<div class="tiles">'
-      + '<div class="tile"><b>' + list.length + '</b><span>สูตรที่ทดสอบ</span></div>'
-      + '<div class="tile ' + (pos ? "pos" : "") + '"><b>' + pos + '</b><span>Edge เป็นบวก</span></div>'
-      + '<div class="tile neg"><b>' + (list.length - pos) + '</b><span>Edge เป็นลบ</span></div>'
-      + '<div class="tile"><b>' + res.draws + '</b><span>งวดที่ใช้</span></div>'
+    var h = '<div class="kpis" style="margin:16px 0">'
+      + '<div class="card kpi"><div class="k">สูตรที่ทดสอบ</div><div class="v">' + list.length + '</div><div class="s">ใช้ผลจริง ' + res.draws + ' งวด</div></div>'
+      + '<div class="card kpi"><div class="k">Edge เป็นบวก</div><div class="v pos">' + pos + '</div><div class="s">ถ้าไม่มีสูตรไหนมีฝีมือ ก็ควรได้ราว ' + half + '</div></div>'
+      + '<div class="card kpi"><div class="k">Edge เป็นลบ</div><div class="v neg">' + (list.length-pos) + '</div><div class="s">แพ้เส้นฐานของการสุ่ม</div></div>'
       + '</div>';
 
-    h += '<div class="verdict">'
-      + 'ดีที่สุด: <strong>' + esc(best.name) + '</strong> Edge ' + best.edge.toFixed(2) + ' จุด'
-      + ' &nbsp;·&nbsp; แย่ที่สุด: <strong>' + esc(worst.name) + '</strong> Edge ' + worst.edge.toFixed(2) + ' จุด'
-      + '<br><span style="color:var(--dim)">ถ้าไม่มีสูตรไหนมีฝีมือจริงเลย เราก็ยังคาดหวังว่าประมาณครึ่งหนึ่งจะได้ Edge เป็นบวกจากดวงล้วนๆ — '
-      + 'ตัวเลข ' + pos + ' จาก ' + list.length + ' จึงต้องอ่านเทียบกับ ' + Math.round(list.length/2) + ' ไม่ใช่เทียบกับศูนย์</span>'
-      + '</div>';
-
-    h += '<div class="scroll"><table><thead><tr>'
-      + '<th>สูตร</th><th>ประเภท</th><th class="num">งวด</th><th class="num">ถูก</th>'
-      + '<th class="num">อัตราถูก</th><th class="num">เส้นฐาน</th><th class="num">Edge</th><th></th>'
-      + '</tr></thead><tbody>';
-
+    h += '<div class="scroll"><table><thead><tr><th>สูตร</th><th>ประเภท</th>'
+       + '<th class="num">งวด</th><th class="num">ถูก</th><th class="num">อัตราถูก</th>'
+       + '<th class="num">เส้นฐาน</th><th class="num">Edge</th></tr></thead><tbody>';
     list.forEach(function(r){
-      var cls = r.edge > 0.001 ? "pos" : (r.edge < -0.001 ? "neg" : "zero");
-      var w = Math.abs(r.edge) / maxAbs * 50;
-      h += '<tr>'
-        + '<td class="nm">' + esc(r.name) + '</td>'
-        + '<td style="color:var(--dim)">' + esc(r.typeLabel || "-") + '</td>'
-        + '<td class="num">' + r.trials + '</td>'
-        + '<td class="num">' + r.hits + '</td>'
-        + '<td class="num">' + r.hitPct.toFixed(2) + '%</td>'
-        + '<td class="num" style="color:var(--dim)">' + r.basePct.toFixed(2) + '%</td>'
-        + '<td class="num edge ' + cls + '">' + (r.edge > 0 ? "+" : "") + r.edge.toFixed(2) + '</td>'
-        + '<td><div class="bar"><i class="' + (r.edge >= 0 ? "pos" : "neg") + '" style="width:' + w + '%"></i></div></td>'
-        + '</tr>';
+      var cls = r.edge > .001 ? "pos" : (r.edge < -.001 ? "neg" : "zero");
+      h += '<tr><td>' + esc(r.name) + '</td>'
+         + '<td style="color:var(--text3)">' + esc(r.typeLabel||"-") + '</td>'
+         + '<td class="num">' + r.trials + '</td><td class="num">' + r.hits + '</td>'
+         + '<td class="num">' + r.hit.toFixed(2) + '%</td>'
+         + '<td class="num" style="color:var(--text3)">' + r.base.toFixed(2) + '%</td>'
+         + '<td class="num ' + cls + '">' + (r.edge>0?"+":"") + r.edge.toFixed(2) + '</td></tr>';
     });
-
-    h += '</tbody></table></div></div>';
-    document.getElementById("out").innerHTML = h;
+    h += '</tbody></table></div>';
+    document.getElementById("bt-out").innerHTML = h;
   }
 
-  function run(){
+  function runBacktest(){
     if (busy || !rows.length) return;
     busy = true;
-    var st = document.getElementById("status");
+    var st = document.getElementById("bt-status");
     st.textContent = "กำลังคำนวณ " + N + " งวด…";
     document.querySelectorAll("[data-n]").forEach(function(b){ b.disabled = true; });
-
     setTimeout(function(){
       var t0 = performance.now();
-      var res = backtest(N);
-      render(res);
-      st.textContent = "เสร็จใน " + Math.round(performance.now() - t0) + " ms";
+      renderBacktest(backtest(N));
+      st.textContent = "เสร็จใน " + Math.round(performance.now()-t0) + " ms";
       document.querySelectorAll("[data-n]").forEach(function(b){ b.disabled = false; });
       busy = false;
     }, 20);
   }
 
+  /* ── nav ─────────────────────────────────────────────────── */
+  var built = {};
+  function show(v){
+    document.querySelectorAll(".nav-item").forEach(function(x){ x.classList.toggle("active", x.getAttribute("data-v") === v); });
+    document.querySelectorAll(".view").forEach(function(x){ x.classList.remove("on"); });
+    document.getElementById("v-" + v).classList.add("on");
+    window.scrollTo(0,0);
+    if (built[v]) return;
+    built[v] = true;
+    if (v === "frequency"){ renderFreqChips(); renderFreq(); }
+    if (v === "formula") renderFormulas();
+    if (v === "history") renderHistory();
+    if (v === "backtest") runBacktest();
+  }
+  document.querySelectorAll(".nav-item").forEach(function(b){
+    b.addEventListener("click", function(){ show(b.getAttribute("data-v")); });
+  });
+  document.querySelectorAll("[data-go]").forEach(function(b){
+    b.addEventListener("click", function(){ show(b.getAttribute("data-go")); });
+  });
   document.querySelectorAll("[data-n]").forEach(function(b){
     b.addEventListener("click", function(){
       document.querySelectorAll("[data-n]").forEach(function(x){ x.classList.remove("on"); });
-      b.classList.add("on");
-      N = +b.getAttribute("data-n");
-      run();
+      b.classList.add("on"); N = +b.getAttribute("data-n"); runBacktest();
     });
   });
 
-  fetch("draws.csv")
-    .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); })
-    .then(function(t){
-      rows = parseCSV(t);
-      document.getElementById("drawinfo").textContent =
-        "— " + rows.length + " งวด ตั้งแต่ " + rows[rows.length-1].date + " ถึง " + rows[0].date;
-      run();
-    })
-    .catch(function(e){
-      document.getElementById("status").textContent = "โหลดข้อมูลไม่สำเร็จ: " + e.message;
-    });
+  fetch("draws.csv").then(function(r){ return r.text(); }).then(function(t){
+    rows = parseCSV(t);
+    renderDashboard();
+  }).catch(function(e){
+    document.getElementById("status").textContent = "โหลดข้อมูลไม่สำเร็จ: " + e.message;
+  });
 })();
 </script>
 </body>
