@@ -150,8 +150,24 @@ async function api(path){
   }
 }
 
+// ─── HyperUI theme (light-first) — storage 'lottery_theme' ─────────────────────
+const _THEME_KEY='lottery_theme';
+function _applyTheme(t){
+  document.documentElement.dataset.theme=t;
+  try{localStorage.setItem(_THEME_KEY,t);}catch(e){}
+  const b=document.getElementById('theme-toggle');
+  if(b)b.textContent=(t==='dark')?'☀️':'🌙';
+}
+function getTheme(){
+  try{const s=localStorage.getItem(_THEME_KEY);if(s==='light'||s==='dark')return s;}catch(e){}
+  return document.documentElement.dataset.theme==='dark'?'dark':'light';
+}
+function toggleTheme(){_applyTheme(getTheme()==='dark'?'light':'dark');}
+window.toggleTheme=toggleTheme;
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 async function init(){
+  _applyTheme(getTheme()); // sync toggle icon to persisted theme (no-FOUC already set attribute)
   // Populate selects
   [['pred-col','ALL'],
   ].forEach(([id,type])=>{

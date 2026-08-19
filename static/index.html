@@ -4,10 +4,18 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Thai Lottery Intelligence</title>
+<script>
+  // HyperUI light-first theme — no-FOUC (mirror of app.js applyTheme). storage key lottery_theme
+  (function () {
+    var t = 'light';
+    try { var s = localStorage.getItem('lottery_theme'); if (s === 'light' || s === 'dark') t = s; } catch (e) {}
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<link rel="stylesheet" href="/static/app.css?v=hermes3">
+<link rel="stylesheet" href="/static/app.css?v=hermes5">
 </head>
 <body>
 
@@ -30,6 +38,7 @@
       <span style="color:var(--text2)">งวดล่าสุด:</span> <span id="sidebar-draw-date-val" style="color:var(--gold2);font-weight:600"></span>
     </div>
     <button class="refresh-btn" onclick="refreshData()">↻ รีเฟรชข้อมูล</button>
+    <button class="theme-toggle-btn" id="theme-toggle" onclick="toggleTheme()" title="สลับโหมดมืด/สว่าง" aria-label="สลับโหมดมืด/สว่าง">🌙</button>
   </div>
 </nav>
 
@@ -599,8 +608,8 @@
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script src="/static/formula-engine.js?v=hermes3"></script>
-<script src="/static/app.js?v=hermes3"></script>
+<script src="/static/formula-engine.js?v=hermes5"></script>
+<script src="/static/app.js?v=hermes5"></script>
 
 </body>
 </html>
