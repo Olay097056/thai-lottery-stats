@@ -23,6 +23,7 @@ The short answer the app arrives at is *mostly no*, and that is the point. Rathe
 - **Backtest engine with baseline-adjusted scoring** — every formula is checked against the exact prize slot it claims to target (`bottom2`, `top3`, `back3`, `pool6`, `pool14_tail3`, …), because comparing a 2-digit guess to a 6-digit guess on raw hit rate is meaningless.
 - **Buy Plan page** — turns picks into an actual spending plan with a real-money ledger and honest expected value. The headline EV is the pure mathematical one (−5% per baht on per-number bets, ≈ −40% per lottery ticket); a backtest-adjusted secondary figure renders a noise warning whenever it drifts non-negative.
 - **Track record** — every session auto-snapshots its picks, so the dashboard's own historical hit rate is charted over time and cannot be quietly forgotten.
+- **HyperUI light/dark theme** — the UI is governed by the HyperUI design system (light-first, flat): a single 🌙/☀️ toggle in the sidebar flips the whole app between HyperUI light (gold brand primary) and a HyperUI-gray dark. Preference persists in `localStorage['lottery_theme']` (shared with the demo).
 
 ## Why the honesty machinery exists
 
