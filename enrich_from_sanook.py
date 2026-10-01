@@ -23,11 +23,14 @@ def run(resume: bool = True, delay: float = 0.5):
         if col not in df.columns:
             df[col] = ""
 
-    # เลือกแถวที่ Sanook data ยังไม่ครบ (near1_1 หรือ prize4 ว่าง)
+    # เลือกแถวที่ enrichment field ใด ๆ ยังว่าง เพื่อไม่ทิ้ง partial rows
     if resume:
-        empty = lambda c: df[c].isna() | (df[c] == "")
-        mask = empty("near1_1") | empty("prize4")
-        targets = df[mask]
+        def is_empty(series):
+            text = series.astype(str).str.strip().str.lower()
+            return series.isna() | text.isin(("", "nan", "none", "<na>"))
+
+        incomplete = pd.concat([is_empty(df[col]).rename(col) for col in ENRICH_COLS], axis=1)
+        targets = df[incomplete.any(axis=1)]
     else:
         targets = df
 
@@ -46,8 +49,12 @@ def run(resume: bool = True, delay: float = 0.5):
         sanook = scrape_draw(dt)
         if sanook:
             for col in ENRICH_COLS:
-                val = sanook.get(col, "")
-                df.at[idx, col] = val
+                val = sanook.get(col)
+                if val is None:
+                    continue
+                text = str(val).strip()
+                if text and text.lower() not in ("nan", "none", "<na>"):
+                    df.at[idx, col] = text
             print(f"✓ prize1={sanook.get('prize1','?')} near1={sanook.get('near1_1','?')}")
             updated += 1
             consecutive_fails = 0

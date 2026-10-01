@@ -8,6 +8,7 @@ import time
 import re
 from pathlib import Path
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 _RETRY_DELAYS = (1, 3, 7)  # seconds between retries (3 attempts total)
 
@@ -45,10 +46,14 @@ def _fix_num(v: object, width: int) -> str:
     """Normalise a lottery cell value: '3.0' → '003', '' → ''."""
     if pd.isna(v) or str(v).strip() in ("", "nan"):
         return ""
+    raw = str(v).strip()
     try:
-        return str(int(float(v))).zfill(width)
-    except (ValueError, TypeError):
-        return str(v).strip()
+        numeric = Decimal(raw)
+        if not numeric.is_finite() or numeric < 0 or numeric != numeric.to_integral_value():
+            return raw
+        return str(int(numeric)).zfill(width)
+    except (InvalidOperation, ValueError, TypeError):
+        return raw
 
 
 def scrape_year(year_be: int) -> list[dict]:
@@ -261,17 +266,19 @@ def incremental_update(progress_callback=None) -> pd.DataFrame:
     except Exception as e:
         print(f"  Sanook enrichment skipped: {e}")
 
-    # ลบปีที่ scrape ใหม่ออกจาก cache เดิม แล้ว concat
-    min_new_year = df_new["date"].dt.year.min()
-    df_keep = df_old[df_old["date"].dt.year < min_new_year]
-    # เติม Sanook cols ที่ขาดใน df_old
-    for col in SANOOK_COLS + SANOOK_MULTI_COLS:
-        if col not in df_keep.columns:
-            df_keep = df_keep.copy()
-            df_keep[col] = ""
+    # Merge by date so a partial successful scrape cannot erase cached draws.
+    old_by_date = df_old.drop_duplicates(subset=["date"], keep="last").set_index("date")
+    new_by_date = df_new.drop_duplicates(subset=["date"], keep="last").set_index("date")
+    df_merged = old_by_date.combine_first(new_by_date)
 
-    df_merged = pd.concat([df_keep, df_new], ignore_index=True)
-    df_merged = df_merged.sort_values("date").reset_index(drop=True)
+    # New non-empty values may correct old data; empty parse results preserve it.
+    for col in new_by_date.columns:
+        values = new_by_date[col]
+        text = values.astype(str).str.strip()
+        present = values.notna() & text.ne("") & ~text.str.lower().isin(("nan", "none", "<na>"))
+        df_merged.loc[values.index[present], col] = values.loc[present]
+
+    df_merged = df_merged.sort_index().reset_index()
     df_merged.to_csv(CACHE_FILE, index=False, encoding="utf-8")
     return load_data()
 

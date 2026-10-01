@@ -25,7 +25,10 @@ from analyzer import (
     pair_analysis, consecutive_pattern, decade_comparison,
     number_network_data, ticket_analysis,
 )
-from watchlist import load_watchlist, add_to_watchlist, remove_from_watchlist, watchlist_status
+from watchlist import (
+    WatchlistPersistenceError, load_watchlist, add_to_watchlist,
+    remove_from_watchlist, watchlist_status,
+)
 
 app = FastAPI(title="Lottery Stats API", version="2.0")
 
@@ -125,6 +128,8 @@ def _safe_records(df: pd.DataFrame | None) -> list[dict]:
 
 
 def _safe_str(v) -> str:
+    if isinstance(v, (pd.Timestamp, datetime)):
+        return v.strftime("%Y-%m-%d") if pd.notna(v) else ""
     s = str(v) if v is not None and not (isinstance(v, float) and np.isnan(v)) else ""
     return "" if s in ("nan", "None", "NaT") else s
 
@@ -713,7 +718,10 @@ def api_next_draws():
 def api_get_watchlist(col: str = Query("top3")):
     col = _validate_col(col)
     df = get_df()
-    wl = load_watchlist()
+    try:
+        wl = load_watchlist()
+    except WatchlistPersistenceError as exc:
+        raise HTTPException(status_code=500, detail="watchlist storage unavailable") from exc
     numbers = wl.get(col, [])
     valid_numbers: list[str] = []
     invalid_numbers: list[str] = []
@@ -742,7 +750,10 @@ class WatchlistItem(BaseModel):
 def api_add_watchlist(item: WatchlistItem):
     col = _validate_col(item.col)
     number = _validate_number(col, item.number)
-    wl = add_to_watchlist(col, number)
+    try:
+        wl = add_to_watchlist(col, number)
+    except WatchlistPersistenceError as exc:
+        raise HTTPException(status_code=500, detail="watchlist persistence failed") from exc
     return {"ok": True, "watchlist": wl}
 
 
@@ -750,7 +761,10 @@ def api_add_watchlist(item: WatchlistItem):
 def api_remove_watchlist(col: str = Query(...), number: str = Query(...)):
     col = _validate_col(col)
     number = str(number).strip()
-    wl = remove_from_watchlist(col, number)
+    try:
+        wl = remove_from_watchlist(col, number)
+    except WatchlistPersistenceError as exc:
+        raise HTTPException(status_code=500, detail="watchlist persistence failed") from exc
     return {"ok": True, "watchlist": wl}
 
 

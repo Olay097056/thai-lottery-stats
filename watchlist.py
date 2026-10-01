@@ -9,14 +9,21 @@ from datetime import datetime
 WATCHLIST_FILE = Path(__file__).parent / "watchlist.json"
 
 
+class WatchlistPersistenceError(Exception):
+    """Raised when a watchlist mutation cannot be saved to disk."""
+
+
 def load_watchlist() -> dict:
-    """Returns {col: [numbers]}"""
+    """Returns {col: [numbers]}; corrupt storage is surfaced, never reset silently."""
     if not WATCHLIST_FILE.exists():
         return {}
     try:
-        return json.loads(WATCHLIST_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+        wl = json.loads(WATCHLIST_FILE.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise WatchlistPersistenceError("watchlist storage is unreadable") from exc
+    if not isinstance(wl, dict):
+        raise WatchlistPersistenceError("watchlist data is invalid")
+    return wl
 
 
 def save_watchlist(wl: dict) -> bool:
@@ -36,7 +43,8 @@ def add_to_watchlist(col: str, number: str) -> dict:
         wl[col] = []
     if number not in wl[col]:
         wl[col].append(number)
-    save_watchlist(wl)
+    if not save_watchlist(wl):
+        raise WatchlistPersistenceError("watchlist persistence failed")
     return wl
 
 
@@ -44,7 +52,8 @@ def remove_from_watchlist(col: str, number: str) -> dict:
     wl = load_watchlist()
     if col in wl and number in wl[col]:
         wl[col].remove(number)
-    save_watchlist(wl)
+    if not save_watchlist(wl):
+        raise WatchlistPersistenceError("watchlist persistence failed")
     return wl
 
 
