@@ -30,6 +30,7 @@ const code = [
   'var FORMULA_BT_FIELD_META=' + fieldMetaMatch[1] + ';',
   extract('_formulaBtFieldMeta'),
   extract('_formulaBaselineForField'),
+  extract('_formulaActualDigits'),
   extract('_formulaHitForField'),
 ].join('\n\n');
 

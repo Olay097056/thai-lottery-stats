@@ -44,33 +44,74 @@ function _formulaBaselineForField(field,predsN,slots=2){
   return {...meta.base(Math.max(1,Number(predsN)||1),slots),typeLabel:meta.typeLabel,board:meta.board};
 }
 
+function _formulaActualDigits(actual,key,width,strict=false){
+  if(!actual||actual[key]==null)return null;
+  const raw=String(actual[key]);
+  const value=strict?raw:raw.trim();
+  return new RegExp(`^[0-9]{${width}}$`).test(value)?value:null;
+}
+
+function _formulaDrawValues(actual,keys){
+  const values=keys.map(key=>_formulaActualDigits(actual,key,6));
+  return values.every(Boolean)?values:null;
+}
+
+function _formulaPrizeValues(actual,key,count){
+  const raw=String(actual?.[key]??'').trim();
+  if(!raw)return null;
+  const values=raw.split(/\s+/);
+  return values.length===count&&values.every(value=>/^[0-9]{6}$/.test(value))?values:null;
+}
+
 function _formulaHitForField(fr,actual,pools={}){
   const preds=(fr?.preds||[]).map(String);
-  if(!actual||!preds.length)return false;
-  const p=(v,w)=>String(v||'').padStart(w,'0');
-  if(fr.field==='bottom2')return preds.includes(p(actual.bottom2,2));
-  if(fr.field==='bottom2_unit')return preds.includes(String(actual.bottom2||'').slice(-1));
-  if(fr.field==='back3')return preds.includes(p(actual.back3_1,3))||preds.includes(p(actual.back3_2,3))||preds.includes(String(actual.back3_1||'').slice(-2))||preds.includes(String(actual.back3_2||'').slice(-2));
-  if(fr.field==='prize1_last4_digits'){
-    const tail=p(actual.prize1,6).slice(2);
-    return preds.some((d,i)=>d===tail[i]);
+  if(!preds.length)return null;
+  const p1=_formulaActualDigits(actual,'prize1',6,true);
+  const bottom2=_formulaActualDigits(actual,'bottom2',2);
+  const front1=_formulaActualDigits(actual,'front3_1',3);
+  const front2=_formulaActualDigits(actual,'front3_2',3);
+  const back1=_formulaActualDigits(actual,'back3_1',3);
+  const back2=_formulaActualDigits(actual,'back3_2',3);
+  const field=fr.field;
+  if(field==='bottom2'||field==='bottom2_unit'||field==='run_bottom2'){
+    if(!bottom2)return null;
+    if(field==='bottom2')return preds.includes(bottom2);
+    if(field==='bottom2_unit')return preds.includes(bottom2.slice(-1));
+    return preds.some(d=>bottom2.includes(d));
   }
-  if(fr.field==='front3_unit')return preds.includes(String(actual.front3_1||'').slice(-1))||preds.includes(String(actual.front3_2||'').slice(-1));
-  if(fr.field==='back3_unit')return preds.includes(String(actual.back3_1||'').slice(-1))||preds.includes(String(actual.back3_2||'').slice(-1));
-  if(fr.field==='prize1_unit')return preds.includes(String(actual.prize1||'').slice(-1));
-  if(fr.field==='run_bottom2')return preds.some(d=>p(actual.bottom2,2).includes(d));
-  if(fr.field==='run_front3')return preds.some(d=>(p(actual.front3_1,3)+p(actual.front3_2,3)).includes(d));
-  if(fr.field==='run_back3')return preds.some(d=>(p(actual.back3_1,3)+p(actual.back3_2,3)).includes(d));
-  if(fr.field==='run_prize1back3')return preds.some(d=>p(actual.prize1,6).slice(-3).includes(d));
-  if(fr.field==='front3')return preds.includes(p(actual.front3_1,3))||preds.includes(p(actual.front3_2,3));
-  if(fr.field==='top3')return preds.includes(p(actual.top3,3));
-  if(fr.field==='back3exact')return preds.includes(p(actual.back3_1,3))||preds.includes(p(actual.back3_2,3));
-  if(fr.field==='prize1_last2')return preds.includes(p(actual.prize1,6).slice(-2));
-  if(fr.field==='pool6')return preds.some(n=>pools.pool6Set?.has(n));
-  if(fr.field==='pool_tail3')return preds.some(n=>pools.poolTail3Set?.has(n));
-  if(fr.field==='pool6_14')return preds.some(n=>pools.pool14Set?.has(n));
-  if(fr.field==='pool14_tail3')return preds.some(n=>pools.pool14Tail3Set?.has(n));
-  return false;
+  if(field==='back3'||field==='back3exact'||field==='back3_unit'||field==='run_back3'){
+    if(!back1||!back2)return null;
+    if(field==='back3')return preds.some(n=>n===back1||n===back2||n===back1.slice(-2)||n===back2.slice(-2));
+    if(field==='back3exact')return preds.includes(back1)||preds.includes(back2);
+    if(field==='back3_unit')return preds.includes(back1.slice(-1))||preds.includes(back2.slice(-1));
+    return preds.some(d=>(back1+back2).includes(d));
+  }
+  if(field==='front3'||field==='front3_unit'||field==='run_front3'){
+    if(!front1||!front2)return null;
+    if(field==='front3')return preds.includes(front1)||preds.includes(front2);
+    if(field==='front3_unit')return preds.includes(front1.slice(-1))||preds.includes(front2.slice(-1));
+    return preds.some(d=>(front1+front2).includes(d));
+  }
+  if(field==='prize1_last4_digits'||field==='prize1_last2'||field==='prize1_unit'||field==='run_prize1back3'){
+    if(!p1)return null;
+    if(field==='prize1_last4_digits'){
+      const tail=p1.slice(2);
+      return preds.some((d,i)=>d===tail[i]);
+    }
+    if(field==='prize1_last2')return preds.includes(p1.slice(-2));
+    if(field==='prize1_unit')return preds.includes(p1.slice(-1));
+    return preds.some(d=>p1.slice(-3).includes(d));
+  }
+  if(field==='top3'){
+    const top3=_formulaActualDigits(actual,'top3',3);
+    return top3?preds.includes(top3):null;
+  }
+  if(field==='pool6'||field==='pool_tail3'||field==='pool6_14'||field==='pool14_tail3'){
+    const pool=field==='pool6'?pools.pool6Set:field==='pool_tail3'?pools.poolTail3Set:field==='pool6_14'?pools.pool14Set:pools.pool14Tail3Set;
+    if(!pool||typeof pool.has!=='function'||!pool.size)return null;
+    return preds.some(n=>pool.has(n));
+  }
+  return null;
 }
 
 function _formulaSecondaryHit(fr,secondary6,secTail2,secTail3){
@@ -869,10 +910,14 @@ function _renderFormulaFinalPicks(){
   if(!items.length){el.classList.remove('active');el.innerHTML='';return;}
   const pick=(key,n)=>items.filter(x=>x.typeKey===key).slice(0,n);
   const block=(label,arr)=>`<div class="formula-final-block"><div class="formula-final-label">${label}</div><div class="formula-final-row">${arr.length?arr.map(_formulaConsensusChip).join(''):'<span class="formula-insight-empty">ยังไม่มีเลขซ้ำเด่น</span>'}</div></div>`;
-  const bestFormula=(_btRowData||[]).slice().sort((a,b)=>b.edge-a.edge)[0];
+  const btRows=Array.isArray(_btRowData)?_btRowData:[];
+  const bestFormula=btRows.filter(r=>Number.isFinite(r?.edge)).sort((a,b)=>b.edge-a.edge)[0];
+  const btEmpty=btRows.length
+    ? '<span class="formula-insight-empty">— · ไม่มีข้อมูลครบสำหรับจัดอันดับสูตร</span>'
+    : '<span class="formula-insight-empty">รัน Backtest เพื่อจัดอันดับสูตร</span>';
   const btHtml=bestFormula
     ? `<div class="formula-final-block"><div class="formula-final-label">สูตร Backtest เด่น</div><div class="formula-final-row"><span class="formula-quality bt">${_formulaEsc(bestFormula.edge>=0?'+':'')}${bestFormula.edge.toFixed(1)}%</span><span class="formula-insight-empty">${_formulaEsc(bestFormula.name)}</span></div></div>`
-    : `<div class="formula-final-block"><div class="formula-final-label">สูตร Backtest เด่น</div><div class="formula-final-row"><span class="formula-insight-empty">รัน Backtest เพื่อจัดอันดับสูตร</span></div></div>`;
+    : `<div class="formula-final-block"><div class="formula-final-label">สูตร Backtest เด่น</div><div class="formula-final-row">${btEmpty}</div></div>`;
   el.innerHTML=`<div class="formula-final-card">
     <div class="formula-final-head">
       <div class="formula-final-title">Formula Final Picks</div>
@@ -2303,42 +2348,32 @@ async function runFormulaBacktest(){
   for(let i=0;i<rows.length-1&&tested<targetTest;i++){
     const curr=rows[i];
     const prev=rows[i+1];
-    if(!prev.prize1||!curr.prize1) continue;
+    if(!_formulaActualDigits(prev,'prize1',6,true)||!_formulaActualDigits(curr,'prize1',6,true))continue;
     tested++;
     // สร้าง ISO date ของงวดปัจจุบัน
     let isoDate='';
     if(curr.date){const[d,m,y]=curr.date.split('/').map(Number);isoDate=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
 
     const historyCtx=rows.slice(i+2,i+202); // งวดก่อนหน้า prev สำหรับ rolling scorer (ไม่รวม curr)
-    // pool เลขท้ายรางวัลรอง (near1 + prize2 + prize3) ของงวดปัจจุบัน — ใช้เช็ก "ถูกรอง" แยกจาก hit หลัก
-    const secondary6=[];
-    ['near1_1','near1_2','prize2_1','prize2_2','prize2_3','prize2_4','prize2_5',
-     'prize3_1','prize3_2','prize3_3','prize3_4','prize3_5','prize3_6','prize3_7','prize3_8','prize3_9','prize3_10'
-    ].forEach(k=>{const v=(curr[k]||'').padStart(6,'0');if(v.length===6&&/^\d{6}$/.test(v))secondary6.push(v);});
-    ['prize4','prize5'].forEach(k=>{
-      for(const tok of String(curr[k]||'').trim().split(/\s+/)){
-        if(/^\d{6}$/.test(tok))secondary6.push(tok);
-      }
-    });
+    // Secondary-hit sample is complete only with near1 + all prize2/prize3 values.
+    const near1=_formulaDrawValues(curr,['near1_1','near1_2']);
+    const prize2=_formulaDrawValues(curr,['prize2_1','prize2_2','prize2_3','prize2_4','prize2_5']);
+    const prize3=_formulaDrawValues(curr,['prize3_1','prize3_2','prize3_3','prize3_4','prize3_5','prize3_6','prize3_7','prize3_8','prize3_9','prize3_10']);
+    const hasSecondary=!!(near1&&prize2&&prize3);
+    const secondary6=hasSecondary?[...near1,...prize2,...prize3]:[];
+    const prize4=_formulaPrizeValues(curr,'prize4',50);
+    const prize5=_formulaPrizeValues(curr,'prize5',100);
     const secTail3=new Set(secondary6.map(v=>v.slice(-3)));
     const secTail2=new Set(secondary6.map(v=>v.slice(-2)));
-    const hasSecondary=secondary6.length>0;
     // pool รวมสำหรับสูตรที่อ้างอิงรางวัล 1-5 ทั้งหมด: prize1 + ทุกรางวัลรอง
-    const pool6Set=new Set(secondary6);
-    if(/^\d{6}$/.test(curr.prize1||''))pool6Set.add(curr.prize1);
-    const poolTail3Set=new Set([...pool6Set].map(v=>v.slice(-3)));
+    const pool6Complete=!!(hasSecondary&&prize4&&prize5);
+    const pool6Set=pool6Complete?new Set([curr.prize1,...secondary6,...prize4,...prize5]):null;
+    const poolTail3Set=pool6Set?new Set([...pool6Set].map(v=>v.slice(-3))):null;
     // pool 1-4 (HM · Hermes Pool 1-4, PRD-hermes-pool-1-4.md): prize1 + prize2×5 + prize3×10 +
     // prize4×50 = 66 เลข — ไม่รวม near1/prize5 (board แยกตามกติกาคงที่ข้อ 1)
-    const pool14Set=new Set();
-    if(/^\d{6}$/.test(curr.prize1||''))pool14Set.add(curr.prize1);
-    ['prize2_1','prize2_2','prize2_3','prize2_4','prize2_5','prize3_1','prize3_2','prize3_3','prize3_4','prize3_5','prize3_6','prize3_7','prize3_8','prize3_9','prize3_10'].forEach(k=>{
-      const v=(curr[k]||'').padStart(6,'0');
-      if(v.length===6&&/^\d{6}$/.test(v))pool14Set.add(v);
-    });
-    for(const tok of String(curr.prize4||'').trim().split(/\s+/)){
-      if(/^\d{6}$/.test(tok))pool14Set.add(tok);
-    }
-    const pool14Tail3Set=new Set([...pool14Set].map(v=>v.slice(-3))); // HM2 · Hermes ท้าย3 ใต้ดิน
+    const pool14Complete=!!(prize2&&prize3&&prize4);
+    const pool14Set=pool14Complete?new Set([curr.prize1,...prize2,...prize3,...prize4]):null;
+    const pool14Tail3Set=pool14Set?new Set([...pool14Set].map(v=>v.slice(-3))):null; // HM2 · Hermes ท้าย3 ใต้ดิน
     const formulaResults=_computeFormulasBatch(prev,isoDate,historyCtx);
     // Mix เข้าตาราง backtest เฉพาะงวดที่มี pool6 producer (I/J มีข้อมูล Sanook) — เงื่อนไข
     // เดียวกับที่ I1/I2/J2 ข้ามงวดไร้ pool เพื่อให้ baseline pool6 เทียบกันแฟร์
@@ -2355,23 +2390,26 @@ async function runFormulaBacktest(){
       const hit=_formulaHitForField(fr,curr,{pool6Set,poolTail3Set,pool14Set,pool14Tail3Set});
       const subHit=hasSecondary?_formulaSecondaryHit(fr,secondary6,secTail2,secTail3):false;
       if(tested<=n){
-        s.total++;
-        if(hit)s.hits++;
+        if(hit!==null){
+          s.total++;
+          if(hit)s.hits++;
+        }
         if(fr.slots)s.slots=fr.slots;
-        if(hasSecondary){
+        if(hasSecondary&&Array.isArray(fr.preds)&&fr.preds.length){
           s.subTotal++;
           if(subHit)s.subHits++;
         }
         // Board Pool 1-4 (เปรียบเทียบทุก pool6 producer ด้วยเกณฑ์เดียวกัน — กติกาคงที่ข้อ 1);
         // guard length===6 — preds 3 หลัก (HM2/HM3/C3) เทียบกับ hit-set 66 เลขเต็ม 6 หลักไม่ได้
         // (จะโชว์ 0/457 หลอกตา) → ข้าม
-        if(pool14Set.size){
+        const pool14Preds=Array.isArray(fr.preds)?fr.preds.map(String).filter(p=>/^[0-9]{6}$/.test(p)):[];
+        if(pool14Set?.size&&pool14Preds.length){
           s.pool14.total++;
-          if(fr.preds.some(p=>String(p).length===6&&pool14Set.has(String(p))))s.pool14.hits++;
+          if(pool14Preds.some(p=>pool14Set.has(p)))s.pool14.hits++;
         }
       }
       FORMULA_BT_WINDOWS.forEach(w=>{
-        if(tested>w)return;
+        if(tested>w||hit===null)return;
         const ws=s.windows[w]||(s.windows[w]={hits:0,total:0});
         ws.total++;
         if(hit)ws.hits++;
@@ -2383,18 +2421,22 @@ async function runFormulaBacktest(){
   selectedTested=Math.min(tested,n);
   _btTested=selectedTested;
   _btRowData=Object.entries(stats).map(([name,s])=>{
-    const pct=s.total?s.hits/s.total*100:0;
-    const {baseP,baseLabel,typeLabel,board}= _formulaBaselineForField(s.field,s.preds_n,s.slots||2);
-    const edge=pct-baseP;
-    const p=s.hits/Math.max(s.total,1);
-    const se=Math.sqrt(Math.max(p*(1-p),0)/Math.max(s.total,1))*100;
-    const ciLow=Math.max(0,pct-1.96*se);
-    const ciHigh=Math.min(100,pct+1.96*se);
+    const hasSample=s.total>0;
+    const pct=hasSample?s.hits/s.total*100:null;
+    const baseline=_formulaBaselineForField(s.field,s.preds_n,s.slots||2);
+    const baseP=hasSample?baseline.baseP:null;
+    const baseLabel=hasSample?baseline.baseLabel:'—';
+    const {typeLabel,board}=baseline;
+    const edge=hasSample?pct-baseP:null;
+    const p=hasSample?s.hits/s.total:null;
+    const se=hasSample?Math.sqrt(Math.max(p*(1-p),0)/s.total)*100:null;
+    const ciLow=se==null?null:Math.max(0,pct-1.96*se);
+    const ciHigh=se==null?null:Math.min(100,pct+1.96*se);
     const rolling={};
     FORMULA_BT_WINDOWS.forEach(w=>{
       const ws=s.windows?.[w]||{hits:0,total:0};
       const wpct=ws.total?ws.hits/ws.total*100:null;
-      rolling[w]={hits:ws.hits,total:ws.total,pct:wpct,edge:wpct==null?null:wpct-baseP};
+      rolling[w]={hits:ws.hits,total:ws.total,pct:wpct,edge:wpct==null?null:wpct-baseline.baseP};
     });
     const _GRP={'A':['A · กูชอบ','var(--gold)'],'B':['B · ลอตโตพลัส','#4d9de0'],'C':['C · พิชิตโชค','#a855f7'],'D':['D · Claude','#22d3ee'],'X':['F · Codex','#a3e635'],'G':['G · แม่นขั้นเทพ','#f05454'],'H':['H · มิสเตอร์ซี','#f59e0b'],'E':['E · สายมู','#ec4899'],'I':['I · จักรพรรดิ','#c084fc'],'J':['J · เจ้าสัว','#10b981'],'HM':['HM · Hermes Pool 1-4','#2dd4bf']};
     const gKey=s.group||name[0];
@@ -2430,10 +2472,12 @@ function btSort(key){
 
 function _formulaBtSummaryHtml(rows){
   if(!rows.length)return '';
-  const bestEdge=[...rows].sort((a,b)=>b.edge-a.edge)[0];
-  const bestHit=[...rows].sort((a,b)=>b.pct-a.pct)[0];
-  const focused=[...rows].filter(r=>(r.baseP||0)<=2).sort((a,b)=>b.edge-a.edge)[0]||bestEdge;
-  const risky=[...rows].filter(r=>r.edge<0).sort((a,b)=>a.edge-b.edge)[0]||rows[rows.length-1];
+  const scored=rows.filter(r=>Number.isFinite(r.edge)&&Number.isFinite(r.pct));
+  if(!scored.length)return '<div class="formula-tab-empty" style="display:block">ยังไม่มีผลที่มีข้อมูลครบสำหรับคำนวณ Hit rate / Edge —</div>';
+  const bestEdge=[...scored].sort((a,b)=>b.edge-a.edge)[0];
+  const bestHit=[...scored].sort((a,b)=>b.pct-a.pct)[0];
+  const focused=[...scored].filter(r=>r.baseP<=2).sort((a,b)=>b.edge-a.edge)[0]||bestEdge;
+  const risky=[...scored].filter(r=>r.edge<0).sort((a,b)=>a.edge-b.edge)[0]||scored[scored.length-1];
   const card=(label,value,sub,cls='')=>`<div class="bt-summary-card"><div class="bt-summary-label">${label}</div><div class="bt-summary-value ${cls}">${value}</div><div class="bt-summary-sub" title="${_formulaEsc(sub||'')}">${_formulaEsc(sub||'-')}</div></div>`;
   return `<div class="bt-summary-board">
     ${card('Best edge',`${bestEdge.edge>=0?'+':''}${bestEdge.edge.toFixed(1)}%`,bestEdge.name,bestEdge.edge>0?'pos':'')}

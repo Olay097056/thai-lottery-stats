@@ -3694,22 +3694,23 @@ function _renderBtTable(){
     return `<span style="white-space:nowrap;color:${c}">W${w}: ${rw.edge>=0?'+':''}${rw.edge.toFixed(1)}%</span>`;
   }).join('<br>');
   const rowHtml=r=>{
-    const ec=r.edge>3?'var(--green)':r.edge<-3?'var(--red)':'var(--text2)';
-    const pc=r.edge>3?'var(--green)':r.edge<-3?'var(--red)':'var(--text1)';
-    const badge=r.degraded?'⚠ ต่ำกว่าสุ่ม':r.edge>5?'★':r.edge>0?'✓':r.edge<-5?'×':'~';
-    const bc=r.degraded?'var(--red)':r.edge>0?'var(--green)':r.edge<-5?'var(--red)':'var(--text3)';
+    const hasSample=Number.isFinite(r.pct)&&Number.isFinite(r.edge);
+    const ec=hasSample?(r.edge>3?'var(--green)':r.edge<-3?'var(--red)':'var(--text2)'):'var(--text3)';
+    const pc=hasSample?(r.edge>3?'var(--green)':r.edge<-3?'var(--red)':'var(--text1)'):'var(--text3)';
+    const badge=!hasSample?'—':r.degraded?'⚠ ต่ำกว่าสุ่ม':r.edge>5?'★':r.edge>0?'✓':r.edge<-5?'×':'~';
+    const bc=!hasSample?'var(--text3)':r.degraded?'var(--red)':r.edge>0?'var(--green)':r.edge<-5?'var(--red)':'var(--text3)';
     const tc=typeColor(r.typeLabel||'');
-    const sample=r.total<50?`<span style="color:var(--red);font-size:.68rem;margin-left:6px">low n</span>`:'';
+    const sample=r.total>0&&r.total<50?`<span style="color:var(--red);font-size:.68rem;margin-left:6px">low n</span>`:'';
     const trustHtml=r.trust?`<span class="trust-badge">${r.trust}</span>`:'';
     return `<tr>
       <td><span style="background:${r.groupColor}22;color:${r.groupColor};padding:1px 7px;border-radius:4px;font-size:.7rem;white-space:nowrap;font-weight:600;margin-right:5px">${r.group}</span>${r.name}${trustHtml}${sample}</td>
       <td><span style="background:${tc};padding:1px 6px;border-radius:3px;font-size:.7rem;white-space:nowrap">${r.typeLabel}</span></td>
       <td style="text-align:right">${r.total}</td>
       <td style="text-align:right;font-weight:700;color:${pc}">${r.hits}</td>
-      <td style="text-align:right;font-weight:700;color:${pc}">${r.pct.toFixed(1)}%</td>
-      <td style="text-align:right;font-size:.72rem;color:var(--text3)">${r.ciLow.toFixed(1)}-${r.ciHigh.toFixed(1)}%</td>
-      <td style="text-align:right;font-size:.72rem;color:var(--text3)">${r.baseLabel} = ${r.baseP.toFixed(1)}%</td>
-      <td style="text-align:right;font-weight:700;color:${ec}">${r.edge>=0?'+':''}${r.edge.toFixed(1)}%</td>
+      <td style="text-align:right;font-weight:700;color:${pc}">${r.pct==null?'—':`${r.pct.toFixed(1)}%`}</td>
+      <td style="text-align:right;font-size:.72rem;color:var(--text3)">${r.ciLow==null||r.ciHigh==null?'—':`${r.ciLow.toFixed(1)}-${r.ciHigh.toFixed(1)}%`}</td>
+      <td style="text-align:right;font-size:.72rem;color:var(--text3)">${r.baseP==null?'—':`${r.baseLabel} = ${r.baseP.toFixed(1)}%`}</td>
+      <td style="text-align:right;font-weight:700;color:${ec}">${r.edge==null?'—':`${r.edge>=0?'+':''}${r.edge.toFixed(1)}%`}</td>
       <td style="text-align:right;font-size:.7rem;line-height:1.35">${rollingHtml(r)}</td>
       <td style="text-align:right;font-size:.75rem;color:${r.subPct!=null&&r.subPct>0?'#4d9de0':'var(--text3)'}" title="ตรงเลขท้ายของ ข้างเคียงร.1 / รางวัลที่ 2 / รางวัลที่ 3 (ข้อมูล Sanook, นับแยกจาก Hit หลัก)">${r.subPct!=null?`${r.subHits}/${r.subTotal} (${r.subPct.toFixed(0)}%)`:'-'}</td>
       <td style="text-align:center;font-weight:700;color:${bc};white-space:nowrap">${badge}</td>
@@ -3721,12 +3722,13 @@ function _renderBtTable(){
   const boardTables=boardOrder.map(board=>{
     const rows=sorted.filter(r=>r.board===board);
     if(!rows.length)return '';
-    const bestEdge=[...rows].sort((a,b)=>b.edge-a.edge)[0];
-    const bestHit=[...rows].sort((a,b)=>b.pct-a.pct)[0];
+    const scored=rows.filter(r=>Number.isFinite(r.edge)&&Number.isFinite(r.pct));
+    const bestEdge=scored.length?[...scored].sort((a,b)=>b.edge-a.edge)[0]:null;
+    const bestHit=scored.length?[...scored].sort((a,b)=>b.pct-a.pct)[0]:null;
     const mini=`<div class="formula-summary-bar active" style="margin-bottom:10px">
       <div class="formula-summary-item"><div class="formula-summary-label">สูตรในกลุ่ม</div><div class="formula-summary-value">${rows.length}</div><div class="formula-summary-sub">${board}</div></div>
-      <div class="formula-summary-item"><div class="formula-summary-label">Best edge</div><div class="formula-summary-value">${bestEdge.edge>=0?'+':''}${bestEdge.edge.toFixed(1)}%</div><div class="formula-summary-sub">${bestEdge.name}</div></div>
-      <div class="formula-summary-item"><div class="formula-summary-label">Best hit rate</div><div class="formula-summary-value">${bestHit.pct.toFixed(1)}%</div><div class="formula-summary-sub">${bestHit.name}</div></div>
+      <div class="formula-summary-item"><div class="formula-summary-label">Best edge</div><div class="formula-summary-value">${bestEdge?`${bestEdge.edge>=0?'+':''}${bestEdge.edge.toFixed(1)}%`:'—'}</div><div class="formula-summary-sub">${bestEdge?bestEdge.name:'ไม่มีข้อมูลครบ'}</div></div>
+      <div class="formula-summary-item"><div class="formula-summary-label">Best hit rate</div><div class="formula-summary-value">${bestHit?`${bestHit.pct.toFixed(1)}%`:'—'}</div><div class="formula-summary-sub">${bestHit?bestHit.name:'ไม่มีข้อมูลครบ'}</div></div>
     </div>`;
     return `<div class="bt-board">
       <div class="section-h">${board}</div>
