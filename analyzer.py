@@ -40,9 +40,21 @@ def _col_digits(col: str) -> int:
     return _DIGITS.get(col, 3)
 
 
-def _clean(s: pd.Series) -> pd.Series:
-    """Normalise a lottery column to clean string values, dropping empties."""
-    return s.astype(str).replace({"": pd.NA, "nan": pd.NA}).dropna()
+def _normalized_values(s: pd.Series, col: str) -> pd.Series:
+    """Normalize padding only for fields whose contract permits trimming."""
+    values = s.astype(str)
+    if col == "prize1":
+        return values
+    return values.str.strip()
+
+
+def _clean(s: pd.Series, col: str) -> pd.Series:
+    """Return only fixed-width ASCII digit results for a lottery column."""
+    values = _normalized_values(s, col)
+    missing = values.str.lower().isin(("", "nan", "none", "<na>", "nat"))
+    values = values[~missing]
+    width = _col_digits(col)
+    return values[values.str.fullmatch(rf"[0-9]{{{width}}}", na=False)]
 
 
 def filter_df(df: pd.DataFrame, years=None, months=None, days_of_week=None, dates=None) -> pd.DataFrame:
@@ -62,7 +74,7 @@ def filter_df(df: pd.DataFrame, years=None, months=None, days_of_week=None, date
 def freq_table(df: pd.DataFrame, col: str, top_n: int = None) -> pd.DataFrame:
     """ตารางความถี่ของเลขในคอลัมน์ที่กำหนด (O(n) via groupby)"""
     valid = df[[col, "date"]].copy()
-    valid[col] = _clean(valid[col])
+    valid[col] = _clean(valid[col], col)
     valid = valid.dropna(subset=[col])
     if valid.empty:
         return pd.DataFrame(columns=["เลข", "จำนวนครั้ง", "ออกล่าสุด", "10 งวดล่าสุด"])
@@ -94,17 +106,24 @@ def hot_cold_numbers(df: pd.DataFrame, col: str, recent_months: int = 12) -> pd.
     cutoff = df["date"].max() - pd.Timedelta(days=recent_months * 30)
     df_recent = df[df["date"] >= cutoff]
 
-    all_freq = _clean(df[col]).value_counts()
-    recent_freq = _clean(df_recent[col]).value_counts()
+    all_values = _clean(df[col], col)
+    recent_values = _clean(df_recent[col], col)
+    all_freq = all_values.value_counts()
+    recent_freq = recent_values.value_counts()
 
     result = pd.DataFrame({"เลข": all_freq.index, "ทั้งหมด": all_freq.values})
     result["ล่าสุด"] = result["เลข"].map(recent_freq).fillna(0).astype(int)
-    n_all = max(len(df), 1)
-    n_recent = max(len(df_recent), 1)
+    n_all = max(len(all_values), 1)
+    n_recent = len(recent_values)
     result["เฉลี่ย/งวด (ทั้งหมด)"] = (result["ทั้งหมด"] / n_all).round(3)
-    result["เฉลี่ย/งวด (ล่าสุด)"] = (result["ล่าสุด"] / n_recent).round(3)
+    if n_recent:
+        result["เฉลี่ย/งวด (ล่าสุด)"] = (result["ล่าสุด"] / n_recent).round(3)
+    else:
+        result["เฉลี่ย/งวด (ล่าสุด)"] = pd.NA
 
     def _status(r):
+        if n_recent == 0:
+            return "—"
         if r["เฉลี่ย/งวด (ล่าสุด)"] > r["เฉลี่ย/งวด (ทั้งหมด)"] * _HOT_THRESHOLD:
             return "🔥 ร้อน"
         if r["เฉลี่ย/งวด (ล่าสุด)"] < r["เฉลี่ย/งวด (ทั้งหมด)"] * _COLD_THRESHOLD:
@@ -119,7 +138,7 @@ def heatmap_data(df: pd.DataFrame, col: str) -> pd.DataFrame:
     """สร้าง grid 10x10 สำหรับ heatmap เลข 00-99 (รองรับเฉพาะ 2-digit columns)"""
     if _col_digits(col) != 2:
         return pd.DataFrame()
-    counts = df[col].dropna().replace("", pd.NA).dropna().value_counts()
+    counts = _clean(df[col], col).value_counts()
     grid_rows = []
     for tens in range(10):
         row = {}
@@ -136,7 +155,8 @@ def trend_data(df: pd.DataFrame, col: str, number: str) -> pd.DataFrame:
     """แนวโน้มการออกของเลขตามปี"""
     if df.empty:
         return pd.DataFrame(columns=["year", "ครั้ง"])
-    sub = df[df[col] == number].copy()
+    valid_values = _clean(df[col], col)
+    sub = df.loc[valid_values.index[valid_values == number]].copy()
     yearly = sub.groupby("year").size().reset_index(name="ครั้ง")
     all_years = pd.DataFrame({"year": range(int(df["year"].min()), int(df["year"].max()) + 1)})
     result = all_years.merge(yearly, on="year", how="left").fillna(0)
@@ -148,7 +168,7 @@ def never_appeared(df: pd.DataFrame, col: str) -> list[str]:
     """เลขที่ไม่เคยออกเลย (ไม่รองรับ prize1 — 10^6 ตัวเลข)"""
     if col == "prize1":
         return []
-    appeared = set(_clean(df[col]).unique())
+    appeared = set(_clean(df[col], col).unique())
     digits = _col_digits(col)
     all_nums = set(f"{i:0{digits}d}" for i in range(10 ** digits))
     return sorted(all_nums - appeared)
@@ -156,7 +176,7 @@ def never_appeared(df: pd.DataFrame, col: str) -> list[str]:
 
 def digit_frequency(df: pd.DataFrame, col: str) -> pd.DataFrame:
     """ความถี่แต่ละหลัก (สิบ หน่วย ร้อย)"""
-    series = _clean(df[col])
+    series = _clean(df[col], col)
     if series.empty:
         return pd.DataFrame(columns=["ตำแหน่ง", "เลข", "จำนวนครั้ง"])
     digits = len(series.iloc[0])
@@ -172,25 +192,33 @@ def digit_frequency(df: pd.DataFrame, col: str) -> pd.DataFrame:
 
 def overdue_numbers(df: pd.DataFrame, col: str, top_n: int = 20) -> pd.DataFrame:
     """เลขที่ค้างนาน (ไม่ออกมากี่งวดแล้ว)"""
-    series = _clean(df[col]).reindex(df.index)
+    series = _clean(df[col], col)
     digits = _col_digits(col)
+    empty_columns = ["เลข", "ค้างกี่งวด", "ออกล่าสุด", "ออกทั้งหมด"]
+    if series.empty:
+        return pd.DataFrame(columns=empty_columns)
 
-    # prize1 มี 10^6 ตัวเลข — ไม่คุ้มวนทั้งหมด ใช้เฉพาะเลขที่เคยออก
+    df_sorted = df.sort_values("date").reset_index(drop=True)
+    valid_series = _clean(df_sorted[col], col).reindex(df_sorted.index)
+    observed = valid_series.dropna()
+    if observed.empty:
+        return pd.DataFrame(columns=empty_columns)
+
+    # Preserve the existing API's draw-row gap semantics while excluding malformed values.
     if digits >= 6:
-        all_nums = sorted(series.dropna().unique().tolist())
+        all_nums = sorted(observed.unique().tolist())
     else:
         all_nums = [f"{i:0{digits}d}" for i in range(10 ** digits)]
 
-    total_draws = len(df)
-    df_sorted = df.sort_values("date").reset_index(drop=True)
+    total_draws = len(df_sorted)
 
-    # สร้าง lookup: num → (last_idx, count) ใน O(n)
+    # Build lookups from valid outcomes; row positions remain relative to every draw.
     last_idx_map: dict = {}
     count_map: dict = {}
-    for idx, val in enumerate(df_sorted[col].astype(str).replace("nan", "").values):
-        if val and val != "nan":
-            last_idx_map[val] = idx
-            count_map[val] = count_map.get(val, 0) + 1
+    for idx, val in valid_series.items():
+        if pd.notna(val):
+            last_idx_map[str(val)] = idx
+            count_map[str(val)] = count_map.get(str(val), 0) + 1
 
     records = []
     for num in all_nums:
@@ -208,6 +236,9 @@ def overdue_numbers(df: pd.DataFrame, col: str, top_n: int = 20) -> pd.DataFrame
             "ออกล่าสุด": last_date,
             "ออกทั้งหมด": times,
         })
+
+    if not records:
+        return pd.DataFrame(columns=["เลข", "ค้างกี่งวด", "ออกล่าสุด", "ออกทั้งหมด"])
 
     result = pd.DataFrame(records).sort_values("ค้างกี่งวด", ascending=False).reset_index(drop=True)
     return result.head(top_n)
@@ -256,7 +287,7 @@ def predict_numbers(df: pd.DataFrame, col: str, target_date: datetime, top_n: in
 
     # ── Pre-extract numpy arrays for fast boolean indexing ──
     df_sorted = df.sort_values("date").reset_index(drop=True)
-    vals_np = df_sorted[col].astype(str).values          # numpy str array, no Arrow
+    vals_np = _normalized_values(df_sorted[col], col).values          # numpy str array, no Arrow
     day_np  = df_sorted["day"].values
     mon_np  = df_sorted["month"].values
     wd_np   = df_sorted["weekday"].values
@@ -272,7 +303,13 @@ def predict_numbers(df: pd.DataFrame, col: str, target_date: datetime, top_n: in
     mask_day = day_np == target_day
     mask_mon = mon_np == target_month
     mask_wd  = wd_np == target_weekday
-    valid    = ~np.isin(vals_np, ("", "nan", "None", "NaN", "<NA>"))
+    valid = np.fromiter(
+        (len(value) == digits and value.isascii() and value.isdigit() for value in vals_np),
+        dtype=bool,
+        count=len(vals_np),
+    )
+    if not valid.any():
+        return pd.DataFrame()
 
     # ── Signal 1-4: Laplace-smoothed conditional frequencies via numpy ──
     def lp_np(mask: np.ndarray) -> dict:
@@ -288,6 +325,19 @@ def predict_numbers(df: pd.DataFrame, col: str, target_date: datetime, top_n: in
     sc_day = lp_np(mask_day)
     sc_mon = lp_np(mask_mon)
     sc_wd  = lp_np(mask_wd)
+
+    def counts_np(mask: np.ndarray) -> dict[str, int]:
+        values = vals_np[mask & valid]
+        if len(values) == 0:
+            return {}
+        numbers, counts = np.unique(values, return_counts=True)
+        return {number: int(count) for number, count in zip(numbers, counts)}
+
+    count_dm = counts_np(mask_dm)
+    count_day = counts_np(mask_day)
+    count_mon = counts_np(mask_mon)
+    count_wd = counts_np(mask_wd)
+    count_all = counts_np(np.ones(total_draws, dtype=bool))
 
     # ── Signal 5: Recency-weighted overall frequency (3-tier, numpy) ──
     _yr = target_date.year
@@ -362,9 +412,11 @@ def predict_numbers(df: pd.DataFrame, col: str, target_date: datetime, top_n: in
     for lag_i, v in enumerate(reversed(recent5)):
         lag_penalty[v] = max(lag_penalty.get(v, 0.0), 1.0 - lag_i * 0.15)
 
-    # ── Overdue lookup O(n) ──
+    # ── Overdue lookup over observed field results only ──
+    valid_vals_np = vals_np[valid]
+    total_valid_draws = len(valid_vals_np)
     last_pos_map: dict[str, int] = {}
-    for idx, v in enumerate(vals_np):
+    for idx, v in enumerate(valid_vals_np):
         if v and v not in ("", "nan", "None", "NaN", "<NA>"):
             last_pos_map[v] = idx
 
@@ -381,7 +433,7 @@ def predict_numbers(df: pd.DataFrame, col: str, target_date: datetime, top_n: in
         p5 = sc_overall.get(num, α0)
 
         lp_idx  = last_pos_map.get(num, -1)
-        overdue = total_draws - lp_idx - 1 if lp_idx >= 0 else total_draws
+        overdue = total_valid_draws - lp_idx - 1 if lp_idx >= 0 else total_valid_draws
         geo = float(min(1.0 - (1.0 - p5) ** max(overdue, 1), 1.0)) if p5 > 0 else 0.0
 
         r3  = freq_3m.get(num, 0) / n_3m
@@ -416,11 +468,11 @@ def predict_numbers(df: pd.DataFrame, col: str, target_date: datetime, top_n: in
         rows.append({
             "เลข":                  num,
             "คะแนนรวม":             round(composite * 1000, 2),
-            "วัน+เดือนเดียวกัน":    int(p1 * int(mask_dm.sum())),
-            "วันที่เดียวกัน":       int(p2 * int(mask_day.sum())),
-            "เดือนเดียวกัน":        int(p3 * int(mask_mon.sum())),
-            f"วัน{target_weekday}": int(p4 * int(mask_wd.sum())),
-            "รวมทั้งหมด":           int(p5 * total_draws),
+            "วัน+เดือนเดียวกัน":    count_dm.get(num, 0),
+            "วันที่เดียวกัน":       count_day.get(num, 0),
+            "เดือนเดียวกัน":        count_mon.get(num, 0),
+            f"วัน{target_weekday}": count_wd.get(num, 0),
+            "รวมทั้งหมด":           count_all.get(num, 0),
             "ค้างกี่งวด":           overdue,
             "momentum":             round((r3 - r12) * 100, 2),
         })
@@ -917,10 +969,7 @@ def predict_prize1_ultimate(
 
     df_sorted = df.sort_values("date").reset_index(drop=True)
     prize1_raw = df_sorted["prize1"].astype(str)
-    valid = prize1_raw.where(
-        (prize1_raw.str.len() == 6) &
-        ~prize1_raw.isin(("", "nan", "None", "NaN", "<NA>"))
-    ).dropna()
+    valid = prize1_raw.where(prize1_raw.str.fullmatch(r"[0-9]{6}", na=False)).dropna()
 
     if valid.empty:
         return pd.DataFrame()
@@ -1171,7 +1220,7 @@ def prize1_backtest(
     """
     df_sorted = df.sort_values("date").reset_index(drop=True)
     prize1_raw = df_sorted["prize1"].astype(str)
-    valid_mask = (prize1_raw.str.len() == 6) & ~prize1_raw.isin(("", "nan", "None", "NaN"))
+    valid_mask = prize1_raw.str.fullmatch(r"[0-9]{6}", na=False)
     valid_idx = [i for i in df_sorted[valid_mask].index.tolist() if i >= 80]
     test_idx = valid_idx[-min(n_draws, len(valid_idx)):]
 
@@ -1287,9 +1336,7 @@ def prize1_digit_analysis(df: pd.DataFrame, target_date: datetime) -> pd.DataFra
         return pd.DataFrame()
 
     prize1_raw = df.sort_values("date")["prize1"].astype(str)
-    valid = prize1_raw.where(
-        (prize1_raw.str.len() == 6) & ~prize1_raw.isin(("", "nan"))
-    ).dropna()
+    valid = prize1_raw.where(prize1_raw.str.fullmatch(r"[0-9]{6}", na=False)).dropna()
     if valid.empty:
         return pd.DataFrame()
 
@@ -1337,7 +1384,11 @@ def prize1_digit_analysis(df: pd.DataFrame, target_date: datetime) -> pd.DataFra
         cnt_rec  = np.bincount(col_d[mask_rec], minlength=10) if mask_rec.any() else np.zeros(10, int)
 
         for k in range(10):
-            hot = cnt_dm[k] > expected_dm * 1.3
+            if n_dm == 0:
+                status = "—"
+            else:
+                hot = cnt_dm[k] > expected_dm * 1.3
+                status = "🔥 ร้อน" if hot else ("❄️ เย็น" if cnt_dm[k] == 0 else "➡️ ปกติ")
             rows.append({
                 "ตำแหน่ง":               pos_names[pos],
                 "pos":                    pos,
@@ -1346,7 +1397,7 @@ def prize1_digit_analysis(df: pd.DataFrame, target_date: datetime) -> pd.DataFra
                 "% ทั้งหมด":              round(int(cnt_all[k]) / max(n_all, 1) * 100, 1),
                 "ออกงวดนี้ (วัน/เดือน)":  int(cnt_dm[k]),
                 "ออกล่าสุด 12 เดือน":     int(cnt_rec[k]),
-                "สถานะ":                  "🔥 ร้อน" if hot else ("❄️ เย็น" if cnt_dm[k] == 0 else "➡️ ปกติ"),
+                "สถานะ":                  status,
             })
 
     return pd.DataFrame(rows)
@@ -1362,8 +1413,9 @@ def alert_engine(df: pd.DataFrame, col: str) -> list[dict]:
     """
     alerts = []
     df_sorted = df.sort_values("date").reset_index(drop=True)
-    series = df_sorted[col].astype(str).replace("", pd.NA).replace("nan", pd.NA)
-    total = len(df_sorted)
+    series = _clean(df_sorted[col], col).reindex(df_sorted.index)
+    observed = series.dropna()
+    total = len(observed)
     if total == 0:
         return alerts
 
@@ -1376,14 +1428,15 @@ def alert_engine(df: pd.DataFrame, col: str) -> list[dict]:
     # precompute last positions
     last_pos: dict = {}
     count_map: dict = {}
-    for i, v in enumerate(series):
+    for i, v in enumerate(observed):
         if pd.notna(v):
             last_pos[str(v)] = i
             count_map[str(v)] = count_map.get(str(v), 0) + 1
 
-    # last 2 draws
+    # Consecutive alerts use adjacent draw rows; a missing/malformed field breaks the sequence.
     last1 = str(series.iloc[-1]) if pd.notna(series.iloc[-1]) else None
     last2 = str(series.iloc[-2]) if len(series) >= 2 and pd.notna(series.iloc[-2]) else None
+    latest_draw_date = df_sorted["date"].iloc[-1]
 
     # Overall mean rate
     base_rate = 1.0 / max(len(all_nums), 1)
@@ -1396,7 +1449,7 @@ def alert_engine(df: pd.DataFrame, col: str) -> list[dict]:
 
         # เลขที่ออกงวดล่าสุด
         if num == last1:
-            alerts.append({"เลข": num, "ระดับ": "ℹ️", "ข้อความ": f"ออกงวดล่าสุด ({df_sorted['date'].iloc[-1].strftime('%d/%m/%Y')})"})
+            alerts.append({"เลข": num, "ระดับ": "ℹ️", "ข้อความ": f"ออกงวดล่าสุด ({latest_draw_date.strftime('%d/%m/%Y')})"})
 
         # เลขที่ออกติดต่อ 2 งวด
         if num == last1 and num == last2:
@@ -1419,10 +1472,10 @@ def number_network_data(df: pd.DataFrame, col1: str, col2: str, min_weight: int 
     Edge (a→b): a appeared in col1 and b appeared in col2 in same draw, min_weight times.
     Returns (nodes_df, edges_df).
     """
-    merged = pd.DataFrame({"a": df[col1], "b": df[col2]}).dropna()
-    merged["a"] = merged["a"].astype(str).replace("nan", "")
-    merged["b"] = merged["b"].astype(str).replace("nan", "")
-    merged = merged[(merged["a"] != "") & (merged["b"] != "")]
+    merged = pd.DataFrame({
+        "a": _clean(df[col1], col1),
+        "b": _clean(df[col2], col2),
+    }).dropna()
 
     if merged.empty:
         return pd.DataFrame(), pd.DataFrame()
@@ -1431,8 +1484,8 @@ def number_network_data(df: pd.DataFrame, col1: str, col2: str, min_weight: int 
     edges = edges[edges["weight"] >= min_weight]
 
     # node positions: use frequency as size
-    freq1 = df[col1].value_counts()
-    freq2 = df[col2].value_counts()
+    freq1 = _clean(df[col1], col1).value_counts()
+    freq2 = _clean(df[col2], col2).value_counts()
 
     nodes_a = pd.DataFrame({"node": freq1.index, "freq": freq1.values, "type": col1})
     nodes_b = pd.DataFrame({"node": freq2.index, "freq": freq2.values, "type": col2})
@@ -1443,8 +1496,11 @@ def number_network_data(df: pd.DataFrame, col1: str, col2: str, min_weight: int 
 
 def pair_analysis(df: pd.DataFrame, col1: str, col2: str, query_num: str, top_n: int = 10) -> pd.DataFrame:
     """เมื่อ col1 ออกเลข query_num แล้ว col2 มักเป็นอะไร"""
-    mask = df[col1].astype(str).replace("nan", "") == query_num
-    sub = df[mask][col2].astype(str).replace("", pd.NA).replace("nan", pd.NA).dropna()
+    pairs = pd.DataFrame({
+        "query": _clean(df[col1], col1),
+        "value": _clean(df[col2], col2),
+    }).dropna()
+    sub = pairs.loc[pairs["query"] == query_num, "value"]
     if sub.empty:
         return pd.DataFrame(columns=["เลข", "จำนวนครั้ง", "เปอร์เซ็นต์"])
     counts = sub.value_counts().head(top_n).reset_index()
@@ -1458,7 +1514,7 @@ def consecutive_pattern(df: pd.DataFrame, col: str, query_num: str = None, top_n
     ถ้าไม่ระบุ query_num: คืน top pairs ทั้งหมด
     """
     df_sorted = df.sort_values("date").reset_index(drop=True)
-    series = df_sorted[col].astype(str).replace("", pd.NA).replace("nan", pd.NA)
+    series = _clean(df_sorted[col], col).reindex(df_sorted.index)
     pairs = pd.DataFrame({"prev": series.shift(1), "curr": series}).dropna()
 
     if query_num:
@@ -1485,7 +1541,7 @@ def decade_comparison(df: pd.DataFrame, col: str, top_n: int = 15) -> pd.DataFra
     for start, end in bins:
         label = f"{start}–{end}"
         sub = df[(df["year"] >= start) & (df["year"] <= end)]
-        counts = sub[col].astype(str).replace("", pd.NA).replace("nan", pd.NA).dropna().value_counts()
+        counts = _clean(sub[col], col).value_counts()
         freq_by_era[label] = counts
 
     # รวม top_n จากทุก era
@@ -1500,35 +1556,40 @@ def decade_comparison(df: pd.DataFrame, col: str, top_n: int = 15) -> pd.DataFra
             row[label] = int(counts.get(num, 0))
         rows.append(row)
 
-    df_result = pd.DataFrame(rows)
     labels = [f"{s}–{e}" for s, e in bins]
+    if not rows:
+        return pd.DataFrame(columns=["เลข", *labels, "รวม"])
+    df_result = pd.DataFrame(rows)
     df_result["รวม"] = df_result[labels].sum(axis=1)
     return df_result.sort_values("รวม", ascending=False).reset_index(drop=True).head(top_n * 2)
 
 
 def number_profile(df: pd.DataFrame, col: str, number: str) -> dict:
     """สรุปสถิติของเลขตัวเดียว — ใช้สำหรับ comparison mode"""
-    series = df[col].astype(str).replace("", pd.NA).replace("nan", pd.NA).dropna()
+    series = _clean(df[col], col)
     total = len(series)
     count = (series == number).sum()
-    sub = df[df[col].astype(str).replace("nan", "") == number]
+    sub = df.loc[series.index[series == number]]
 
     month_freq = sub["month"].value_counts().to_dict() if not sub.empty else {}
     weekday_freq = sub["weekday"].value_counts().to_dict() if not sub.empty else {}
 
     # streak: กี่งวดแล้วที่ไม่ออก (vectorized)
     df_sorted = df.sort_values("date").reset_index(drop=True)
-    matches = df_sorted[col].astype(str).replace("nan", "") == number
+    valid_series = _clean(df_sorted[col], col)
+    valid_df = df_sorted.loc[valid_series.index].copy().reset_index(drop=True)
+    valid_df[col] = valid_series.to_numpy()
+    matches = valid_df[col].astype(str) == number
     last_idx = int(matches[matches].index[-1]) if matches.any() else -1
-    overdue = len(df_sorted) - last_idx - 1 if last_idx >= 0 else len(df_sorted)
-    last_date = df_sorted["date"].iloc[last_idx] if last_idx >= 0 else None
+    overdue = len(valid_df) - last_idx - 1 if last_idx >= 0 else len(valid_df)
+    last_date = valid_df["date"].iloc[last_idx] if last_idx >= 0 else None
 
     return {
-        "count": int(count),
+        "count": int(count) if total else None,
         "total": total,
-        "rate": round(count / total * 100, 2) if total else 0,
+        "rate": round(count / total * 100, 2) if total else None,
         "last_date": last_date,
-        "overdue": overdue,
+        "overdue": overdue if total else None,
         "month_freq": month_freq,
         "weekday_freq": weekday_freq,
     }
@@ -1537,7 +1598,7 @@ def number_profile(df: pd.DataFrame, col: str, number: str) -> dict:
 def predict_with_reasons(df: pd.DataFrame, col: str, target_date: datetime, top_n: int = 10) -> pd.DataFrame:
     """predict_numbers + คอลัมน์เหตุผลภาษาไทย"""
     pred = predict_numbers(df, col, target_date, top_n=top_n)
-    total_draws = len(df)
+    total_draws = len(_clean(df[col], col))
     reasons = []
     badges = []
     for _, row in pred.iterrows():
@@ -1574,10 +1635,25 @@ def predict_with_reasons(df: pd.DataFrame, col: str, target_date: datetime, top_
 
 
 def prediction_confidence(df: pd.DataFrame, col: str, target_date: datetime) -> dict:
-    """ประเมินความมั่นใจของการทำนายจาก sample size"""
-    mask_dm = (df["day"] == target_date.day) & (df["month"] == target_date.month)
-    mask_d = df["day"] == target_date.day
-    mask_m = df["month"] == target_date.month
+    """ประเมินความมั่นใจของการทำนายจาก sample size ของผลรางวัลที่มีข้อมูล"""
+    valid_values = _clean(df[col], col)
+    if valid_values.empty:
+        return {
+            "n_same_day_month": 0,
+            "n_same_day": 0,
+            "n_same_month": 0,
+            "label": "—",
+            "color": "#888888",
+            "pct": None,
+            "score": None,
+            "level": "NO_DATA",
+            "reason": "ไม่มีผลรางวัลที่ถูกต้องสำหรับประเมินความมั่นใจ",
+        }
+
+    observed = df.loc[valid_values.index]
+    mask_dm = (observed["day"] == target_date.day) & (observed["month"] == target_date.month)
+    mask_d = observed["day"] == target_date.day
+    mask_m = observed["month"] == target_date.month
     n_dm = int(mask_dm.sum())
     n_d = int(mask_d.sum())
     n_m = int(mask_m.sum())
@@ -1664,6 +1740,7 @@ def ensemble_predict(
 def overdue_with_prob(df: pd.DataFrame, col: str, top_n: int = 20) -> pd.DataFrame:
     """overdue_numbers + คอลัมน์ความน่าจะเป็น (geometric model)"""
     od = overdue_numbers(df, col, top_n=top_n)
+    # Keep the legacy denominator until the probability metric's contract is decided.
     total = len(df)
     if total == 0:
         od["โอกาสออก (%)"] = 0.0
@@ -1690,20 +1767,29 @@ def ticket_analysis(df: pd.DataFrame, col: str, numbers: list[str]) -> pd.DataFr
     total = len(df)
     for num in numbers:
         prof = number_profile(df, col, num)
+        no_sample = prof["total"] == 0
+        latest = (
+            "—" if no_sample else
+            prof["last_date"].strftime("%d/%m/%Y") if prof["last_date"] else "ไม่เคยออก"
+        )
+        rate = prof["rate"] if not no_sample else "—"
+        status = "—" if no_sample else (
+            "🔥 ร้อน" if rate > 2.0 else ("❄️ เย็น" if rate < 0.8 else "➡️ ปกติ")
+        )
         records.append({
             "เลข": num,
-            "ออกทั้งหมด": prof["count"],
-            "อัตรา (%)": prof["rate"],
-            "ค้างกี่งวด": prof["overdue"],
-            "ออกล่าสุด": prof["last_date"].strftime("%d/%m/%Y") if prof["last_date"] else "ไม่เคยออก",
-            "สถานะ": "🔥 ร้อน" if prof["rate"] > 2.0 else ("❄️ เย็น" if prof["rate"] < 0.8 else "➡️ ปกติ"),
+            "ออกทั้งหมด": "—" if no_sample else prof["count"],
+            "อัตรา (%)": rate,
+            "ค้างกี่งวด": "—" if no_sample else prof["overdue"],
+            "ออกล่าสุด": latest,
+            "สถานะ": status,
         })
     return pd.DataFrame(records)
 
 
 def summary_stats(df: pd.DataFrame, col: str) -> dict:
     """สรุปสถิติรวม"""
-    series = df[col].astype(str).replace("", pd.NA).replace("nan", pd.NA).dropna()
+    series = _clean(df[col], col)
     counts = series.value_counts()
     return {
         "total_draws": len(df),

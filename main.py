@@ -162,7 +162,7 @@ def _validate_ml_col(col: str) -> str:
 def _validate_number(col: str, number: str) -> str:
     number = str(number).strip()
     width = LOTTERY_WIDTHS[col]
-    if not number.isdigit() or len(number) != width:
+    if re.fullmatch(rf"[0-9]{{{width}}}", number) is None:
         raise HTTPException(status_code=400, detail=f"number for {col} must be exactly {width} digits")
     return number
 

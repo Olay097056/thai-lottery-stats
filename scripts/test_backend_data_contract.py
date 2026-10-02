@@ -6,11 +6,13 @@ from unittest.mock import patch
 from pathlib import Path
 from datetime import datetime
 
+import pandas as pd
+from fastapi.testclient import TestClient
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import scraper
-import pandas as pd
 import main
 import enrich_from_sanook
 import watchlist
@@ -47,6 +49,31 @@ class ApiSummaryDateTests(unittest.TestCase):
              patch.object(main, "get_cache_info", return_value={}):
             response = main.api_summary()
         self.assertEqual(response["latest"]["date"], "2026-09-01")
+
+
+class ApiNumberValidationTests(unittest.TestCase):
+    def test_trend_rejects_unicode_digits_for_prize1_query(self):
+        client = TestClient(main.app)
+        with patch.object(main, "get_df", return_value=pd.DataFrame()), \
+             patch.object(main, "trend_data", return_value=pd.DataFrame()):
+            response = client.get(
+                "/api/trend", params={"col": "prize1", "number": "１２３４５６"}
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["detail"], "number for prize1 must be exactly 6 digits")
+
+
+    def test_trend_accepts_outer_whitespace_around_ascii_prize1_query(self):
+        client = TestClient(main.app)
+        with patch.object(main, "get_df", return_value=pd.DataFrame()), \
+             patch.object(main, "trend_data", return_value=pd.DataFrame()):
+            response = client.get(
+                "/api/trend", params={"col": "prize1", "number": " 123456 "}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["number"], "123456")
 
 
 class IncrementalUpdateTests(unittest.TestCase):
