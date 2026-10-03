@@ -1,5 +1,7 @@
 // ─── Formula Calculators ──────────────────────────────────────────────────────
 let _formulaFilled=false;
+let _formulaAutoFillRequestId=0;
+let _formulaAutoFillPending=false;
 let _formulaActiveTab='A';
 let _formulaHasRun=false;
 let _formulaConsensusFilter='all';
@@ -308,7 +310,6 @@ async function initFormulaPage(){
   }
   if(!_formulaFilled && sel.value){
     await autoFillFormula();
-    _formulaFilled=true;
   }
   switchFormulaTab(_formulaActiveTab);
 }
@@ -363,22 +364,51 @@ function _parseThai(dateStr){
   return new Date(y,m-1,d);
 }
 
-async function autoFillFormula(){
+function _setFormulaAutoFillPending(pending){
+  _formulaAutoFillPending=!!pending;
+  ['f-run-formulas','f-save-snapshot','f-load-formula','f-prize1','f-top3','f-bottom2','f-front3-1','f-front3-2','f-back3-1','f-back3-2','f-drawday'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.disabled=_formulaAutoFillPending;
+  });
+}
+
+async function autoFillFormula(clearStaleInputs=false){
+  const requestId=++_formulaAutoFillRequestId;
+  _formulaFilled=false;
   const targetDateStr=document.getElementById('f-target-date')?.value||''; // YYYY-MM-DD
+  _setFormulaAutoFillPending(true);
+  if(clearStaleInputs){
+    ['f-prize1','f-top3','f-bottom2','f-front3-1','f-front3-2','f-back3-1','f-back3-2'].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el)el.value='';
+    });
+    const targetDay=Number(targetDateStr.split('-')[2]);
+    const drawDay=document.getElementById('f-drawday');
+    if(drawDay)drawDay.value=targetDay===16?'16':'1';
+  }
   let rows=[];
   setFormulaLoading('กำลังโหลดข้อมูลงวดก่อน...');
   try{
     // prize-history (ไม่ใช่ history) เพราะมีคอลัมน์เดียวกันครบ + near1/prize2-5
     // เพิ่มเติม (จำเป็นสำหรับจักรพรรดิ กลุ่ม I ที่ใช้ pool รางวัล 1-5)
     const h=await api('prize-history?n=500');
+    if(requestId!==_formulaAutoFillRequestId)return false;
+    if(h?.error||h?.detail){
+      _setFormulaAutoFillPending(false);
+      _clearFormulaResults('โหลดข้อมูลงวดไม่สำเร็จ ลองใหม่อีกครั้ง');
+      return false;
+    }
     rows=Array.isArray(h.data)?h.data:[];
   }catch(e){
+    if(requestId!==_formulaAutoFillRequestId)return false;
+    _setFormulaAutoFillPending(false);
     _clearFormulaResults('โหลดข้อมูลงวดไม่สำเร็จ ลองใหม่อีกครั้ง');
-    return;
+    return false;
   }
   if(!rows.length){
+    _setFormulaAutoFillPending(false);
     _clearFormulaResults('ยังไม่มีประวัติงวดให้เติมอัตโนมัติ สามารถกรอกเลขเองแล้วคำนวณได้');
-    return;
+    return false;
   }
   _formulaHistory=rows; // cache for Claude/Codex/จักรพรรดิ formulas
 
@@ -392,7 +422,11 @@ async function autoFillFormula(){
     }
   }
   if(!prev) prev=rows[0];
-  if(!prev) return;
+  if(!prev){
+    _setFormulaAutoFillPending(false);
+    _clearFormulaResults('ไม่พบงวดก่อนหน้าสำหรับวันที่เป้าหมาย สามารถกรอกเลขเองแล้วคำนวณได้');
+    return false;
+  }
 
   const setVal=(id,val)=>{const el=document.getElementById(id);if(el)el.value=val||'';};
   setVal('f-prize1',prev.prize1);
@@ -413,6 +447,8 @@ async function autoFillFormula(){
 
   const info=document.getElementById('f-prev-info');
   if(info) info.textContent=`งวด: ${prev.date||''} | รางวัลที่1: ${prev.prize1||''}`;
+  _formulaFilled=true;
+  _setFormulaAutoFillPending(false);
   if(_formulaHasRun){
     if(document.getElementById('f-auto-run')?.checked)runAllFormulas();
     else _clearFormulaResults('เปลี่ยนงวดเป้าหมายแล้ว กดคำนวณอีกครั้งเพื่ออัปเดตผล');
@@ -420,6 +456,7 @@ async function autoFillFormula(){
     const empty=document.getElementById('formula-empty');
     if(empty){empty.style.display='block';empty.textContent='ตรวจข้อมูลงวดก่อนแล้ว กด ⚡ คำนวณทุกสูตร';}
   }
+  return true;
 }
 
 function _fv(id){return (document.getElementById(id)?.value||'').trim();}
@@ -1706,6 +1743,7 @@ function _tycoonCards(prevRow,nextDay,nextMonth,nextYear2){
 }
 
 function runAllFormulas(){
+  if(_formulaAutoFillPending)return false;
   if(!_validateFormulaInputs())return;
   setFormulaLoading('กำลังคำนวณทุกสูตร...');
   const prize1=_fv('f-prize1').padStart(6,'0');

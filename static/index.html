@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<link rel="stylesheet" href="/static/app.css?v=hermes9">
+<link rel="stylesheet" href="/static/app.css?v=hermes27">
 </head>
 <body>
 
@@ -223,6 +223,7 @@
       <select id="predict-group-filter" onchange="filterPredictions()">
         <option value="">ทุกหมวด</option>
         <option value="prize1">รางวัลที่ 1</option>
+        <option value="top3">3 ตัวบน (อ่านจากท้ายรางวัลที่ 1)</option>
         <option value="front3">หน้า 3</option>
         <option value="back3">ท้าย 3</option>
         <option value="bottom2">ท้าย 2</option>
@@ -340,9 +341,9 @@
       <div class="formula-head-actions">
         <div class="ctrl-group tab-local-date">
           <label class="ctrl-label" for="f-target-date">งวดที่ต้องการทำนาย</label>
-          <select id="f-target-date" onchange="autoFillFormula()" style="min-width:160px"></select>
+          <select id="f-target-date" onchange="autoFillFormula(true)" style="min-width:160px"></select>
         </div>
-        <button class="btn btn-secondary" onclick="autoFillFormula()">↻ โหลด</button>
+        <button id="f-load-formula" class="btn btn-secondary" onclick="autoFillFormula()">↻ โหลด</button>
       </div>
     </div>
 
@@ -376,8 +377,8 @@
 
     <div class="formula-actions">
       <div class="formula-primary-actions">
-        <button class="btn btn-primary" onclick="runAllFormulas()">⚡ คำนวณทุกสูตร</button>
-        <button class="btn btn-secondary" onclick="formulaSaveSnapshot()">บันทึก Snapshot</button>
+        <button id="f-run-formulas" class="btn btn-primary" onclick="runAllFormulas()">⚡ คำนวณทุกสูตร</button>
+        <button id="f-save-snapshot" class="btn btn-secondary" onclick="formulaSaveSnapshot()">บันทึก Snapshot</button>
         <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--text2);user-select:none">
           <input type="checkbox" id="f-auto-run" checked style="min-width:auto"> Auto-run on draw change
         </label>
@@ -608,8 +609,8 @@
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script src="/static/formula-engine.js?v=hermes9"></script>
-<script src="/static/app.js?v=hermes9"></script>
+<script src="/static/formula-engine.js?v=hermes27"></script>
+<script src="/static/app.js?v=hermes27"></script>
 
 </body>
 </html>

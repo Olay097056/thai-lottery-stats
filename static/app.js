@@ -90,7 +90,7 @@ function syncSharedDrawDate(value,userAction=false){
   ['shared-draw-date','pred-date','f-target-date','dc-date','dc-date-old','dash-date'].forEach(id=>_setSelectValueKeepingOptions(id,value));
   _sharedDateSyncing=false;
   if(!userAction)return;
-  if(currentPredTab==='formula')autoFillFormula();
+  if(currentPredTab==='formula')autoFillFormula(true);
   else if(currentPredTab==='decision')loadDecisionCenter();
   else if(currentPredTab==='oldver')loadDecisionCenterOld();
 }
@@ -98,7 +98,7 @@ window.syncSharedDrawDate=syncSharedDrawDate;
 
 function applySharedLotteryFocus(){
   const focus=document.getElementById('shared-lottery-focus')?.value||'';
-  const predMap={prize1:'prize1',top3:'',front3:'front3',back3:'back3',bottom2:'bottom2'};
+  const predMap={prize1:'prize1',top3:'top3',front3:'front3',back3:'back3',bottom2:'bottom2'};
   const formulaMap={prize1:'prize1',top3:'3-digit',front3:'front 3',back3:'back 3',bottom2:'bottom'};
   const pg=document.getElementById('predict-group-filter');
   if(pg){pg.value=predMap[focus]??'';filterPredictions();}
@@ -109,7 +109,7 @@ window.applySharedLotteryFocus=applySharedLotteryFocus;
 
 function runSharedPrimaryAction(){
   if(currentPredTab==='formula'){
-    autoFillFormula().then(()=>runAllFormulas());
+    autoFillFormula().then(ok=>{if(ok)runAllFormulas();});
   }else if(currentPredTab==='decision'){
     loadDecisionCenter();
   }else if(currentPredTab==='oldver'){
@@ -672,15 +672,13 @@ function loadPageSnapshot(key,id){
   const snap=pageSnapshots(key).find(x=>x.id===id);
   if(!snap)return;
   if(key==='predict'&&snap.date){
-    const el=document.getElementById('pred-date');
-    if(el)el.value=snap.date;
+    syncSharedDrawDate(snap.date);
     if(snap.topn)document.getElementById('pred-topn').value=snap.topn;
     if(snap.preset)document.getElementById('p1-preset').value=snap.preset;
     loadPredict();
   }else if(key==='formula'&&snap.date){
-    const el=document.getElementById('f-target-date');
-    if(el)el.value=snap.date;
-    autoFillFormula();
+    syncSharedDrawDate(snap.date);
+    autoFillFormula(true);
   }
 }
 
@@ -2189,7 +2187,7 @@ async function loadP1Widget(){
 }
 
 // ─── Predict ──────────────────────────────────────────────────────────────────
-let _lastPredData=[],_lastPredCol='',_lastPredDate='',_lastPredictSnapshot=null;
+let _lastPredData=[],_lastPredCol='',_lastPredDate='',_lastPredictSnapshot=null,_predictRequestId=0;
 
 function predictSaveSnapshot(){
   if(!_lastPredictSnapshot){toast('ยังไม่มีผลทำนายให้บันทึก','error');return;}
@@ -2197,10 +2195,12 @@ function predictSaveSnapshot(){
 }
 
 function formulaSaveSnapshot(){
+  if(_formulaAutoFillPending){toast('กำลังโหลดข้อมูลงวดก่อน กรุณารอให้เสร็จก่อนบันทึก Snapshot','error');return false;}
+  if(!_formulaHasRun){toast('ยังไม่มีผลสูตรให้บันทึก กดคำนวณทุกสูตรก่อน','error');return false;}
   const date=document.getElementById('f-target-date')?.value||nextDrawInfo().iso;
   const chips=[...document.querySelectorAll('#formula-final .num-badge,#formula-results-ALL .num-badge')].map(x=>x.textContent.trim()).filter(Boolean);
-  const uniq=[...new Set(chips.map(x=>x.replace(/\s+/g,'')))].filter(x=>/^\d{1,6}$/.test(x)).slice(0,40);
-  if(!uniq.length){toast('ยังไม่มีผลสูตรให้บันทึก กดคำนวณทุกสูตรก่อน','error');return;}
+  const uniq=[...new Set(chips.map(x=>x.replace(/\s+/g,'')))].filter(x=>/^[0-9]{1,6}$/.test(x)).slice(0,40);
+  if(!uniq.length){toast('ยังไม่มีผลสูตรให้บันทึก กดคำนวณทุกสูตรก่อน','error');return false;}
   const items=uniq.map(num=>({num}));
   const activeTab=document.querySelector('.ftab-btn.active')?.dataset?.ftab||'ALL';
   savePageSnapshot('formula',{
@@ -2211,8 +2211,8 @@ function formulaSaveSnapshot(){
     items,
     note:`บันทึกจาก Formula Final/Consensus รวม ${items.length} เลข`
   });
+  return true;
 }
-
 function predictConfidence(rank,score,maxScore,support=0){
   const rel=maxScore?score/maxScore:0;
   const boosted=rel+(support>=3 ? .18 : support>=2 ? .1 : support>=1 ? .05 : 0)-(rank>10 ? .1 : 0);
@@ -2260,10 +2260,13 @@ function predDetailHtml({num,col,row,rank,score,maxScore,support=0,extra=[]}){
   </details>`;
 }
 
-function _renderSimpleRows(rows, tbodyId, badgeId){
+function _renderSimpleRows(rows, tbodyId, badgeId, error=''){
   const scoreKey=predScoreKey(rows);
   const maxScore=Math.max(1,...rows.map(r=>predScore(r,scoreKey)));
   const col=({f31:'front3_1',f32:'front3_2',b31:'back3_1',b32:'back3_2',bt2:'bottom2'})[String(tbodyId).split('-')[0]]||'bottom2';
+  const hasError=Boolean(error);
+  const errorHtml='<div class="predict-empty">คำนวณไม่สำเร็จ — ลองใหม่อีกครั้ง</div>';
+  const emptyHtml=hasError?errorHtml:'<div class="predict-empty">ไม่มีข้อมูล</div>';
   document.getElementById(tbodyId).innerHTML=rows.length?rows.map((r,i)=>{
     const sv=predScore(r,scoreKey);
     const bw=((sv/maxScore)*100).toFixed(0);
@@ -2273,8 +2276,8 @@ function _renderSimpleRows(rows, tbodyId, badgeId){
       <td>${predDetailHtml({num,col,row:r,rank:i+1,score:sv,maxScore})}</td>
       <td><div style="display:flex;align-items:center;gap:4px"><div class="progress-bar" style="width:50px"><div class="progress-fill" style="width:${bw}%"></div></div><span style="font-size:.7rem;color:var(--text3)">${sv.toFixed(3)}</span></div></td>
     </tr>`;
-  }).join(''):`<tr><td colspan="3"><div class="predict-empty">ไม่มีข้อมูล</div></td></tr>`;
-  document.getElementById(badgeId).innerHTML=rows.slice(0,5).map(r=>numChip(predNum(r))).join('')||'<span class="dash-empty">—</span>';
+  }).join(''):`<tr><td colspan="3">${emptyHtml}</td></tr>`;
+  document.getElementById(badgeId).innerHTML=rows.slice(0,5).map(r=>numChip(predNum(r))).join('')||(hasError?errorHtml:'<span class="dash-empty">—</span>');
 }
 
 function predNum(row){
@@ -2338,6 +2341,11 @@ function setPredictLoading(isLoading,msg='กำลังคำนวณ...'){
     if(el&&isLoading)el.innerHTML=`<span style="color:var(--text3);font-size:.82rem">${msg}</span>`;
   });
   if(isLoading){
+    const tableBodies=[['p1-tbody',5],['f31-tbody',3],['f32-tbody',3],['b31-tbody',3],['b32-tbody',3],['bt2-tbody',3],['ref-tbody',7]];
+    tableBodies.forEach(([id,columns])=>{
+      const el=document.getElementById(id);
+      if(el)el.innerHTML=`<tr><td colspan="${columns}"><div class="predict-empty">${escHtml(msg)}</div></td></tr>`;
+    });
     ['predict-summary','predict-consensus','predict-decision-board','predict-final'].forEach(id=>{const el=document.getElementById(id);if(el){el.classList.remove('active');el.innerHTML='';}});
     document.getElementById('predict-tools')?.classList.remove('active');
   }
@@ -2444,13 +2452,13 @@ async function loadPredictModeCompare(date,topn,beam,kback){
   try{
     const rows=await Promise.all(modes.map(async preset=>{
       const r=await api(`predict/prize1?top_n=5&date=${date}&beam_width=${beam}&k_back=${kback}&preset=${preset}`);
-      return {preset,nums:(r.predictions||[]).slice(0,5).map(predNum).filter(Boolean)};
+      return {preset,error:Boolean(r?.error||r?.detail),nums:(r?.predictions||[]).slice(0,5).map(predNum).filter(Boolean)};
     }));
     const counts=new Map();
     rows.forEach(row=>row.nums.forEach(n=>counts.set(n,(counts.get(n)||0)+1)));
     el.innerHTML=rows.map(row=>`<div class="predict-mode-card">
       <div class="predict-mode-title">${row.preset}</div>
-      <div>${row.nums.map(n=>numChip(n,counts.get(n)>1?'agree':'')).join('')||'<span class="dash-empty">-</span>'}</div>
+      <div>${row.error?'<div class="predict-empty">เทียบโหมดไม่สำเร็จ — ลองใหม่อีกครั้ง</div>':row.nums.map(n=>numChip(n,counts.get(n)>1?'agree':'')).join('')||'<span class="dash-empty">-</span>'}</div>
     </div>`).join('');
   }catch(e){
     el.innerHTML='<div class="predict-summary-sub">เทียบโหมดไม่สำเร็จ ลองรันใหม่อีกครั้ง</div>';
@@ -2552,22 +2560,45 @@ function filterPredictions(){
     card.style.display=ok?'':'none';
     if(ok)visible++;
   });
-  if(count)count.textContent=`แสดง ${visible}/${cards.length} หมวด`;
+  const noMatchingTop3=g==='top3'&&!visible;
+  if(count)count.textContent=noMatchingTop3
+    ?'ไม่มีหมวดทำนาย 3 ตัวบนแยก — 3 ตัวบนอ่านจาก 3 หลักท้ายของรางวัลที่ 1'
+    :`แสดง ${visible}/${cards.length} หมวด`;
+  ['predict-summary','predict-final','predict-decision-board','predict-consensus'].forEach(id=>{
+    const panel=document.getElementById(id);
+    if(panel)panel.style.display=noMatchingTop3?'none':'';
+  });
 }
 
 async function loadPredict(){
+  const requestId=++_predictRequestId;
   const date = document.getElementById('pred-date').value;
   const topn = document.getElementById('pred-topn').value;
   const preset = document.getElementById('p1-preset')?.value||'optimized';
   const beam = document.getElementById('p1-beam').value;
   const kback = document.getElementById('p1-kback')?.value||100;
   setPredictLoading(true);
+  _lastPredData=[];
+  _lastPredCol='';
+  _lastPredDate=date;
+  _lastPredictSnapshot=null;
 
   const r = await api(`predict/all?top_n=${topn}&date=${date}&beam_width=${beam}&k_back=${kback}&preset=${preset}`);
-  if(r.error){
+  if(requestId!==_predictRequestId)return;
+  const categoriesValid=!!r&&r.categories&&typeof r.categories==='object'&&!Array.isArray(r.categories);
+  const requestError=r?.error?'โหลดผลทำนายไม่สำเร็จ — ลองใหม่อีกครั้ง':r?.detail?'คำขอทำนายไม่ถูกต้อง — ตรวจช่วงค่า Top N, Beam และ Back3 แล้วลองใหม่':categoriesValid?'':'ข้อมูลผลทำนายไม่ถูกต้อง — ลองใหม่อีกครั้ง';
+  if(requestError){
     setPredictLoading(false);
-    document.getElementById('p1-badges').innerHTML=`<div class="predict-empty">${r.error}</div>`;
-    toast(r.error,'error');
+    const errorHtml=`<div class="predict-empty">${requestError}</div>`;
+    document.getElementById('p1-badges').innerHTML=errorHtml;
+    document.getElementById('p1-tbody').innerHTML=`<tr><td colspan="5">${errorHtml}</td></tr>`;
+    _renderSimpleRows([], 'f31-tbody', 'f31-badges', requestError);
+    _renderSimpleRows([], 'f32-tbody', 'f32-badges', requestError);
+    _renderSimpleRows([], 'b31-tbody', 'b31-badges', requestError);
+    _renderSimpleRows([], 'b32-tbody', 'b32-badges', requestError);
+    _renderSimpleRows([], 'bt2-tbody', 'bt2-badges', requestError);
+    document.getElementById('ref-tbody').innerHTML='<tr><td colspan="7"><div class="predict-empty">โหลดข้อมูลอ้างอิงไม่สำเร็จ</div></td></tr>';
+    toast(requestError,'error');
     return;
   }
   const cats = r.categories||{};
@@ -2577,7 +2608,8 @@ async function loadPredict(){
   const p1rows = p1.numbers||[];
   const scoreKey1 = predScoreKey(p1rows);
   const max1 = Math.max(1,...p1rows.map(r=>predScore(r,scoreKey1)));
-  document.getElementById('p1-badges').innerHTML=p1rows.slice(0,5).map(r=>numChip(predNum(r))).join('')||'<span class="dash-empty">—</span>';
+  const p1Error=p1.error?'คำนวณรางวัลที่ 1 ไม่สำเร็จ — ลองใหม่อีกครั้ง':'';
+  document.getElementById('p1-badges').innerHTML=p1Error?`<div class="predict-empty">${p1Error}</div>`:p1rows.slice(0,5).map(r=>numChip(predNum(r))).join('')||'<span class="dash-empty">—</span>';
   document.getElementById('p1-tbody').innerHTML=p1rows.length?p1rows.map((r,i)=>{
     const sv=predScore(r,scoreKey1);
     const bw=((sv/max1)*100).toFixed(0);
@@ -2591,16 +2623,16 @@ async function loadPredict(){
       <td style="color:#4d9de0;font-weight:600">${escHtml(p1Back(r))}</td>
       <td><div style="display:flex;align-items:center;gap:4px"><div class="progress-bar" style="width:60px"><div class="progress-fill" style="width:${bw}%"></div></div><span style="font-size:.72rem;color:var(--text3)">${sv.toFixed(2)}</span></div></td>
     </tr>`;
-  }).join(''):`<tr><td colspan="5"><div class="predict-empty">ไม่มีข้อมูลรางวัลที่ 1</div></td></tr>`;
+  }).join(''):`<tr><td colspan="5"><div class="predict-empty">${p1Error||'ไม่มีข้อมูลรางวัลที่ 1'}</div></td></tr>`;
 
   // front3
-  _renderSimpleRows(cats.front3_1?.numbers||[], 'f31-tbody', 'f31-badges');
-  _renderSimpleRows(cats.front3_2?.numbers||[], 'f32-tbody', 'f32-badges');
+  _renderSimpleRows(cats.front3_1?.numbers||[], 'f31-tbody', 'f31-badges', cats.front3_1?.error);
+  _renderSimpleRows(cats.front3_2?.numbers||[], 'f32-tbody', 'f32-badges', cats.front3_2?.error);
   // back3
-  _renderSimpleRows(cats.back3_1?.numbers||[], 'b31-tbody', 'b31-badges');
-  _renderSimpleRows(cats.back3_2?.numbers||[], 'b32-tbody', 'b32-badges');
+  _renderSimpleRows(cats.back3_1?.numbers||[], 'b31-tbody', 'b31-badges', cats.back3_1?.error);
+  _renderSimpleRows(cats.back3_2?.numbers||[], 'b32-tbody', 'b32-badges', cats.back3_2?.error);
   // bottom2
-  _renderSimpleRows(cats.bottom2?.numbers||[], 'bt2-tbody', 'bt2-badges');
+  _renderSimpleRows(cats.bottom2?.numbers||[], 'bt2-tbody', 'bt2-badges', cats.bottom2?.error);
 
   document.getElementById('all-pred-grid').style.display='block';
   const allRows=[
@@ -2610,19 +2642,20 @@ async function loadPredict(){
   _lastPredData=allRows;
   _lastPredCol='all';
   _lastPredDate=date;
-  _lastPredictSnapshot={
-    id:`predict_${date}_${preset}_${topn}`,
-    title:`ทำนาย · ${fmtDate(date)}`,
-    date,topn,preset,
-    mode:preset,
-    items:[
+  const snapshotItems=[
       ...p1rows.slice(0,5).map(r=>({num:predNum(r),score:'P1'})),
       ...(cats.bottom2?.numbers||[]).slice(0,6).map(r=>({num:predNum(r),score:'2ตัว'})),
       ...(cats.front3_1?.numbers||[]).slice(0,3).map(r=>({num:predNum(r),score:'หน้า3'})),
       ...(cats.back3_1?.numbers||[]).slice(0,3).map(r=>({num:predNum(r),score:'ท้าย3'})),
-    ],
+    ];
+  _lastPredictSnapshot=snapshotItems.length?{
+    id:`predict_${date}_${preset}_${topn}`,
+    title:`ทำนาย · ${fmtDate(date)}`,
+    date,topn,preset,
+    mode:preset,
+    items:snapshotItems,
     note:`Top ${topn} · ${allRows.length} แถว · Beam ${beam} · Back3 ${kback}`
-  };
+  }:null;
   renderPredictSummary({date,topn,beam,kback,preset:r.prize1_config?.preset_label||preset,cats,totalRows:allRows.length});
   renderPredictFinalPanel(cats,{date,topn,beam,kback,preset:r.prize1_config?.preset_label||preset});
   renderPredictDecisionBoard(cats,{date,topn,beam,kback,preset:r.prize1_config?.preset_label||preset});
@@ -2633,14 +2666,19 @@ async function loadPredict(){
   if(date){
     const [,m,dd]=date.split('-');
     const h=await api('history?n=500');
-    const refs=(h.data||[]).filter(row=>{
+    if(requestId!==_predictRequestId)return;
+    if(h?.error||h?.detail||!Array.isArray(h?.data)){
+      document.getElementById('ref-tbody').innerHTML='<tr><td colspan="7"><div class="predict-empty">โหลดข้อมูลอ้างอิงไม่สำเร็จ</div></td></tr>';
+      return;
+    }
+    const refs=h.data.filter(row=>{
       if(!row.date) return false;
       const p=row.date.split('/');
       return p[0]===dd&&p[1]===m;
     }).slice(0,15);
     document.getElementById('ref-tbody').innerHTML=refs.map(row=>`<tr>
-      <td>${row.date}</td><td>${row.prize1||''}</td><td>${row.top3||''}</td>
-      <td>${row.top2||''}</td><td>${row.back3_1||''}</td><td>${row.back3_2||''}</td><td>${row.bottom2||''}</td>
+      <td>${escHtml(row.date)}</td><td>${escHtml(row.prize1||'')}</td><td>${escHtml(row.top3||'')}</td>
+      <td>${escHtml(row.top2||'')}</td><td>${escHtml(row.back3_1||'')}</td><td>${escHtml(row.back3_2||'')}</td><td>${escHtml(row.bottom2||'')}</td>
     </tr>`).join('')||'<tr><td colspan="7"><div class="predict-empty">ไม่พบงวดวันเดียวกันในอดีต</div></td></tr>';
   }
 }
@@ -2674,33 +2712,76 @@ async function loadLuckyNews(){
 // Track record แยก localStorage ('lottery_mix_snapshots') ไม่ปนกับ Decision Center
 let _mixHistRows=[];
 let _mixLastPreds=[];
+let _mixLoadRequestId=0;
 
 function mixSnapshots(){try{return JSON.parse(localStorage.getItem('lottery_mix_snapshots')||'[]');}catch(e){return [];}}
 function mixAutoSaveSnapshot(snap){
-  const list=mixSnapshots().filter(x=>x.date!==snap.date);
-  list.unshift({...snap,savedAt:new Date().toISOString()});
-  localStorage.setItem('lottery_mix_snapshots',JSON.stringify(list.slice(0,60)));
+  try{
+    const list=mixSnapshots().filter(x=>x.date!==snap.date);
+    list.unshift({...snap,savedAt:new Date().toISOString()});
+    localStorage.setItem('lottery_mix_snapshots',JSON.stringify(list.slice(0,60)));
+    return true;
+  }catch(e){return false;}
 }
 // pool ที่ใช้ตัดสิน hit ของ Mix = pool6 (prize1 + near1 + prize2-5) ของงวดผลจริง
 function mixPoolForRow(row){
-  const pool=new Set(typeof _buildPrize1to5Pool==='function'?_buildPrize1to5Pool(row):[]);
-  const p1=String(row?.prize1||'').padStart(6,'0');
-  if(/^\d{6}$/.test(p1))pool.add(p1);
+  const pool=new Set();
+  const scalarFields=[
+    'near1_1','near1_2',
+    'prize2_1','prize2_2','prize2_3','prize2_4','prize2_5',
+    'prize3_1','prize3_2','prize3_3','prize3_4','prize3_5','prize3_6','prize3_7','prize3_8','prize3_9','prize3_10',
+  ];
+  scalarFields.forEach(key=>{
+    const value=String(row?.[key]??'').trim();
+    if(/^[0-9]{6}$/.test(value))pool.add(value);
+  });
+  ['prize4','prize5'].forEach(key=>{
+    String(row?.[key]??'').trim().split(/\s+/).forEach(value=>{
+      if(/^[0-9]{6}$/.test(value))pool.add(value);
+    });
+  });
+  const p1=String(row?.prize1??'');
+  if(/^[0-9]{6}$/.test(p1))pool.add(p1);
   return pool;
 }
+function mixPoolIsComplete(row){
+  if(!/^\d{6}$/.test(String(row?.prize1??'')))return false;
+  const scalarFields=[
+    'near1_1','near1_2',
+    'prize2_1','prize2_2','prize2_3','prize2_4','prize2_5',
+    'prize3_1','prize3_2','prize3_3','prize3_4','prize3_5','prize3_6','prize3_7','prize3_8','prize3_9','prize3_10',
+  ];
+  const scalarComplete=scalarFields.every(key=>{
+    const raw=String(row?.[key]??'').trim();
+    return /^\d{6}$/.test(raw);
+  });
+  const listComplete=(value,count)=>{
+    const tokens=String(value??'').trim().split(/\s+/).filter(Boolean);
+    return tokens.length===count&&tokens.every(token=>/^\d{6}$/.test(token))&&new Set(tokens).size===count;
+  };
+  return scalarComplete&&listComplete(row?.prize4,50)&&listComplete(row?.prize5,100);
+}
 function mixSnapshotResult(s,rows){
+  const picks=Array.isArray(s?.picks)?s.picks:[];
+  if(!picks.length)return {status:'no-picks',hits:0,poolSize:0};
   const actual=dcActualForDate(rows,s?.date);
   if(!actual)return {status:'pending',hits:0,poolSize:0};
   const pool=mixPoolForRow(actual);
-  const hits=(s.picks||[]).filter(n=>pool.has(String(n))).length;
-  return {status:hits>0?'hit':'miss',hits,poolSize:pool.size};
+  const hits=picks.filter(n=>pool.has(String(n))).length;
+  const status=hits>0?'hit':mixPoolIsComplete(actual)?'miss':'unverifiable';
+  return {status,hits,poolSize:pool.size};
 }
 function mixHitRateTrend(snapshots,rows,window=5,take=20){
   const resolved=(snapshots||[])
     .map(s=>({date:s.date,...mixSnapshotResult(s,rows)}))
-    .filter(r=>r.status!=='pending')
+    .filter(r=>r.status==='hit'||r.status==='miss')
     .sort((a,b)=>a.date.localeCompare(b.date));
   return dcRollingRate(resolved,window,take);
+}
+function mixTrackStatusBadge(status){
+  if(status==='unverifiable')return '<span class="dc-status warn">ตรวจไม่ได้</span>';
+  if(status==='no-picks')return '<span class="dc-status warn">ไม่มีชุดให้ตรวจ</span>';
+  return dcTrackStatusBadge(status);
 }
 function mixTrackHtml(rows){
   const list=mixSnapshots();
@@ -2708,10 +2789,10 @@ function mixTrackHtml(rows){
   return `<div class="dc-snapshot-list">${list.map((s,i)=>{
     const r=mixSnapshotResult(s,rows);
     return `<details class="dc-snapshot-item" ${i===0?'open':''}>
-      <summary><span>${fmtDate(s.date)}</span><span style="display:flex;gap:6px;align-items:center"><span class="dc-status">${(s.picks||[]).length} ชุด</span>${dcTrackStatusBadge(r.status)}</span></summary>
+      <summary><span>${fmtDate(s.date)}</span><span style="display:flex;gap:6px;align-items:center"><span class="dc-status">${(s.picks||[]).length} ชุด</span>${mixTrackStatusBadge(r.status)}</span></summary>
       <div class="dc-snapshot-detail">
         <div class="dc-row">${(s.picks||[]).map(n=>`<span class="num-badge">${escHtml(n)}</span>`).join('')||'<span class="dash-empty">ไม่มีเลข</span>'}</div>
-        <div class="dc-signal-sub" style="margin-top:7px">${r.status==='pending'?'รอผลงวดนี้':`ถูกใน pool รางวัลที่ 1-5: ${r.hits}/${(s.picks||[]).length} ชุด · pool ${r.poolSize} ใบ`} · บันทึก ${s.savedAt?new Date(s.savedAt).toLocaleString('th-TH'):'-'}</div>
+        <div class="dc-signal-sub" style="margin-top:7px">${r.status==='pending'?'รอผลงวดนี้':r.status==='unverifiable'?'ข้อมูลรางวัลที่ 1–5 ไม่ครบ — ไม่นับเป็นถูก/พลาด':r.status==='no-picks'?'ไม่มีชุดตัวเลขใน Snapshot — ไม่นับเป็นถูก/พลาด':`ถูกใน pool รางวัลที่ 1-5: ${r.hits}/${(s.picks||[]).length} ชุด · pool ${r.poolSize} ใบ`} · บันทึก ${s.savedAt?new Date(s.savedAt).toLocaleString('th-TH'):'-'}</div>
         <div class="dc-snapshot-actions"><button class="dc-mini-btn" onclick="mixDeleteSnapshot('${escHtml(s.date)}')">ลบ</button></div>
       </div>
     </details>`;
@@ -3567,6 +3648,7 @@ window.bpFillConfigInputs=bpFillConfigInputs;
 async function loadMixPage(){
   const root=document.getElementById('mix-root');
   if(!root)return;
+  const requestId=++_mixLoadRequestId;
   root.className='dc-loading';
   root.textContent='กำลังผสมเลขจากทุกสูตร...';
   const dateEl=document.getElementById('mix-date');
@@ -3576,6 +3658,7 @@ async function loadMixPage(){
   const next=dateEl?.value||nextDrawInfo().iso;
   try{
     const hist=await api('prize-history?n=260');
+    if(requestId!==_mixLoadRequestId)return;
     const rows=(hist.data||[]).filter(Boolean);
     if(!rows.length||typeof _mixCompute!=='function')throw new Error('no data');
     const frs=dcComputeFormulaResults(rows,next);
@@ -3586,7 +3669,10 @@ async function loadMixPage(){
     }
     _mixHistRows=rows;
     _mixLastPreds=mix.preds;
-    mixAutoSaveSnapshot({date:next,picks:mix.preds});
+    const snapshotSaved=mixAutoSaveSnapshot({date:next,picks:mix.preds});
+    const snapshotNotice=snapshotSaved===false
+      ?'<div class="card" role="status">บันทึกประวัติ Mix ไม่สำเร็จ — แสดงผลการผสมได้ แต่ประวัติงวดนี้ยังไม่ถูกเก็บ</div>'
+      :'';
 
     const top=mix.preds[0],rest=mix.preds.slice(1);
     // ระดับฉันทามติ = ค่าเฉลี่ยต่อหลักของ (สัดส่วนกลุ่มที่โหวตเลขผู้ชนะ)
@@ -3652,7 +3738,7 @@ async function loadMixPage(){
     </div>`;
 
     root.className='';
-    root.innerHTML=heroHtml+voteHtml+`<div class="mix-two-col">${meterHtml}${cutsHtml}</div>`+trackHtml;
+    root.innerHTML=snapshotNotice+heroHtml+voteHtml+`<div class="mix-two-col">${meterHtml}${cutsHtml}</div>`+trackHtml;
     if(trend.length){
       const opts=chartOpts('% ถูก');
       opts.scales.y.min=0;opts.scales.y.max=100;
@@ -3662,6 +3748,7 @@ async function loadMixPage(){
       },options:opts});
     }
   }catch(e){
+    if(requestId!==_mixLoadRequestId)return;
     console.warn('loadMixPage failed',e);
     root.className='dc-loading';
     root.textContent='โหลดหน้านี้ไม่สำเร็จ ลองใหม่อีกครั้ง';
