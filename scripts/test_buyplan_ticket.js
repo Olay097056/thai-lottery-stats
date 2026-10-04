@@ -107,13 +107,15 @@ const evEdge = bpComputeTicketEv(pSafe.rows, CFG, 5); // +5pp on the ท้า�
 check('a large supporting Edge pushes adjusted EV positive → warning fires', evEdge.adjusted.positive === true && evEdge.warning === true);
 
 // ── 5. resolution against the full government prize table ───────────────────────────
+const prize4Values=Array.from({length:50},(_,i)=>String(400000+i).padStart(6,'0'));
+const prize5Values=Array.from({length:100},(_,i)=>String(500000+i).padStart(6,'0'));
 const drawFull = {
   date: '16/07/2026', prize1: '123456', top3: '456',
   near1_1: '123455', near1_2: '123457',
   prize2_1: '222222', prize2_2: '200002', prize2_3: '200003', prize2_4: '200004', prize2_5: '200005',
   prize3_1: '333333', prize3_2: '300002', prize3_3: '300003', prize3_4: '300004', prize3_5: '300005',
   prize3_6: '300006', prize3_7: '300007', prize3_8: '300008', prize3_9: '300009', prize3_10: '300010',
-  prize4: '444444 400004 400040', prize5: '555555 500005 500050',
+  prize4: prize4Values.join(' '), prize5: prize5Values.join(' '),
   front3_1: '789', front3_2: '012', back3_1: '456', back3_2: '111', bottom2: '56',
 };
 const amt = num => bpResolveTicket(num, drawFull).amount;
@@ -151,7 +153,7 @@ check('ticket plan net = returned − spent', rTicket.net === rTicket.returned -
 check('แก้เอง survives ticket resolution', rTicket.rows[1].hand === true);
 const led = bpLedger([ticketPlan], histRows);
 check('ledger random-play expectation is mode-aware for tickets (−32฿ × 3 tickets = −96)', Math.abs(led.randomExpectedNet - (-96)) < 1e-9);
-check('ledger sums the ticket plan', led.resolved === 1 && led.spent === 240 && led.returned === rTicket.returned);
+check('ledger sums the ticket plan', led.resolved === 1 && led.pending === 0 && led.unverifiable === 0 && led.spent === 240 && led.returned === rTicket.returned);
 
 // ── ticket explainability (PRD-buy-plan-explainability) ──────────────────────────
 const tSources = [

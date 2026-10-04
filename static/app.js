@@ -2958,7 +2958,7 @@ function bpAllocateTickets(cands,ticketCount,risk){
 function bpComputeTicketEv(rows,cfg,endingEdge=0){
   const c={...BP_DEFAULT_CONFIG,...(cfg||{})};
   const price=c.ticketPrice||80;
-  const tickets=(rows||[]).reduce((a,r)=>a+(Number(r.qty)||0),0);
+  const tickets=(rows||[]).reduce((a,r)=>a+Math.max(0,Math.floor(Number(r.qty)||0)),0);
   const theoPerTicket=BP_TICKET_EXPECTED_RETURN-price;
   const theoPerBaht=price?theoPerTicket/price:0;
   const adjReturn=BP_TICKET_EXPECTED_RETURN+((Number(endingEdge)||0)/100)*BP_TICKET_PRIZES.bottom2;
@@ -2979,21 +2979,38 @@ function bpComputeTicketEv(rows,cfg,endingEdge=0){
 function bpResolveTicket(num,actual){
   const t=bpPad(num,6);
   const wins=[];
-  if(t===bpPad(actual.prize1,6))wins.push({prize:'ที่ 1',amount:BP_TICKET_PRIZES.prize1});
-  if([actual.front3_1,actual.front3_2].some(x=>x!=null&&bpPad(x,3)===t.slice(0,3)))wins.push({prize:'เลขหน้า 3 ตัว',amount:BP_TICKET_PRIZES.front3});
-  if([actual.back3_1,actual.back3_2].some(x=>x!=null&&bpPad(x,3)===t.slice(-3)))wins.push({prize:'เลขท้าย 3 ตัว',amount:BP_TICKET_PRIZES.back3});
-  if(actual.bottom2!=null&&bpPad(actual.bottom2,2)===t.slice(-2))wins.push({prize:'เลขท้าย 2 ตัว',amount:BP_TICKET_PRIZES.bottom2});
-  const hasSanook=actual.near1_1!=null||actual.prize2_1!=null||actual.prize4!=null;
-  if(hasSanook){
-    if([actual.near1_1,actual.near1_2].some(x=>x!=null&&bpPad(x,6)===t))wins.push({prize:'ข้างเคียงที่ 1',amount:BP_TICKET_PRIZES.near1});
-    const inCols=(prefix,count)=>{ for(let i=1;i<=count;i++){ const v=actual[prefix+i]; if(v!=null&&bpPad(v,6)===t)return true; } return false; };
-    if(inCols('prize2_',5))wins.push({prize:'ที่ 2',amount:BP_TICKET_PRIZES.prize2});
-    if(inCols('prize3_',10))wins.push({prize:'ที่ 3',amount:BP_TICKET_PRIZES.prize3});
-    const inStr=v=>String(v||'').split(/\s+/).filter(Boolean).some(x=>bpPad(x,6)===t);
-    if(inStr(actual.prize4))wins.push({prize:'ที่ 4',amount:BP_TICKET_PRIZES.prize4});
-    if(inStr(actual.prize5))wins.push({prize:'ที่ 5',amount:BP_TICKET_PRIZES.prize5});
-  }
-  return {wins,amount:wins.reduce((a,w)=>a+w.amount,0),unverifiable:!hasSanook};
+  const exact=(v,width)=>typeof v==='string'&&new RegExp(`^[0-9]{${width}}$`).test(v);
+  if(exact(actual?.prize1,6)&&t===actual.prize1)wins.push({prize:'ที่ 1',amount:BP_TICKET_PRIZES.prize1});
+  if([actual?.front3_1,actual?.front3_2].some(x=>exact(x,3)&&x===t.slice(0,3)))wins.push({prize:'เลขหน้า 3 ตัว',amount:BP_TICKET_PRIZES.front3});
+  if([actual?.back3_1,actual?.back3_2].some(x=>exact(x,3)&&x===t.slice(-3)))wins.push({prize:'เลขท้าย 3 ตัว',amount:BP_TICKET_PRIZES.back3});
+  if(exact(actual?.bottom2,2)&&actual.bottom2===t.slice(-2))wins.push({prize:'เลขท้าย 2 ตัว',amount:BP_TICKET_PRIZES.bottom2});
+
+  const columnGroup=(fields,width)=>{
+    const valid=fields.filter(field=>exact(actual?.[field],width)).map(field=>actual[field]);
+    return {valid,complete:valid.length===fields.length};
+  };
+  const near=columnGroup(['near1_1','near1_2'],6);
+  if(near.valid.includes(t))wins.push({prize:'ข้างเคียงที่ 1',amount:BP_TICKET_PRIZES.near1});
+  const prize2=columnGroup(Array.from({length:5},(_,i)=>`prize2_${i+1}`),6);
+  if(prize2.valid.includes(t))wins.push({prize:'ที่ 2',amount:BP_TICKET_PRIZES.prize2});
+  const prize3=columnGroup(Array.from({length:10},(_,i)=>`prize3_${i+1}`),6);
+  if(prize3.valid.includes(t))wins.push({prize:'ที่ 3',amount:BP_TICKET_PRIZES.prize3});
+  const parseList=(value,count)=>{
+    const tokens=typeof value==='string'?value.trim().split(/\s+/).filter(Boolean):[];
+    if(!tokens.length)return {valid:[],complete:false};
+    const valid=tokens.filter(token=>exact(token,6));
+    const unique=new Set(valid);
+    return {valid:[...unique],complete:tokens.length===count&&valid.length===count&&unique.size===count};
+  };
+  const prize4=parseList(actual?.prize4,50),prize5=parseList(actual?.prize5,100);
+  if(prize4.valid.includes(t))wins.push({prize:'ที่ 4',amount:BP_TICKET_PRIZES.prize4});
+  if(prize5.valid.includes(t))wins.push({prize:'ที่ 5',amount:BP_TICKET_PRIZES.prize5});
+  const myhoraComplete=exact(actual?.prize1,6)
+    &&columnGroup(['front3_1','front3_2'],3).complete
+    &&columnGroup(['back3_1','back3_2'],3).complete
+    &&exact(actual?.bottom2,2);
+  const sanookComplete=near.complete&&prize2.complete&&prize3.complete&&prize4.complete&&prize5.complete;
+  return {wins,amount:wins.reduce((a,w)=>a+w.amount,0),unverifiable:!myhoraComplete||!sanookComplete};
 }
 
 // The pure seam. Per-number (แทงรายเลข) input: {mode, budget, risk, config, scoreRows, recoNums}.
@@ -3198,27 +3215,55 @@ function bpResolvePlan(plan,actual){
   if(!actual){
     return {status:'pending',rows:rows.map(r=>({...r,hit:null,returned:0})),returned:0,spent,net:0,budget:plan?plan.budget:0};
   }
-  const prize1=bpPad(actual.prize1,6);
-  const targets={ bottom2:bpPad(actual.bottom2,2), prize1_last2:prize1.slice(-2), back3:prize1.slice(-3) };
+  const exact=(v,width)=>typeof v==='string'&&new RegExp(`^[0-9]{${width}}$`).test(v);
+  const prize1=exact(actual.prize1,6)?actual.prize1:null;
+  const bottom2=exact(actual.bottom2,2)?actual.bottom2:null;
+  const targets={bottom2,prize1_last2:prize1?prize1.slice(-2):null,back3:prize1?prize1.slice(-3):null};
   const cfg={...BP_DEFAULT_CONFIG,...((plan&&plan.config)||{})};
   const payoutFor=field=>field==='back3'?cfg.pay3:cfg.pay2;
   let returned=0,unverifiable=false;
   const resolved=rows.map(r=>{
     if(r.field==='ticket'){
+      const hasQty=typeof r.qty==='number'||(typeof r.qty==='string'&&r.qty.trim()!=='');
+      const qtyValue=hasQty?Number(r.qty):NaN;
+      if(!Number.isFinite(qtyValue)||!Number.isInteger(qtyValue)){
+        unverifiable=true;
+        return {...r,hit:null,returned:0,wins:[],unverifiable:true};
+      }
+      const qty=Math.max(0,qtyValue);
+      if(qty===0){
+        const hasSavedStake=typeof r.stake==='number'||(typeof r.stake==='string'&&r.stake.trim()!=='');
+        const stake=hasSavedStake?Number(r.stake):NaN;
+        if(!Number.isFinite(stake)||stake!==0){
+          unverifiable=true;
+          return {...r,hit:null,returned:0,wins:[],unverifiable:true};
+        }
+        return {...r,hit:false,returned:0,wins:[],unverifiable:false};
+      }
+      const expectedStake=qty*(Number(cfg.ticketPrice)||80);
+      const savedStake=Number(r.stake)||0;
+      if(!Number.isFinite(savedStake)||savedStake<0||savedStake!==expectedStake){
+        unverifiable=true;
+        return {...r,hit:null,returned:0,wins:[],unverifiable:true};
+      }
       const tr=bpResolveTicket(r.num,actual);
-      const qty=Number(r.qty)||1;
       const ret=qty*tr.amount;
       returned+=ret; if(tr.unverifiable)unverifiable=true;
-      return {...r,hit:tr.amount>0,returned:ret,wins:tr.wins,unverifiable:tr.unverifiable};
+      return {...r,hit:tr.amount>0?true:tr.unverifiable?null:false,returned:ret,wins:tr.wins,unverifiable:tr.unverifiable};
+    }
+    if(!['bottom2','prize1_last2','back3'].includes(r.field)){
+      unverifiable=true;
+      return {...r,hit:null,returned:0,unverifiable:true};
     }
     const width=r.field==='back3'?3:2;
     const target=targets[r.field];
-    const hit=target!=null&&bpPad(r.num,width)===target;
-    const ret=hit?(Number(r.stake)||0)*payoutFor(r.field):0;
+    const outcome=target==null?null:bpPad(r.num,width)===target;
+    const ret=outcome===true?(Number(r.stake)||0)*payoutFor(r.field):0;
     returned+=ret;
-    return {...r,hit,returned:ret};
+    if(outcome===null)unverifiable=true;
+    return {...r,hit:outcome,returned:ret,unverifiable:outcome===null};
   });
-  return {status:'resolved',rows:resolved,returned,spent,net:returned-spent,budget:plan.budget,unverifiable};
+  return {status:unverifiable?'unverifiable':'resolved',rows:resolved,returned,spent,net:unverifiable?null:returned-spent,budget:plan.budget,unverifiable};
 }
 
 // Theoretical expected net (baht) of the money a plan actually wagered — mode-aware so the ledger's
@@ -3226,8 +3271,8 @@ function bpResolvePlan(plan,actual){
 function bpPlanTheoreticalNet(plan){
   const rows=(plan&&plan.rows)||[];
   if(plan&&plan.mode==='ticket'){
-    const tickets=rows.reduce((a,r)=>a+(Number(r.qty)||0),0);
-    return bpComputeTicketEv(rows,plan.config,0).theoretical.perTicket*tickets;
+    const ev=bpComputeTicketEv(rows,plan.config,0);
+    return ev.theoretical.perTicket*ev.tickets;
   }
   const spent=rows.reduce((a,r)=>a+(Number(r.stake)||0),0);
   return bpComputeEv(rows,plan?plan.config:{}).theoretical.perBaht*spent;
@@ -3238,7 +3283,7 @@ function bpPlanTheoreticalNet(plan){
 // EV in baht of the amounts ACTUALLY wagered on those resolved plans (ADR-0004: the honest metric).
 function bpLedger(plans,histRows){
   const list=Array.isArray(plans)?plans:[];
-  let resolved=0,pending=0,spent=0,returned=0,randomExpectedNet=0;
+  let resolved=0,pending=0,unverifiable=0,spent=0,returned=0,randomExpectedNet=0;
   const items=list.map(plan=>{
     const actual=(typeof dcActualForDate==='function')?dcActualForDate(histRows,plan.date):null;
     const res=bpResolvePlan(plan,actual);
@@ -3246,10 +3291,12 @@ function bpLedger(plans,histRows){
     if(res.status==='resolved'){
       resolved++; spent+=planSpent; returned+=res.returned;
       randomExpectedNet+=bpPlanTheoreticalNet(plan);
+    }else if(res.status==='unverifiable'){
+      unverifiable++;
     }else{ pending++; }
     return {plan,res,spent:planSpent};
   });
-  return {totalPlans:list.length,resolved,pending,spent,returned,net:returned-spent,randomExpectedNet,items};
+  return {totalPlans:list.length,resolved,pending,unverifiable,spent,returned,net:returned-spent,randomExpectedNet,items};
 }
 
 // ── Buy Plan page state, config/prefs persistence, loader + handlers ──
@@ -3261,11 +3308,20 @@ const BP_HISTORY_KEY='lottery_buyplan_history'; // saved ชุดซื้อ �
 let _bpSources=null;      // {scoreRows, recoNums} cached after fetch so budget/risk/config recompute live
 let _bpWorkingPlan=null;  // the current editable plan (regenerated on budget/risk/config change)
 let _bpHistRows=null;     // prize-history rows cached for auto-resolving saved plans on load
+let _bpLoadRequestId=0;
 
 // Saved-plan storage. Records are frozen at save time and immutable — delete-whole-plan only.
 function bpHistory(){ try{return JSON.parse(localStorage.getItem(BP_HISTORY_KEY)||'[]');}catch(e){return [];} }
-function bpHistoryAdd(rec){ const list=bpHistory(); list.unshift(rec); localStorage.setItem(BP_HISTORY_KEY,JSON.stringify(list.slice(0,200))); }
-function bpHistoryDelete(id){ localStorage.setItem(BP_HISTORY_KEY,JSON.stringify(bpHistory().filter(x=>x.id!==id))); }
+function bpHistoryAdd(rec){ const list=bpHistory(); list.unshift(rec); localStorage.setItem(BP_HISTORY_KEY,JSON.stringify(list)); }
+function bpHistoryDelete(id){
+  try{
+    localStorage.setItem(BP_HISTORY_KEY,JSON.stringify(bpHistory().filter(x=>x.id!==id)));
+    return true;
+  }catch(e){
+    if(typeof toast==='function')toast('ลบชุดซื้อไม่สำเร็จ — พื้นที่จัดเก็บอาจเต็ม','error');
+    return false;
+  }
+}
 function bpReadConfig(){
   try{return {...BP_DEFAULT_CONFIG,...JSON.parse(localStorage.getItem(BP_CONFIG_KEY)||'{}')};}
   catch(e){return {...BP_DEFAULT_CONFIG};}
@@ -3289,11 +3345,18 @@ async function loadBuyPlan(){
     dateEl.innerHTML=clientDraws().map(d=>`<option value="${d.date}">${d.label}</option>`).join('');
   }
   const next=dateEl?.value||nextDrawInfo().iso;
+  const requestId=++_bpLoadRequestId;
+  const isStale=()=>requestId!==_bpLoadRequestId;
   try{
+    root.className='dc-loading';
+    root.textContent='กำลังจัดชุดซื้อ...';
     const [pred,hist]=await Promise.all([
       api(`predict/all?top_n=10&date=${next}&beam_width=500&k_back=100&preset=optimized`),
       api('prize-history?n=260'),
     ]);
+    if(isStale())return;
+    const apiFailed=!!pred?.error||!!hist?.error||!pred?.categories||!Array.isArray(hist?.data);
+    if(apiFailed)throw new Error('Buy Plan source API returned an error or invalid payload');
     const cats=pred.categories||{};
     const rows=(hist.data||[]).filter(Boolean);
     const formulaResults=dcComputeFormulaResults(rows,next);
@@ -3316,6 +3379,7 @@ async function loadBuyPlan(){
     _bpHistRows=rows;
     bpRender();
   }catch(e){
+    if(isStale())return;
     console.warn('loadBuyPlan failed',e);
     root.className='dc-loading';
     root.textContent='โหลดหน้าจัดชุดซื้อไม่สำเร็จ ลองใหม่อีกครั้ง';
@@ -3541,13 +3605,18 @@ function bpSaveCurrentPlan(){
     totalStake:p.totalStake,
   };
   if(p.mode==='ticket'){ record.ticketPrice=p.ticketPrice; record.ticketCount=p.ticketCount; }
-  bpHistoryAdd(record);
+  try{
+    bpHistoryAdd(record);
+  }catch(e){
+    if(typeof toast==='function')toast('บันทึกชุดซื้อไม่สำเร็จ — พื้นที่จัดเก็บอาจเต็ม','error');
+    return;
+  }
   if(typeof toast==='function')toast('บันทึกชุดซื้อแล้ว — ล็อกไม่ให้แก้','success');
   bpPaint();
 }
 window.bpSaveCurrentPlan=bpSaveCurrentPlan;
 function bpDeletePlan(id){
-  bpHistoryDelete(id);
+  if(!bpHistoryDelete(id))return;
   bpPaint();
   if(typeof toast==='function')toast('ลบชุดนี้แล้ว','success');
 }
@@ -3559,20 +3628,25 @@ function bpHistoryLedgerHtml(){
   const head='<div class="bp-history-head">ประวัติชุดซื้อ · Ledger จริงเป็นบาท</div>';
   if(!plans.length)return `<div class="bp-history">${head}<div class="dash-empty">ยังไม่มีชุดที่บันทึก — กด "บันทึกชุดนี้" เมื่อจะซื้อจริง เพื่อวัดว่าระบบทำเงินได้จริงไหม</div></div>`;
   const led=bpLedger(plans,_bpHistRows||[]);
+  const hasUnverifiable=led.items.some(item=>item.res.status==='unverifiable');
   const netCls=led.net>=0?'good':'bad';
   const sign=v=>`${v>=0?'+':'−'}${Math.abs(Math.round(v))}฿`;
   const summary=`<div class="bp-ledger-summary">
-    <div class="bp-ledger-line">ซื้อ <b>${led.resolved}</b> ชุดที่รู้ผลแล้ว · จ่ายไป <b>${led.spent}฿</b> · ได้คืน <b>${led.returned}฿</b> = <span class="dc-status ${netCls}">net ${sign(led.net)}</span></div>
-    <div class="bp-ledger-sub">ถ้าสุ่มแทงล้วนๆ ด้วยเงินก้อนเดียวกัน คาดว่าจะได้ราว ${sign(led.randomExpectedNet)} — นี่คือคำตอบตรงๆ ว่า Edge โผล่มาเป็นเงินจริงไหม${led.pending?` · อีก ${led.pending} ชุดยังรอผล`:''}</div>
+    <div class="bp-ledger-line">ซื้อ <b>${led.resolved}</b> ชุดที่รู้ผลแล้ว · จ่ายไป <b>${led.spent}฿</b> · ได้คืน <b>${led.returned}฿</b> = <span class="dc-status ${netCls}">net ${sign(led.net)}</span>${hasUnverifiable?' · ยังไม่รวมชุดที่ตรวจผลได้ไม่ครบ':''}</div>
+    <div class="bp-ledger-sub">ถ้าสุ่มแทงล้วนๆ ด้วยเงินก้อนเดียวกัน คาดว่าจะได้ราว ${sign(led.randomExpectedNet)} — นี่คือคำตอบตรงๆ ว่า Edge โผล่มาเป็นเงินจริงไหม${led.pending?` · อีก ${led.pending} ชุดยังรอผล`:''}${led.unverifiable?` · ${led.unverifiable} ชุดผลตรวจไม่ครบ`:''}${hasUnverifiable?' · ชุดที่ข้อมูลผลไม่ครบไม่นับในยอดเงินจริง':''}</div>
   </div>`;
   const items=led.items.map(({plan,res,spent})=>{
     const status=res.status==='pending'
       ?'<span class="dc-status warn">รอผล</span>'
-      :`<span class="dc-status ${res.net>=0?'good':'bad'}">net ${sign(res.net)}</span>`;
+      :res.status==='unverifiable'
+        ?'<span class="dc-status warn">ข้อมูลผลไม่ครบ — ไม่นับ P/L</span>'
+        :`<span class="dc-status ${res.net>=0?'good':'bad'}">net ${sign(res.net)}</span>`;
     const hand=plan.rows.some(r=>r.hand)?'<span class="bp-handedit">มีแก้เอง</span>':'';
-    const won=res.status==='resolved'?res.rows.filter(r=>r.hit).length:0;
+    const won=res.rows.filter(r=>r.hit===true).length;
+    const verifiedPayout=res.rows.reduce((sum,r)=>sum+(r.hit===true?(Number(r.returned)||0):0),0);
+    const knownWin=won?` · ตรวจพบ ${won} รางวัลที่ยืนยันได้ (${sign(verifiedPayout)})`:'';
     return `<div class="bp-hist-item">
-      <div class="bp-hist-meta"><b>${fmtDate(plan.date)}</b> · ${plan.rows.length} เลข · ${spent}฿ · ${BP_RISK_LABELS[plan.risk]||plan.risk} ${hand}${won?` · ถูก ${won} เลข`:''}</div>
+      <div class="bp-hist-meta"><b>${fmtDate(plan.date)}</b> · ${plan.rows.length} เลข · ${spent}฿ · ${BP_RISK_LABELS[plan.risk]||plan.risk} ${hand}${won?` · ถูก ${won} เลข`:''}${res.status==='unverifiable'?knownWin:''}</div>
       <div class="bp-hist-right">${status}<button class="bp-del" onclick="bpDeletePlan('${plan.id}')" title="ลบทั้งชุด">✕</button></div>
     </div>`;
   }).join('');
@@ -3590,8 +3664,12 @@ function bpSyncControls(prefs){
 function bpSetMode(mode){
   if(mode!=='perNumber'&&mode!=='ticket')return;
   if(mode!=='ticket')_bpMixIntent=false; // leaving ใบ mode drops the "came from Mix" hint
-  const prefs=bpReadPrefs(); prefs.mode=mode; bpWritePrefs(prefs);
-  bpSyncControls(prefs); bpRender();
+  try{
+    const prefs=bpReadPrefs(); prefs.mode=mode; bpWritePrefs(prefs);
+    bpSyncControls(prefs); bpRender();
+  }catch(e){
+    if(typeof toast==='function')toast('บันทึกการตั้งค่าชุดซื้อไม่สำเร็จ — พื้นที่จัดเก็บอาจเต็ม','error');
+  }
 }
 window.bpSetMode=bpSetMode;
 // Entry point for the Mix page's "จัดชุดซื้อจากเลขชุดนี้ →" button (ISSUE-20, ADR-0004 decision 9).
@@ -3602,19 +3680,34 @@ window.bpSetMode=bpSetMode;
 let _bpMixIntent=false, _bpMixIntentPending=false;
 function bpFromMix(){
   _bpMixIntentPending=true;
-  const prefs=bpReadPrefs(); prefs.mode='ticket'; bpWritePrefs(prefs);
+  try{
+    const prefs=bpReadPrefs(); prefs.mode='ticket'; bpWritePrefs(prefs);
+  }catch(e){
+    _bpMixIntentPending=false;
+    _bpMixIntent=false;
+    if(typeof toast==='function')toast('บันทึกการตั้งค่าชุดซื้อไม่สำเร็จ — พื้นที่จัดเก็บอาจเต็ม','error');
+    return;
+  }
   showPage('buyplan');
 }
 window.bpFromMix=bpFromMix;
 function bpSetBudget(v){
   const budget=Math.max(0,Math.floor(Number(v)||0));
-  const prefs=bpReadPrefs(); prefs.budget=budget; bpWritePrefs(prefs);
-  bpSyncControls(prefs); bpRender();
+  try{
+    const prefs=bpReadPrefs(); prefs.budget=budget; bpWritePrefs(prefs);
+    bpSyncControls(prefs); bpRender();
+  }catch(e){
+    if(typeof toast==='function')toast('บันทึกการตั้งค่าชุดซื้อไม่สำเร็จ — พื้นที่จัดเก็บอาจเต็ม','error');
+  }
 }
 window.bpSetBudget=bpSetBudget;
 function bpSetRisk(risk){
-  const prefs=bpReadPrefs(); prefs.risk=risk; bpWritePrefs(prefs);
-  bpSyncControls(prefs); bpRender();
+  try{
+    const prefs=bpReadPrefs(); prefs.risk=risk; bpWritePrefs(prefs);
+    bpSyncControls(prefs); bpRender();
+  }catch(e){
+    if(typeof toast==='function')toast('บันทึกการตั้งค่าชุดซื้อไม่สำเร็จ — พื้นที่จัดเก็บอาจเต็ม','error');
+  }
 }
 window.bpSetRisk=bpSetRisk;
 function bpToggleConfig(){
@@ -3623,14 +3716,22 @@ function bpToggleConfig(){
 }
 window.bpToggleConfig=bpToggleConfig;
 function bpSaveConfig(){
-  const num=(id,def)=>{ const v=Number(document.getElementById(id)?.value); return Number.isFinite(v)&&v>0?v:def; };
+  const num=(id,def)=>{ const v=Number(document.getElementById(id)?.value); return Number.isInteger(v)&&v>0?v:def; };
   const cfg=bpReadConfig();
   cfg.pay2=num('bp-cfg-pay2',cfg.pay2);
   cfg.pay3=num('bp-cfg-pay3',cfg.pay3);
   cfg.minStake=num('bp-cfg-min',cfg.minStake);
   cfg.roundUnit=num('bp-cfg-round',cfg.roundUnit);
   cfg.ticketPrice=num('bp-cfg-ticket',cfg.ticketPrice);
-  bpWriteConfig(cfg);
+  const inputs=['bp-cfg-pay2','bp-cfg-pay3','bp-cfg-min','bp-cfg-round','bp-cfg-ticket'];
+  const invalid=inputs.some(id=>{const value=Number(document.getElementById(id)?.value);return !Number.isInteger(value)||value<=0;});
+  if(invalid){ if(typeof toast==='function')toast('ค่าตั้งค่าต้องเป็นจำนวนเต็มบวก','error'); bpFillConfigInputs(); return; }
+  try{
+    bpWriteConfig(cfg);
+  }catch(e){
+    if(typeof toast==='function')toast('บันทึกการตั้งค่าเรตไม่สำเร็จ — พื้นที่จัดเก็บอาจเต็ม','error');
+    return;
+  }
   bpRender();
   if(typeof toast==='function')toast('บันทึกการตั้งค่าเรตแล้ว','success');
 }
