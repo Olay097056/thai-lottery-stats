@@ -107,6 +107,7 @@ function makePredictHarness(apiOverride) {
   const api = apiOverride || (async endpoint => endpoint.startsWith('predict/all') ? { date: '2026-10-16', categories } : { data: [] });
   const code = [
     'let _predictRequestId=0;',
+    extractFunction(appSrc, 'setPageStatus'),
     extractFunction(appSrc, 'predNum'),
     extractFunction(appSrc, 'predScoreKey'),
     extractFunction(appSrc, 'predScore'),
@@ -155,6 +156,7 @@ function makeMixPageHarness(options = {}) {
   }
   const code = [
     'let _mixLoadRequestId=0;',
+    extractFunction(appSrc, 'setPageStatus'),
     extractFunction(engineSrc, '_buildPrize1to5Pool'),
     extractFunction(appSrc, 'dcActualForDate'),
     extractFunction(appSrc, 'dcRollingRate'),
@@ -448,12 +450,14 @@ async function main() {
     ? { categories: loadingPredict.categories }
     : { data: [{ date: '16/10/2025', prize1: '654321', top3: '321', top2: '21', back3_1: '123', back3_2: '456', bottom2: '78' }] };
   await loadingPredict.sandbox.loadPredict();
+  check('Predict announces the completed result count', loadingPredict.elements['predict-status'].textContent === 'ผลทำนายพร้อมแล้ว 2 รายการ');
   check('loading-state fixture starts with prior P1, front3 and reference rows', loadingPredict.elements['p1-tbody'].innerHTML.includes('123456') && loadingPredict.elements['f31-tbody'].innerHTML.includes('789') && loadingPredict.elements['ref-tbody'].innerHTML.includes('654321'));
   let resolvePendingPrediction;
   loadingPredict.sandbox.api = endpoint => endpoint.startsWith('predict/all')
     ? new Promise(resolve => { resolvePendingPrediction = resolve; })
     : Promise.resolve({ data: [] });
   const pendingPrediction = loadingPredict.sandbox.loadPredict();
+  check('Predict announces loading while a request is pending', loadingPredict.elements['predict-status'].textContent === 'กำลังโหลดผลทำนาย...');
   const loadingBodies = ['p1-tbody', 'f31-tbody', 'ref-tbody'].map(id => loadingPredict.elements[id].innerHTML);
   check('new Predict load replaces old table rows with an explicit loading state', loadingBodies.every(html => html.includes('กำลังคำนวณ')) && !loadingBodies.some(html => ['123456', '789', '654321'].some(old => html.includes(old))));
   resolvePendingPrediction({ categories: loadingPredict.categories });
@@ -462,6 +466,7 @@ async function main() {
   // Predict API returns per-category errors with HTTP 200; render them as errors, not empty data.
   const predict = makePredictHarness();
   await predict.sandbox.loadPredict();
+  check('Predict announces completion even when category results are empty/error states', predict.elements['predict-status'].textContent === 'ผลทำนายพร้อมแล้ว 0 รายการ');
   const p1Body = predict.elements['p1-tbody'].innerHTML;
   const p1Badges = predict.elements['p1-badges'].innerHTML;
   const frontBody = predict.elements['f31-tbody'].innerHTML;
@@ -476,6 +481,7 @@ async function main() {
   stalePredict.sandbox.api = async () => ({ error: 'synthetic network failure' });
   await stalePredict.sandbox.loadPredict();
   const failedP1 = stalePredict.elements['p1-tbody'].innerHTML;
+  check('Predict top-level failure is announced without backend detail', stalePredict.elements['predict-status'].textContent.includes('โหลดผลทำนายไม่สำเร็จ') && !stalePredict.elements['predict-status'].textContent.includes('synthetic'));
   check('top-level Predict failure replaces old rows with a generic error', failedP1.includes('โหลดผลทำนายไม่สำเร็จ') && !failedP1.includes('synthetic') && !failedP1.includes('123456'));
   check('top-level Predict failure invalidates its previous saveable snapshot', stalePredict.sandbox._lastPredictSnapshot == null);
 
@@ -483,6 +489,7 @@ async function main() {
   invalidPredict.sandbox.api = async () => ({ detail: [{ msg: 'internal validation detail' }] });
   await invalidPredict.sandbox.loadPredict();
   const invalidBody = invalidPredict.elements['p1-tbody'].innerHTML;
+  check('Predict validation errors are announced without backend detail', invalidPredict.elements['predict-status'].textContent.includes('คำขอทำนายไม่ถูกต้อง') && !invalidPredict.elements['predict-status'].textContent.includes('internal validation detail'));
   check('Predict validation response has an actionable error, not an empty-data state', invalidBody.includes('คำขอทำนายไม่ถูกต้อง') && !invalidBody.includes('ไม่มีข้อมูล'));
   check('Predict validation response does not expose backend detail', !invalidBody.includes('internal validation detail'));
 
@@ -490,6 +497,7 @@ async function main() {
   refFailure.sandbox.api = async path => path.startsWith('predict/all') ? { categories: refFailure.categories } : { error: 'synthetic history API failure' };
   await refFailure.sandbox.loadPredict();
   const refBody = refFailure.elements['ref-tbody'].innerHTML;
+  check('Predict reference-data failure is announced', refFailure.elements['predict-status'].textContent.includes('โหลดข้อมูลอ้างอิงไม่สำเร็จ'));
   check('reference-history API failure is not misreported as no matching draw', refBody.includes('โหลดข้อมูลอ้างอิงไม่สำเร็จ') && !refBody.includes('ไม่พบงวดวันเดียวกัน'));
 
   const htmlPayload = '<img src=x onerror=alert(1)>';
@@ -626,6 +634,7 @@ async function main() {
   const mixPage = makeMixPageHarness();
   await mixPage.sandbox.loadMixPage();
   const mixRoot = mixPage.elements['mix-root'];
+  check('Mix announces when its result sets are ready', mixPage.elements['mix-status'].textContent === 'ผสมเลขเสร็จแล้ว 10 ชุด');
   check('Mix predictions remain visible when snapshot storage fails', mixRoot.innerHTML.includes('000000') && !mixRoot.textContent.includes('โหลดหน้านี้ไม่สำเร็จ'));
   check('Mix page reports that auto-saving history failed', mixRoot.innerHTML.includes('บันทึกประวัติ Mix ไม่สำเร็จ'));
 

@@ -12,3 +12,8 @@ lxml>=5.0.0
 # Legacy Streamlit dashboard (app.py)
 streamlit>=1.32.0
 plotly>=5.18.0
+
+# Security floors for transitive runtime dependencies
+anyio>=4.14.2
+soupsieve>=2.9.0
+urllib3>=2.8.0

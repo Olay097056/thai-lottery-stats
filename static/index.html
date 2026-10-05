@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<link rel="stylesheet" href="/static/app.css?v=hermes36">
+<link rel="stylesheet" href="/static/app.css?v=hermes39">
 </head>
 <body>
 
@@ -25,7 +25,7 @@
     <div class="logo-sub">Thai Stats Dashboard</div>
   </div>
   <div class="nav" role="navigation" aria-label="เมนูหลัก">
-    <div class="nav-item active" role="button" tabindex="0" data-page="dashboard" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('dashboard')}"><span class="nav-icon">📊</span>Dashboard</div>
+    <div class="nav-item active" role="button" tabindex="0" data-page="dashboard" aria-current="page" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('dashboard')}"><span class="nav-icon">📊</span>Dashboard</div>
     <div class="nav-item" role="button" tabindex="0" data-page="frequency" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('frequency')}"><span class="nav-icon">📋</span>ตารางความถี่</div>
     <div class="nav-item" role="button" tabindex="0" data-page="predict" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('predict')}"><span class="nav-icon">🔮</span>ทำนาย / สูตร</div>
     <div class="nav-item" role="button" tabindex="0" data-page="mix" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('mix')}"><span class="nav-icon">🤷</span>ไม่รู้ซื้ออะไรดี</div>
@@ -53,10 +53,10 @@
     <div class="card card-glass dash-hero-main">
       <div class="dash-hero-top">
         <div>
-          <div class="page-title" style="margin-bottom:2px">Dashboard</div>
+          <h1 class="page-title" style="margin-bottom:2px">Dashboard</h1>
           <div class="page-sub" style="margin-bottom:0">ภาพรวมข้อมูลหวยไทยและจุดที่ควรดูต่อ</div>
         </div>
-        <div id="dash-data-status" class="dash-status warn">กำลังโหลดข้อมูล</div>
+        <div id="dash-data-status" class="dash-status warn" role="status" aria-live="polite" aria-atomic="true">กำลังโหลดข้อมูล</div>
       </div>
       <div class="dash-latest-ticket">
         <div>
@@ -142,7 +142,7 @@
 <!-- DECISION CENTER -->
 <!-- FREQUENCY -->
 <div class="page" id="page-frequency">
-  <div class="page-title">ตารางความถี่</div>
+  <h1 class="page-title">ตารางความถี่</h1>
   <div class="page-sub">จำนวนครั้งที่เลขออก + เลขที่ไม่เคยออก</div>
   <div class="ctrl-row">
     <div class="ctrl-group"><label class="ctrl-label" for="freq-col">ประเภท</label><select id="freq-col" onchange="loadFreq()"></select></div>
@@ -167,7 +167,7 @@
 <!-- HOT/COLD -->
 <!-- PREDICT -->
 <div class="page" id="page-predict">
-  <div class="page-title">🔮 คำนวณเลขงวดหน้า</div>
+  <h1 class="page-title">🔮 คำนวณเลขงวดหน้า</h1>
   <div class="page-sub">ทำนายและสูตรคำนวณเลขเด็ดทุกประเภทรางวัล</div>
   <div class="card pred-shared-bar">
     <div class="pred-shared-controls">
@@ -193,11 +193,11 @@
     </div>
   </div>
   <!-- Main page tabs -->
-  <div class="pred-page-tabs" style="display:flex;gap:6px;margin-bottom:18px">
-    <button id="pred-main-btn-predict" class="pred-main-tab-btn active" onclick="switchPredTab('predict')">🔮 ทำนาย</button>
-    <button id="pred-main-btn-formula" class="pred-main-tab-btn" onclick="switchPredTab('formula')">🔢 สูตรคำนวณ</button>
-    <button id="pred-main-btn-decision" class="pred-main-tab-btn" onclick="switchPredTab('decision')">🎯 สรุปงวดนี้</button>
-    <button id="pred-main-btn-oldver" class="pred-main-tab-btn" onclick="switchPredTab('oldver')">🗄️ (OLD VER)</button>
+  <div class="pred-page-tabs" role="group" aria-label="มุมมองในหน้าทำนาย" style="display:flex;gap:6px;margin-bottom:18px">
+    <button type="button" id="pred-main-btn-predict" class="pred-main-tab-btn active" aria-pressed="true" aria-controls="pred-main-tab-predict" onclick="switchPredTab('predict')">🔮 ทำนาย</button>
+    <button type="button" id="pred-main-btn-formula" class="pred-main-tab-btn" aria-pressed="false" aria-controls="pred-main-tab-formula" onclick="switchPredTab('formula')">🔢 สูตรคำนวณ</button>
+    <button type="button" id="pred-main-btn-decision" class="pred-main-tab-btn" aria-pressed="false" aria-controls="pred-main-tab-decision" onclick="switchPredTab('decision')">🎯 สรุปงวดนี้</button>
+    <button type="button" id="pred-main-btn-oldver" class="pred-main-tab-btn" aria-pressed="false" aria-controls="pred-main-tab-oldver" onclick="switchPredTab('oldver')">🗄️ (OLD VER)</button>
   </div>
   <!-- Tab panel: ทำนาย -->
   <div id="pred-main-tab-predict" class="pred-main-tab-panel">
@@ -217,21 +217,22 @@
     </div>
   </div>
   <div class="card" style="margin-bottom:14px"><div class="dc-label">Snapshot หน้าทำนาย</div><div id="predict-snapshot-list" class="dc-row"></div></div>
+  <div id="predict-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="predict-summary" class="predict-summary"></div>
   <div id="predict-final" class="predict-final"></div>
   <div id="predict-decision-board" class="predict-decision-board"></div>
   <div id="predict-consensus" class="predict-consensus"></div>
   <div id="predict-tools" class="predict-tools">
     <div class="predict-tool-controls">
-      <input id="predict-search" type="search" placeholder="ค้นหาเลข / หมวด" oninput="filterPredictions()">
-      <select id="predict-group-filter" onchange="filterPredictions()">
+      <div class="ctrl-group"><label class="ctrl-label" for="predict-search">ค้นหาเลข / หมวด</label><input id="predict-search" type="search" placeholder="ค้นหาเลข / หมวด" oninput="filterPredictions()"></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="predict-group-filter">ตัวกรองหมวด</label><select id="predict-group-filter" onchange="filterPredictions()">
         <option value="">ทุกหมวด</option>
         <option value="prize1">รางวัลที่ 1</option>
         <option value="top3">3 ตัวบน (อ่านจากท้ายรางวัลที่ 1)</option>
         <option value="front3">หน้า 3</option>
         <option value="back3">ท้าย 3</option>
         <option value="bottom2">ท้าย 2</option>
-      </select>
+      </select></div>
       <button class="btn btn-secondary" style="padding:7px 11px" onclick="resetPredictionFilters()">ล้างตัวกรอง</button>
     </div>
     <div id="predict-filter-count" class="predict-filter-count"></div>
@@ -241,7 +242,7 @@
   <div id="all-pred-grid" style="display:none;margin-top:16px">
     <!-- รางวัลที่ 1 -->
     <div style="margin-bottom:20px">
-      <div class="section-h" style="background:linear-gradient(90deg,rgba(255,214,10,.12),transparent);border-left:3px solid var(--accent)">🏆 รางวัลที่ 1 (6 หลัก)</div>
+      <div class="section-h" role="heading" aria-level="2" style="background:linear-gradient(90deg,rgba(255,214,10,.12),transparent);border-left:3px solid var(--accent)">🏆 รางวัลที่ 1 (6 หลัก)</div>
       <div class="card predict-card" data-pred-group="prize1" style="border:1px solid var(--accent)44">
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px" id="p1-badges"></div>
         <div class="tbl-wrap" style="max-height:320px;overflow-y:auto">
@@ -305,7 +306,7 @@
 
   <!-- ข่าวเลขเด็ด -->
   <div id="lucky-news-section" style="margin-top:16px;display:none">
-    <div class="section-h" style="background:linear-gradient(90deg,#f0545422,transparent);border-left:3px solid #f05454">📰 เลขเด็ดจากข่าว/ความเชื่อ</div>
+    <div class="section-h" role="heading" aria-level="2" style="background:linear-gradient(90deg,#f0545422,transparent);border-left:3px solid #f05454">📰 เลขเด็ดจากข่าว/ความเชื่อ</div>
     <div class="card" style="border:1px solid #f0545444">
       <div style="font-size:.8rem;color:var(--text3);margin-bottom:8px" id="lucky-source"></div>
       <div style="margin-bottom:10px">
@@ -333,7 +334,7 @@
   </div><!-- /pred-main-tab-predict -->
 
   <!-- Tab panel: สูตรคำนวณ -->
-  <div id="pred-main-tab-formula" class="pred-main-tab-panel" style="display:none">
+  <div id="pred-main-tab-formula" class="pred-main-tab-panel" style="display:none" hidden>
 
   <!-- ข้อมูลงวดก่อน -->
   <div class="card formula-input-panel">
@@ -402,8 +403,8 @@
   <div id="formula-insights" class="formula-insights"></div>
   <div id="formula-tools" class="formula-tools">
     <div class="formula-tool-controls">
-      <input id="formula-search" type="search" placeholder="ค้นหาชื่อสูตร / เลข" oninput="filterFormulaCards()">
-      <select id="formula-target-filter" onchange="filterFormulaCards()">
+      <div class="ctrl-group"><label class="ctrl-label" for="formula-search">ค้นหาชื่อสูตร / เลข</label><input id="formula-search" type="search" placeholder="ค้นหาชื่อสูตร / เลข" oninput="filterFormulaCards()"></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="formula-target-filter">ประเภทผลลัพธ์</label><select id="formula-target-filter" onchange="filterFormulaCards()">
         <option value="">ทุกประเภทผลลัพธ์</option>
         <option value="digit">เลขวิ่ง / หลักหน่วย</option>
         <option value="bottom">2 ตัว / mixed</option>
@@ -411,7 +412,7 @@
         <option value="front 3">หน้า 3</option>
         <option value="back 3">ท้าย 3</option>
         <option value="prize1">รางวัลที่ 1 / ท้ายรางวัล</option>
-      </select>
+      </select></div>
       <button class="btn btn-secondary" style="padding:7px 11px" onclick="resetFormulaFilters()">ล้างตัวกรอง</button>
     </div>
     <div id="formula-filter-count" class="formula-filter-count"></div>
@@ -420,9 +421,9 @@
   <!-- ผลรางวัลที่สร้างจากสูตร (เลียนแบบใบหวยจริง) -->
 
   <!-- Sub-tabs -->
-  <div class="ftab-nav" role="tablist" aria-label="หมวดสูตร" onkeydown="ftabKeyNav(event)" style="margin-bottom:16px">
-    <button id="ftab-btn-ALL" class="ftab-btn" role="tab" aria-selected="false" aria-controls="formula-results-ALL" data-color="green" data-ftab="ALL" onclick="switchFormulaTab('ALL')">รวมทุกสูตร</button>
-    <select id="ftab-group-select" aria-label="เลือกกลุ่มสูตร" onchange="if(this.value)switchFormulaTab(this.value)" style="min-width:190px">
+  <div class="ftab-nav" role="group" aria-label="หมวดสูตร" style="margin-bottom:16px">
+    <button type="button" id="ftab-btn-ALL" class="ftab-btn" aria-pressed="false" aria-controls="formula-results-ALL" data-color="green" data-ftab="ALL" onclick="switchFormulaTab('ALL')">รวมทุกสูตร</button>
+    <select id="ftab-group-select" aria-label="เลือกกลุ่มสูตร" aria-controls="formula-results-A" onchange="if(this.value)switchFormulaTab(this.value)" style="min-width:190px">
       <option value="" disabled>กลุ่มสูตร…</option>
       <option value="A" selected>A · สูตรพื้นบ้าน</option>
       <option value="B">B · ล็อตเตอรี่พลัส</option>
@@ -436,7 +437,7 @@
       <option value="J">J · เจ้าสัว (ทดลอง)</option>
       <option value="HM">HM · Hermes Pool 1-4 (ทดลอง)</option>
     </select>
-    <button id="ftab-btn-BT" class="ftab-btn" role="tab" aria-selected="false" aria-controls="formula-results-BT" data-color="orange" data-ftab="BT" onclick="switchFormulaTab('BT')">Backtest</button>
+    <button type="button" id="ftab-btn-BT" class="ftab-btn" aria-pressed="false" aria-controls="formula-results-BT" data-color="orange" data-ftab="BT" onclick="switchFormulaTab('BT')">Backtest</button>
   </div>
 
   <!-- Tab descriptions -->
@@ -460,32 +461,34 @@
   <div id="ftab-desc-BT" class="ftab-info hidden" data-color="orange">ทดสอบความแม่นของแต่ละสูตรย้อนหลัง — ใช้ผลงวดจริงจาก DB เปรียบเทียบ</div>
 
   <!-- Results per tab -->
-  <div id="formula-results-A" class="formula-results-panel active" role="tabpanel" aria-labelledby="ftab-btn-A"></div>
-  <div id="formula-results-B" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-B"></div>
-  <div id="formula-results-C" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-C"></div>
-  <div id="formula-results-ALL" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-ALL"></div>
-  <div id="formula-results-D" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-D"></div>
-  <div id="formula-results-F" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-F"></div>
-  <div id="formula-results-G" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-G"></div>
-  <div id="formula-results-H" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-H"></div>
-  <div id="formula-results-E" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-E"></div>
-  <div id="formula-results-I" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-I"></div>
-  <div id="formula-results-J" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-J"></div>
-  <div id="formula-results-HM" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-group-select"></div>
-  <div id="formula-results-BT" class="formula-results-panel" role="tabpanel" aria-labelledby="ftab-btn-BT">
+  <div id="formula-results-A" class="formula-results-panel active" role="group" aria-label="ผลสูตรกลุ่ม A"></div>
+  <div id="formula-results-B" class="formula-results-panel" role="group" aria-label="ผลสูตรกลุ่ม B"></div>
+  <div id="formula-results-C" class="formula-results-panel" role="group" aria-label="ผลสูตรกลุ่ม C"></div>
+  <div id="formula-results-ALL" class="formula-results-panel" role="group" aria-label="ผลสูตรทุกกลุ่ม"></div>
+  <div id="formula-results-D" class="formula-results-panel" role="group" aria-label="ผลสูตรกลุ่ม D"></div>
+  <div id="formula-results-F" class="formula-results-panel" role="group" aria-label="ผลสูตรกลุ่ม F"></div>
+  <div id="formula-results-G" class="formula-results-panel" role="group" aria-label="ผลสูตรกลุ่ม G"></div>
+  <div id="formula-results-H" class="formula-results-panel" role="group" aria-label="ผลสูตรกลุ่ม H"></div>
+  <div id="formula-results-E" class="formula-results-panel" role="group" aria-label="ผลสูตรกลุ่ม E"></div>
+  <div id="formula-results-I" class="formula-results-panel" role="group" aria-label="ผลสูตรกลุ่ม I"></div>
+  <div id="formula-results-J" class="formula-results-panel" role="group" aria-label="ผลสูตรกลุ่ม J"></div>
+  <div id="formula-results-HM" class="formula-results-panel" role="group" aria-label="ผลสูตรกลุ่ม HM"></div>
+  <div id="formula-results-BT" class="formula-results-panel" role="group" aria-label="ผล Backtest">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
       <div class="ctrl-group"><label class="ctrl-label" for="bt-formula-n">จำนวนงวดย้อนหลัง</label><select id="bt-formula-n"><option value="20">20 งวด</option><option value="50" selected>50 งวด</option><option value="100">100 งวด</option><option value="200">200 งวด</option></select></div>
       <button class="btn btn-primary" onclick="runFormulaBacktest()">▶ รัน Backtest</button>
     </div>
-    <div id="formula-bt-loading" style="display:none;text-align:center;padding:24px;color:var(--text3)">กำลังคำนวณ...</div>
+    <div id="formula-bt-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div id="formula-bt-loading" style="display:none;text-align:center;padding:24px;color:var(--text3)">กำลังคำนวณ...</div>
     <div id="formula-bt-table"></div>
   </div>
 
+  <div id="formula-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="formula-empty" style="text-align:center;padding:40px;color:var(--text3)">กรอกข้อมูลงวดก่อนแล้วกด ⚡ คำนวณทุกสูตร</div>
   </div><!-- /pred-main-tab-formula -->
 
   <!-- Tab panel: สรุปงวดนี้ -->
-  <div id="pred-main-tab-decision" class="pred-main-tab-panel" style="display:none">
+  <div id="pred-main-tab-decision" class="pred-main-tab-panel" style="display:none" hidden>
   <div class="card predict-toolbar" style="margin-top:14px">
     <div class="predict-controls">
       <div class="ctrl-group tab-local-date"><label class="ctrl-label" for="dc-date">งวดเป้าหมาย</label><select id="dc-date" onchange="loadDecisionCenter()"></select></div>
@@ -495,11 +498,12 @@
       <button class="btn btn-primary" onclick="loadDecisionCenter()">คำนวณสรุปงวดนี้</button>
     </div>
   </div>
+  <div id="decision-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="dc-root" class="dc-loading">กำลังรวมสัญญาณงวดนี้...</div>
   </div><!-- /pred-main-tab-decision -->
 
   <!-- Tab panel: (OLD VER) -->
-  <div id="pred-main-tab-oldver" class="pred-main-tab-panel" style="display:none">
+  <div id="pred-main-tab-oldver" class="pred-main-tab-panel" style="display:none" hidden>
   <div class="card predict-toolbar" style="margin-top:14px">
     <div class="predict-controls">
       <div class="ctrl-group tab-local-date"><label class="ctrl-label" for="dc-date-old">งวดเป้าหมาย</label><select id="dc-date-old" onchange="loadDecisionCenterOld()"></select></div>
@@ -509,13 +513,14 @@
       <button class="btn btn-primary" onclick="loadDecisionCenterOld()">คำนวณสรุปงวดนี้</button>
     </div>
   </div>
+  <div id="oldver-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="dc-root-old" class="dc-loading">กำลังรวมสัญญาณงวดนี้...</div>
   </div><!-- /pred-main-tab-oldver -->
 </div><!-- /page-predict -->
 
 <!-- HISTORY -->
 <div class="page" id="page-history">
-  <div class="page-title">ผลย้อนหลัง</div>
+  <h1 class="page-title">ผลย้อนหลัง</h1>
   <div class="page-sub">ค้นหาและดูผลหวยย้อนหลัง</div>
   <div class="ctrl-row">
     <div class="ctrl-group"><label class="ctrl-label" for="hist-n">จำนวนงวด</label><select id="hist-n" onchange="loadHistory()"><option value="30">30</option><option value="50" selected>50</option><option value="100">100</option><option value="200">200</option></select></div>
@@ -531,7 +536,7 @@
 
 <!-- BACKTEST -->
 <div class="page" id="page-backtest">
-  <div class="page-title">Backtest รางวัลที่ 1</div>
+  <h1 class="page-title">Backtest รางวัลที่ 1</h1>
   <div class="page-sub">วัดความแม่น prediction ย้อนหลัง (out-of-sample)</div>
   <div class="ctrl-row">
     <div class="ctrl-group"><div class="ctrl-label">Algorithm</div><span style="font-size:.85rem;font-weight:600;color:var(--accent)">Ultimate</span></div>
@@ -542,6 +547,7 @@
     <div class="ctrl-group"><label class="ctrl-label" for="bt-kback">Back3 Pool</label><input type="number" id="bt-kback" value="100" min="10" max="200" style="width:80px"></div>
     <button class="btn btn-primary" onclick="loadBacktest()">▶ Run Backtest</button>
   </div>
+  <div id="backtest-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="bt-loading" style="display:none;text-align:center;padding:40px;color:var(--text3)">กำลังรัน... (30–120 วินาที)</div>
   <div id="bt-results" style="display:none">
     <div class="grid-4" id="bt-metrics"></div>
@@ -552,30 +558,31 @@
 
 <!-- MIX — ไม่รู้ซื้ออะไรดี -->
 <div class="page" id="page-mix">
-  <div class="page-title">🤷 ไม่รู้ซื้ออะไรดี</div>
+  <h1 class="page-title">🤷 ไม่รู้ซื้ออะไรดี</h1>
   <div class="page-sub">สูตร "ไม่รู้ซื้อเหี้ยไรดี" (Mix) — โหวตรายหลักจากผลของทุกกลุ่มสูตร A–J · หนึ่งกลุ่มหนึ่งเสียง · ไม่รวมผลจากหน้าทำนาย · วัดผลกับ pool รางวัลที่ 1–5</div>
   <div class="ctrl-row">
     <div class="ctrl-group"><label class="ctrl-label" for="mix-date">งวดเป้าหมาย</label><select id="mix-date" onchange="loadMixPage()"></select></div>
     <button class="btn btn-primary" onclick="loadMixPage()">↻ ผสมเลขใหม่</button>
   </div>
+  <div id="mix-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="mix-root" class="dc-loading">กำลังผสมเลขจากทุกสูตร...</div>
 </div>
 
 <div class="page" id="page-buyplan">
-  <div class="page-title">🧾 จัดชุดซื้อ</div>
+  <h1 class="page-title">🧾 จัดชุดซื้อ</h1>
   <div class="page-sub">มีงบเท่านี้ — ซื้ออะไร ตัวละเท่าไหร่ และระยะยาว "เสีย" เท่าไหร่จริงๆ · ระบบกระจายเงินตาม Pick/เลขแนะนำ พร้อม EV คู่ที่ไม่โกหกเรื่องแต้มต่อของบ้าน</div>
   <div class="ctrl-row">
     <div class="ctrl-group"><label class="ctrl-label" for="bp-date">งวดเป้าหมาย</label><select id="bp-date" onchange="loadBuyPlan()"></select></div>
-    <button class="btn" onclick="bpToggleConfig()">⚙ ตั้งค่าเรต</button>
+    <button type="button" class="btn" id="bp-config-toggle" aria-expanded="false" aria-controls="bp-config-panel" onclick="bpToggleConfig()">⚙ ตั้งค่าเรต</button>
   </div>
 
-  <div class="bp-mode-toggle">
-    <button class="bp-mode-btn active" data-mode="perNumber" onclick="bpSetMode('perNumber')">แทงรายเลข</button>
-    <button class="bp-mode-btn" data-mode="ticket" onclick="bpSetMode('ticket')">ลอตเตอรี่ใบ</button>
+  <div class="bp-mode-toggle" role="group" aria-label="โหมดการซื้อ">
+    <button type="button" class="bp-mode-btn active" data-mode="perNumber" aria-pressed="true" onclick="bpSetMode('perNumber')">แทงรายเลข</button>
+    <button type="button" class="bp-mode-btn" data-mode="ticket" aria-pressed="false" onclick="bpSetMode('ticket')">ลอตเตอรี่ใบ</button>
   </div>
 
-  <div id="bp-config-panel" class="bp-config-panel">
-    <div class="bp-config-title">ตั้งค่าเรตจ่าย (ของเจ้ามือคุณ) — เก็บไว้ในเครื่อง</div>
+  <div id="bp-config-panel" class="bp-config-panel" role="group" aria-labelledby="bp-config-title" hidden>
+    <div id="bp-config-title" class="bp-config-title" role="heading" aria-level="2">ตั้งค่าเรตจ่าย (ของเจ้ามือคุณ) — เก็บไว้ในเครื่อง</div>
     <div class="bp-config-grid">
       <label>2 ตัว จ่าย ×<input id="bp-cfg-pay2" type="number" min="1" step="1"></label>
       <label>3 ตัวตรง จ่าย ×<input id="bp-cfg-pay3" type="number" min="1" step="1"></label>
@@ -588,20 +595,20 @@
 
   <div class="bp-controls">
     <div class="bp-control-block">
-      <div class="bp-control-label">งบทั้งหมด</div>
+      <label class="bp-control-label" for="bp-budget-input">งบทั้งหมด</label>
       <div class="bp-budget-row">
-        <button class="bp-budget-quick" data-amt="200" onclick="bpSetBudget(200)">200</button>
-        <button class="bp-budget-quick" data-amt="500" onclick="bpSetBudget(500)">500</button>
-        <button class="bp-budget-quick" data-amt="1000" onclick="bpSetBudget(1000)">1,000</button>
+        <button type="button" class="bp-budget-quick" data-amt="200" aria-pressed="false" onclick="bpSetBudget(200)">200</button>
+        <button type="button" class="bp-budget-quick active" data-amt="500" aria-pressed="true" onclick="bpSetBudget(500)">500</button>
+        <button type="button" class="bp-budget-quick" data-amt="1000" aria-pressed="false" onclick="bpSetBudget(1000)">1,000</button>
         <input id="bp-budget-input" class="bp-budget-input" type="number" min="0" step="10" placeholder="พิมพ์งบเอง" onchange="bpSetBudget(this.value)"> ฿
       </div>
     </div>
-    <div class="bp-control-block">
-      <div class="bp-control-label">ความเสี่ยง (สัดส่วนเงิน 2 ตัว / 3 ตัว)</div>
+    <div class="bp-control-block" role="group" aria-labelledby="bp-risk-label">
+      <div id="bp-risk-label" class="bp-control-label">ความเสี่ยง (สัดส่วนเงิน 2 ตัว / 3 ตัว)</div>
       <div class="bp-risk-row">
-        <button class="bp-risk-btn" data-risk="safe" onclick="bpSetRisk('safe')">เซฟ · 80/20</button>
-        <button class="bp-risk-btn" data-risk="mid" onclick="bpSetRisk('mid')">กลาง · 50/50</button>
-        <button class="bp-risk-btn" data-risk="bold" onclick="bpSetRisk('bold')">ใจถึง · 20/80</button>
+        <button type="button" class="bp-risk-btn" data-risk="safe" aria-pressed="false" onclick="bpSetRisk('safe')">เซฟ · 80/20</button>
+        <button type="button" class="bp-risk-btn active" data-risk="mid" aria-pressed="true" onclick="bpSetRisk('mid')">กลาง · 50/50</button>
+        <button type="button" class="bp-risk-btn" data-risk="bold" aria-pressed="false" onclick="bpSetRisk('bold')">ใจถึง · 20/80</button>
       </div>
     </div>
   </div>
@@ -614,8 +621,8 @@
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล" aria-hidden="true"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script src="/static/formula-engine.js?v=hermes36"></script>
-<script src="/static/app.js?v=hermes36"></script>
+<script src="/static/formula-engine.js?v=hermes39"></script>
+<script src="/static/app.js?v=hermes39"></script>
 
 </body>
 </html>

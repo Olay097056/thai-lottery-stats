@@ -21,8 +21,9 @@ function mkChart(id, cfg){
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
-function toast(msg, type=''){
+function toast(msg, type='', options={}){
   const el = Object.assign(document.createElement('div'), {className:'toast'+(type?' '+type:''), textContent:msg});
+  if(options?.announce===false)el.setAttribute('aria-hidden','true');
   document.getElementById('toast-container').appendChild(el);
   setTimeout(()=>el.remove(), 3500);
 }
@@ -30,15 +31,30 @@ function toast(msg, type=''){
 // ─── Nav ──────────────────────────────────────────────────────────────────────
 let currentPage = 'dashboard';
 let currentPredTab = 'predict';
+function setPageStatus(id,message){
+  const status=document.getElementById(id);
+  if(status)status.textContent=String(message??'');
+}
+window.setPageStatus=setPageStatus;
 document.querySelectorAll('.nav-item').forEach(item=>{
   item.addEventListener('click',()=>{
     const p = item.dataset.page;
-    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n=>{
+      n.classList.remove('active');
+      n.removeAttribute('aria-current');
+    });
     item.classList.add('active');
+    item.setAttribute('aria-current','page');
     document.querySelectorAll('.page').forEach(pg=>pg.classList.remove('active'));
     document.getElementById('page-'+p).classList.add('active');
     if(p!==currentPage){ currentPage=p; onPageLoad(p); }
   });
+});
+document.addEventListener?.('keydown',event=>{
+  const row=event.target?.closest?.('.dash-hot-row,.dash-recent-item');
+  if(!row||event.repeat||(event.key!=='Enter'&&event.key!==' '))return;
+  event.preventDefault();
+  showPage(row.classList.contains('dash-hot-row')?'frequency':'history');
 });
 
 function switchPredTab(tab){
@@ -46,8 +62,10 @@ function switchPredTab(tab){
   const workflow=document.getElementById('shared-workflow');
   if(workflow&&workflow.value!==tab)workflow.value=tab;
   ['predict','formula','decision','oldver'].forEach(t=>{
-    document.getElementById('pred-main-tab-'+t).style.display=t===tab?'':'none';
-    document.getElementById('pred-main-btn-'+t).classList.toggle('active',t===tab);
+    const panel=document.getElementById('pred-main-tab-'+t);
+    if(panel){panel.hidden=t!==tab;panel.style.display=t===tab?'':'none';}
+    const button=document.getElementById('pred-main-btn-'+t);
+    if(button){button.classList.toggle('active',t===tab);button.setAttribute('aria-pressed',t===tab?'true':'false');}
   });
   if(tab==='formula'){ initFormulaPage(); renderPageSnapshots('formula'); }
   else if(tab==='decision'){ loadDecisionCenter(); }
@@ -68,7 +86,12 @@ function showPage(p){
   if(item){item.click();return;}
   const page=document.getElementById('page-'+p);
   if(!page)return;
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===p));
+  document.querySelectorAll('.nav-item').forEach(n=>{
+    const active=n.dataset.page===p;
+    n.classList.toggle('active',active);
+    if(active)n.setAttribute('aria-current','page');
+    else n.removeAttribute('aria-current');
+  });
   document.querySelectorAll('.page').forEach(pg=>pg.classList.remove('active'));
   page.classList.add('active');
   if(p!==currentPage){currentPage=p;onPageLoad(p);}
@@ -462,7 +485,7 @@ function dcSecondaryPrizeSignals(rows,limit=10){
 function dcSecondarySignalsHtml(signals){
   const row=(label,items)=>`<div class="dc-match-section">
     <div class="dc-match-section-head">${label} <span class="dc-status">${items.length}</span></div>
-    <div class="dc-row">${items.length?items.map(x=>`<span class="num-badge predict-copy" onclick="copyPredNumber('${escHtml(x.num)}')" title="${escHtml(x.sources.join(', '))}">${escHtml(x.num)}<span style="font-size:.62rem;margin-left:4px;color:var(--text3)">x${x.count}</span></span>`).join(''):'<span class="dash-empty">ยังไม่พบเลขซ้ำเด่น</span>'}</div>
+    <div class="dc-row">${items.length?items.map(x=>copyPredButton(x.num,'',x.count,x.sources.join(', '))).join(''):'<span class="dash-empty">ยังไม่พบเลขซ้ำเด่น</span>'}</div>
   </div>`;
   return `<div>
     <div class="dc-signal-sub" style="margin-bottom:8px">นับจากรางวัลที่ 2/3 ล่าสุด ${signals.draws||0} งวด · เป็นแรงหนุนเชิงบริบท ไม่ใช่ผล backtest ของสูตร</div>
@@ -716,7 +739,7 @@ function dcLottoSummaryBoard({next,scored,formulaMatches,btRows,p1,bottom,front,
     extra:[`หน้า ${p1Front(r)}`,`ท้าย ${p1Back(r)}`]
   })).join('')||'<span class="dash-empty">-</span>';
   const supportTop=[...(support?.values()||[])].filter(x=>x.count>1).sort((a,b)=>b.count-a.count||a.num.localeCompare(b.num)).slice(0,10);
-  const supportHtml=supportTop.map(x=>`<span class="num-badge agree predict-copy" onclick="copyPredNumber('${escHtml(x.num)}')">${escHtml(x.num)}<span style="font-size:.62rem;margin-left:4px;color:var(--text3)">x${x.count}</span></span>`).join('')||'<span class="dash-empty">-</span>';
+  const supportHtml=supportTop.map(x=>copyPredButton(x.num,'agree',x.count)).join('')||'<span class="dash-empty">-</span>';
   const bestFormula=(btRows||[]).slice(0,3);
   const formulaLead=(formulaMatches||[]).slice(0,3);
   const patternLead=(scored.all||[]).filter(x=>(x.sources||[]).some(s=>String(s).includes('Pattern Link'))).slice(0,2);
@@ -778,7 +801,7 @@ function dcLottoSummaryBoard({next,scored,formulaMatches,btRows,p1,bottom,front,
       <button class="btn btn-secondary" onclick="showPage('backtest')">Backtest รางวัลที่ 1</button>
       <button class="btn btn-secondary" onclick="showPage('predict')">เปิดหน้าทำนาย</button>
       <button class="btn btn-secondary" onclick="showPage('formula')">เปิดสูตรคำนวณ</button>
-      <button class="btn btn-secondary" onclick="copyPredNumber('${escHtml([...(p1||[]).map(predNum),...(bottom||[]).slice(0,4).map(predNum)].filter(Boolean).join(' '))}')">copy ชุดหลัก</button>
+      ${copyPredActionButton([...(p1||[]).map(predNum),...(bottom||[]).slice(0,4).map(predNum)].filter(Boolean).join(' '),'copy ชุดหลัก','btn btn-secondary')}
     </div>
   </div>`;
 }
@@ -1149,6 +1172,7 @@ async function loadDecisionCenter(){
   if(!root)return;
   root.className='dc-loading';
   root.textContent='กำลังรวมสัญญาณงวดนี้...';
+  setPageStatus('decision-status','กำลังรวมสัญญาณงวดนี้...');
   const dateEl=document.getElementById('dc-date');
   if(dateEl&&!dateEl.options.length){
     try{
@@ -1160,9 +1184,9 @@ async function loadDecisionCenter(){
   const mode=document.getElementById('dc-mode')?.value||'balanced';
   try{
     const [summary,pred,hist]=await Promise.all([
-      api('summary'),
-      api(`predict/all?top_n=10&date=${next}&beam_width=500&k_back=100&preset=optimized`),
-      api('prize-history?n=260')
+      api('summary',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true}),
+      api(`predict/all?top_n=10&date=${next}&beam_width=500&k_back=100&preset=optimized`,{suppressNetworkToast:true,suppressSpinnerAnnouncement:true}),
+      api('prize-history?n=260',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true})
     ]);
     const cats=pred.categories||{};
     const p1=(cats.prize1?.numbers||[]).slice(0,5);
@@ -1233,6 +1257,7 @@ async function loadDecisionCenter(){
       <div class="dc-card dc-card-wide"><div class="dc-label">สัญญาณจากรางวัลรอง 10 งวดล่าสุด</div>${dcSecondarySignalsHtml(secondarySignals)}</div>
       <div class="dc-card"><div class="dc-label">ตัดเลขเสี่ยง</div><div class="dc-row">${dcRiskHtml(scored.risks)}</div></div>
     </div>`;
+    setPageStatus('decision-status','สรุปงวดนี้พร้อมแล้ว');
     if(trend.length){
       const opts=chartOpts('% ถูก');
       opts.scales.y.min=0;opts.scales.y.max=100;
@@ -1252,6 +1277,7 @@ async function loadDecisionCenter(){
   }catch(e){
     root.className='dc-loading';
     root.textContent='โหลด Decision Center ไม่สำเร็จ ลองใหม่อีกครั้ง';
+    setPageStatus(root.id==='dc-root-old'?'oldver-status':'decision-status',root.textContent);
   }
 }
 
@@ -1500,7 +1526,7 @@ function dcSecondaryPrizeSignalsOld(rows,limit=10){
 function dcSecondarySignalsHtmlOld(signals){
   const row=(label,items)=>`<div class="dc-match-section">
     <div class="dc-match-section-head">${label} <span class="dc-status">${items.length}</span></div>
-    <div class="dc-row">${items.length?items.map(x=>`<span class="num-badge predict-copy" onclick="copyPredNumber('${escHtml(x.num)}')" title="${escHtml(x.sources.join(', '))}">${escHtml(x.num)}<span style="font-size:.62rem;margin-left:4px;color:var(--text3)">x${x.count}</span></span>`).join(''):'<span class="dash-empty">ยังไม่พบเลขซ้ำเด่น</span>'}</div>
+    <div class="dc-row">${items.length?items.map(x=>copyPredButton(x.num,'',x.count,x.sources.join(', '))).join(''):'<span class="dash-empty">ยังไม่พบเลขซ้ำเด่น</span>'}</div>
   </div>`;
   return `<div>
     <div class="dc-signal-sub" style="margin-bottom:8px">นับจากรางวัลที่ 2/3 ล่าสุด ${signals.draws||0} งวด · เป็นแรงหนุนเชิงบริบท ไม่ใช่ผล backtest ของสูตร</div>
@@ -1695,7 +1721,7 @@ function dcLottoSummaryBoardOld({next,scored,formulaMatches,btRows,p1,bottom,fro
     extra:[`หน้า ${p1Front(r)}`,`ท้าย ${p1Back(r)}`]
   })).join('')||'<span class="dash-empty">-</span>';
   const supportTop=[...(support?.values()||[])].filter(x=>x.count>1).sort((a,b)=>b.count-a.count||a.num.localeCompare(b.num)).slice(0,10);
-  const supportHtml=supportTop.map(x=>`<span class="num-badge agree predict-copy" onclick="copyPredNumber('${escHtml(x.num)}')">${escHtml(x.num)}<span style="font-size:.62rem;margin-left:4px;color:var(--text3)">x${x.count}</span></span>`).join('')||'<span class="dash-empty">-</span>';
+  const supportHtml=supportTop.map(x=>copyPredButton(x.num,'agree',x.count)).join('')||'<span class="dash-empty">-</span>';
   const bestFormula=(btRows||[]).slice(0,3);
   const formulaLead=(formulaMatches||[]).slice(0,3);
   const patternLead=(scored.all||[]).filter(x=>(x.sources||[]).some(s=>String(s).includes('Pattern Link'))).slice(0,2);
@@ -1757,7 +1783,7 @@ function dcLottoSummaryBoardOld({next,scored,formulaMatches,btRows,p1,bottom,fro
       <button class="btn btn-secondary" onclick="showPage('backtest')">Backtest รางวัลที่ 1</button>
       <button class="btn btn-secondary" onclick="showPage('predict')">เปิดหน้าทำนาย</button>
       <button class="btn btn-secondary" onclick="showPage('formula')">เปิดสูตรคำนวณ</button>
-      <button class="btn btn-secondary" onclick="copyPredNumber('${escHtml([...(p1||[]).map(predNum),...(bottom||[]).slice(0,4).map(predNum)].filter(Boolean).join(' '))}')">copy ชุดหลัก</button>
+      ${copyPredActionButton([...(p1||[]).map(predNum),...(bottom||[]).slice(0,4).map(predNum)].filter(Boolean).join(' '),'copy ชุดหลัก','btn btn-secondary')}
     </div>
   </div>`;
 }
@@ -1849,6 +1875,7 @@ async function loadDecisionCenterOld(){
   if(!root)return;
   root.className='dc-loading';
   root.textContent='กำลังรวมสัญญาณงวดนี้...';
+  setPageStatus('oldver-status','กำลังรวมสัญญาณงวดนี้...');
   const dateEl=document.getElementById('dc-date-old');
   if(dateEl&&!dateEl.options.length){
     try{
@@ -1860,9 +1887,9 @@ async function loadDecisionCenterOld(){
   const mode=document.getElementById('dc-mode-old')?.value||'balanced';
   try{
     const [summary,pred,hist]=await Promise.all([
-      api('summary'),
-      api(`predict/all?top_n=10&date=${next}&beam_width=500&k_back=100&preset=optimized`),
-      api('prize-history?n=260')
+      api('summary',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true}),
+      api(`predict/all?top_n=10&date=${next}&beam_width=500&k_back=100&preset=optimized`,{suppressNetworkToast:true,suppressSpinnerAnnouncement:true}),
+      api('prize-history?n=260',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true})
     ]);
     const cats=pred.categories||{};
     const p1=(cats.prize1?.numbers||[]).slice(0,5);
@@ -1910,6 +1937,7 @@ async function loadDecisionCenterOld(){
       <div class="dc-card dc-card-wide"><div class="dc-label">สัญญาณจากรางวัลรอง 10 งวดล่าสุด</div>${dcSecondarySignalsHtmlOld(secondarySignals)}</div>
       <div class="dc-card"><div class="dc-label">ตัดเลขเสี่ยง</div><div class="dc-row">${dcRiskHtmlOld(scored.risks)}</div></div>
     </div>`;
+    setPageStatus('oldver-status','สรุปงวดนี้พร้อมแล้ว');
     if(trend.length){
       const opts=chartOpts('% ถูก');
       opts.scales.y.min=0;opts.scales.y.max=100;
@@ -1921,6 +1949,7 @@ async function loadDecisionCenterOld(){
   }catch(e){
     root.className='dc-loading';
     root.textContent='โหลด Decision Center ไม่สำเร็จ ลองใหม่อีกครั้ง';
+    setPageStatus(root.id==='dc-root-old'?'oldver-status':'decision-status',root.textContent);
   }
 }
 
@@ -1982,12 +2011,19 @@ function dashCount(row){
 }
 
 function renderLatestItem(label,value){
-  return `<div class="dash-result-item"><div class="dash-result-label">${label}</div><div class="dash-result-value">${value||'—'}</div></div>`;
+  return `<div class="dash-result-item"><div class="dash-result-label">${escHtml(label)}</div><div class="dash-result-value">${escHtml(value||'—')}</div></div>`;
 }
 
 async function loadDashboard(){
-  const d = await api('summary');
-  if(d.error){ toast(d.error,'error'); return; }
+  setPageStatus('dash-data-status','กำลังโหลดข้อมูล Dashboard...');
+  const d = await api('summary',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
+  if(d.error){
+    const statusEl=document.getElementById('dash-data-status');
+    if(statusEl)statusEl.classList.add('warn');
+    setPageStatus('dash-data-status','โหลดข้อมูล Dashboard ไม่สำเร็จ ลองใหม่อีกครั้ง');
+    toast(d.error,'error',{announce:false});
+    return;
+  }
   document.getElementById('s-total').textContent = (d.total_draws||0).toLocaleString();
   document.getElementById('s-date').textContent = fmtDate(d.latest?.date);
   const rangeEl=document.getElementById('dash-range');
@@ -2001,7 +2037,7 @@ async function loadDashboard(){
     statusEl.textContent=`พร้อมใช้งาน · ${fmtDate(d.date_max)}`;
   }
   const p1 = d.latest?.prize1||'';
-  document.getElementById('s-prize1').innerHTML = p1.split('').map(c=>`<div class="digit-box">${c}</div>`).join('');
+  document.getElementById('s-prize1').innerHTML = p1.split('').map(c=>`<div class="digit-box">${escHtml(c)}</div>`).join('');
   const lt = d.latest||{};
   document.getElementById('latest-draw-detail').innerHTML = `
     ${renderLatestItem('3 ตัวบน',lt.top3)}
@@ -2013,20 +2049,20 @@ async function loadDashboard(){
   const hot = d.hot_top3||[];
   const maxHot = Math.max(1,...hot.map(dashCount));
   document.getElementById('hot-list').innerHTML = hot.length?hot.slice(0,10).map((r,i)=>{
-    const num = dashNum(r);
+    const num = escHtml(dashNum(r));
     const cnt = dashCount(r);
-    return `<div class="dash-hot-row" onclick="showPage('frequency')" title="เปิดตารางความถี่"><span class="rank-badge ${i<3?'rank-'+(i+1):''}">${i+1}</span><span class="hc-num">${num}</span><span class="hc-val">${cnt} ครั้ง</span><div style="grid-column:2/4" class="hc-bar-wrap"><div class="hc-bar-fill hot-fill" style="width:${(cnt/maxHot*100).toFixed(0)}%"></div></div></div>`;
+    return `<div class="dash-hot-row" role="button" tabindex="0" onclick="showPage('frequency')" title="เปิดตารางความถี่"><span class="rank-badge ${i<3?'rank-'+(i+1):''}">${i+1}</span><span class="hc-num">${num}</span><span class="hc-val">${cnt} ครั้ง</span><div style="grid-column:2/4" class="hc-bar-wrap"><div class="hc-bar-fill hot-fill" style="width:${(cnt/maxHot*100).toFixed(0)}%"></div></div></div>`;
   }).join(''):'<div class="dash-empty">ยังไม่มีข้อมูลเลขร้อน</div>';
   const recentRows=d.recent_draws||[];
-  document.getElementById('recent-compact').innerHTML=recentRows.slice(-5).reverse().map(r=>`<div class="dash-recent-item" onclick="showPage('history')">
-    <div class="dash-recent-date">${r.date||''}</div>
-    <div class="dash-recent-prize">${r.prize1||''}</div>
-    <div class="dash-recent-sub">บน ${r.top3||'—'} · ล่าง ${r.bottom2||'—'}</div>
+  document.getElementById('recent-compact').innerHTML=recentRows.slice(-5).reverse().map(r=>`<div class="dash-recent-item" role="button" tabindex="0" onclick="showPage('history')">
+    <div class="dash-recent-date">${escHtml(r.date||'')}</div>
+    <div class="dash-recent-prize">${escHtml(r.prize1||'')}</div>
+    <div class="dash-recent-sub">บน ${escHtml(r.top3||'—')} · ล่าง ${escHtml(r.bottom2||'—')}</div>
   </div>`).join('')||'<div class="dash-empty">ยังไม่มีประวัติงวดล่าสุด</div>';
   document.getElementById('recent-tbody').innerHTML = recentRows.map(r=>`<tr>
-    <td>${r.date||''}</td><td><b style="font-family:'IBM Plex Mono',monospace">${r.prize1||''}</b></td>
-    <td>${r.top3||''}</td><td>${r.top2||''}</td><td>${r.front3_1||''}</td>
-    <td>${r.front3_2||''}</td><td>${r.back3_1||''}</td><td>${r.back3_2||''}</td><td>${r.bottom2||''}</td>
+    <td>${escHtml(r.date||'')}</td><td><b style="font-family:'IBM Plex Mono',monospace">${escHtml(r.prize1||'')}</b></td>
+    <td>${escHtml(r.top3||'')}</td><td>${escHtml(r.top2||'')}</td><td>${escHtml(r.front3_1||'')}</td>
+    <td>${escHtml(r.front3_2||'')}</td><td>${escHtml(r.back3_1||'')}</td><td>${escHtml(r.back3_2||'')}</td><td>${escHtml(r.bottom2||'')}</td>
   </tr>`).join('');
   loadDashboardFormulaPicks();
   if(!window._p1WidgetLoaded){window._p1WidgetLoaded=true;loadP1Widget();}
@@ -2281,13 +2317,13 @@ function predDetailHtml({num,col,row,rank,score,maxScore,support=0,extra=[]}){
   const reasonHtml=reasons.map((x,i)=>`<span class="pred-pill ${i===0?conf.cls:''}">${escHtml(x)}</span>`).join('')+formulaHtml;
   const scoreText=Number.isFinite(score)?score.toFixed(score>=10?1:3):'-';
   return `<details class="pred-detail">
-    <summary><span class="pred-num predict-copy" onclick="copyPredNumber('${escHtml(num)}')">${escHtml(num)}</span><span class="pred-pill ${conf.cls}">${conf.label}</span></summary>
+    <summary>${copyPredButton(num,'',null,'','pred-num')}<span class="pred-pill ${conf.cls}">${conf.label}</span></summary>
     <div class="pred-detail-panel">
       <div class="predict-summary-sub">อันดับ ${rank} · score ${scoreText}${support?` · support ${support}`:''}</div>
       <div class="pred-reasons">${reasonHtml}</div>
       ${formulaHits.length?`<div class="predict-summary-sub">สูตรที่หนุน: ${formulaHits.map(escHtml).join(' · ')}</div>`:''}
       <div class="pred-actions">
-        <button class="pred-action-btn" onclick="copyPredNumber('${escHtml(num)}')">copy</button>
+        ${copyPredActionButton(num,'copy','pred-action-btn')}
       </div>
     </div>
   </details>`;
@@ -2361,10 +2397,29 @@ function fallbackCopy(text,done){
   ta.remove();
 }
 
-function numChip(num,cls=''){
-  const n=escHtml(num);
-  return `<span class="num-badge predict-copy ${cls}" onclick="copyPredNumber('${n}')" title="คัดลอก ${n}">${n}</span>`;
+function copyPredButton(num,cls='',count=null,title='',baseClass='num-badge'){
+  const value=String(num??'');
+  const safe=escHtml(value);
+  const classes=[baseClass,'predict-copy',cls].filter(Boolean).join(' ');
+  const countValue=count===null||count===undefined?null:Number(count);
+  const hasCount=countValue!==null&&Number.isFinite(countValue);
+  const countLabel=hasCount?`, ${countValue} ครั้ง`:'';
+  const detail=title?` · ${title}`:'';
+  const countHtml=hasCount?`<span aria-hidden="true" style="font-size:.62rem;margin-left:4px;color:var(--text3)">x${countValue}</span>`:'';
+  return `<button type="button" class="${escHtml(classes)}" data-copy-number="${safe}" aria-label="คัดลอกเลข ${safe}${escHtml(countLabel+detail)}" title="${escHtml(title||`คัดลอก ${value}`)}">${safe}${countHtml}</button>`;
 }
+function copyPredActionButton(num,label,cls=''){
+  const value=String(num??'');
+  return `<button type="button" class="${escHtml(cls)}" data-copy-number="${escHtml(value)}" aria-label="คัดลอกเลข ${escHtml(value)}">${escHtml(label)}</button>`;
+}
+function numChip(num,cls=''){return copyPredButton(num,cls);}
+document.addEventListener?.('click',event=>{
+  const button=event.target?.closest?.('button[data-copy-number]');
+  if(!button)return;
+  event.preventDefault();
+  event.stopPropagation();
+  copyPredNumber(button.dataset.copyNumber);
+});
 
 function setPredictLoading(isLoading,msg='กำลังคำนวณ...'){
   const grid=document.getElementById('all-pred-grid');
@@ -2465,12 +2520,12 @@ function renderPredictFinalPanel(cats,config={}){
   el.innerHTML=`<div class="predict-final-card">
     <div class="predict-final-head">
       <div class="predict-final-title">Final Decision Panel</div>
-      <button class="dash-link" onclick="copyPredNumber('${escHtml(topCopy)}')">copy ชุดหลัก</button>
+      ${copyPredActionButton(topCopy,'copy ชุดหลัก','dash-link')}
     </div>
     <div class="predict-final-grid">
       <div class="predict-final-block"><div class="predict-final-label">Prize1 เน้นสุด</div><div class="predict-final-row">${p1Html}</div></div>
       <div class="predict-final-block"><div class="predict-final-label">3 ตัวบน / หน้า</div><div class="predict-final-row">${[...new Set(top3)].slice(0,8).map(n=>numChip(n)).join('')||'<span class="dash-empty">-</span>'}</div></div>
-      <div class="predict-final-block"><div class="predict-final-label">2 ตัวล่าง + เลขหนุน</div><div class="predict-final-row">${bottom.slice(0,6).map(n=>numChip(n)).join('')}${supported.slice(0,5).map(x=>`<span class="num-badge agree predict-copy" onclick="copyPredNumber('${escHtml(x.num)}')">${escHtml(x.num)}<span style="font-size:.62rem;margin-left:4px;color:var(--text3)">x${x.count}</span></span>`).join('')}</div></div>
+      <div class="predict-final-block"><div class="predict-final-label">2 ตัวล่าง + เลขหนุน</div><div class="predict-final-row">${bottom.slice(0,6).map(n=>numChip(n)).join('')}${supported.slice(0,5).map(x=>copyPredButton(x.num,'agree',x.count)).join('')}</div></div>
     </div>
     <div id="predict-mode-compare" class="predict-mode-compare"><div class="predict-summary-sub">กำลังเทียบ Optimized / Balanced / Coverage...</div></div>
   </div>`;
@@ -2528,10 +2583,10 @@ function renderPredictDecisionBoard(cats,config={}){
       <div class="predict-spotlight-head">
         <div>
           <div class="predict-spotlight-label">Best Prize1 Candidate</div>
-          <div class="predict-spotlight-num predict-copy" onclick="copyPredNumber('${escHtml(topNum)}')" title="คัดลอก ${escHtml(topNum)}">${escHtml(topNum)}</div>
+          ${copyPredButton(topNum,'',null,'','predict-spotlight-num')}
           <div class="predict-spotlight-sub">หน้า ${escHtml(p1Front(top))} · ท้าย ${escHtml(p1Back(top))} · score ${topScore.toFixed(2)}</div>
         </div>
-        <button class="btn btn-primary" onclick="copyPredNumber('${escHtml(topNum)}')">Copy</button>
+        ${copyPredActionButton(topNum,'Copy','btn btn-primary')}
       </div>
       <div class="predict-signal-grid">
         <div class="predict-signal"><div class="predict-signal-label">Coverage</div><div class="predict-signal-value">${frontCount}/${backCount}</div><div class="predict-summary-sub">${coverageTone}</div></div>
@@ -2548,7 +2603,7 @@ function renderPredictDecisionBoard(cats,config={}){
       </div>
       <div style="margin-top:12px">
         <div class="predict-signal-label" style="margin-bottom:5px">เลขหนุนข้ามหมวด</div>
-        <div class="predict-consensus-row">${supportChips.length?supportChips.map(x=>`<span class="num-badge agree predict-copy" onclick="copyPredNumber('${escHtml(x.num)}')" title="${escHtml([...x.labels].join(', '))}">${escHtml(x.num)}<span style="font-size:.65rem;margin-left:4px;color:var(--text3)">x${x.count}</span></span>`).join(''):'<span class="dash-empty">ยังไม่มีเลขหนุนเด่น</span>'}</div>
+        <div class="predict-consensus-row">${supportChips.length?supportChips.map(x=>copyPredButton(x.num,'agree',x.count,[...x.labels].join(', '))).join(''):'<span class="dash-empty">ยังไม่มีเลขหนุนเด่น</span>'}</div>
       </div>
     </div>`;
   el.classList.add('active');
@@ -2566,7 +2621,7 @@ function renderPredictionConsensus(cats){
   add(cats.back3_1?.numbers||[],3); add(cats.back3_2?.numbers||[],3);
   add(cats.bottom2?.numbers||[],2);
   const top=[...counts.entries()].filter(([,c])=>c>1).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,12);
-  const body=top.length?top.map(([n,c])=>`<span class="num-badge agree predict-copy" onclick="copyPredNumber('${escHtml(n)}')">${escHtml(n)}<span style="font-size:.65rem;margin-left:4px;color:var(--text3)">x${c}</span></span>`).join(''):'<span class="dash-empty">ยังไม่มีเลขซ้ำข้ามหมวดเด่น</span>';
+  const body=top.length?top.map(([n,c])=>copyPredButton(n,'agree',c)).join(''):'<span class="dash-empty">ยังไม่มีเลขซ้ำข้ามหมวดเด่น</span>';
   el.innerHTML=`<div class="card"><div class="dash-card-head"><div class="card-title">เลขซ้ำข้ามหมวด</div><button class="dash-link" onclick="resetPredictionFilters()">แสดงทุกหมวด</button></div><div class="predict-consensus-row">${body}</div></div>`;
   el.classList.add('active');
 }
@@ -2611,17 +2666,19 @@ async function loadPredict(){
   const beam = document.getElementById('p1-beam').value;
   const kback = document.getElementById('p1-kback')?.value||100;
   setPredictLoading(true);
+  setPageStatus('predict-status','กำลังโหลดผลทำนาย...');
   _lastPredData=[];
   _lastPredCol='';
   _lastPredDate=date;
   _lastPredictSnapshot=null;
 
-  const r = await api(`predict/all?top_n=${topn}&date=${date}&beam_width=${beam}&k_back=${kback}&preset=${preset}`);
+  const r = await api(`predict/all?top_n=${topn}&date=${date}&beam_width=${beam}&k_back=${kback}&preset=${preset}`,{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
   if(requestId!==_predictRequestId)return;
   const categoriesValid=!!r&&r.categories&&typeof r.categories==='object'&&!Array.isArray(r.categories);
   const requestError=r?.error?'โหลดผลทำนายไม่สำเร็จ — ลองใหม่อีกครั้ง':r?.detail?'คำขอทำนายไม่ถูกต้อง — ตรวจช่วงค่า Top N, Beam และ Back3 แล้วลองใหม่':categoriesValid?'':'ข้อมูลผลทำนายไม่ถูกต้อง — ลองใหม่อีกครั้ง';
   if(requestError){
     setPredictLoading(false);
+    setPageStatus('predict-status',requestError);
     const errorHtml=`<div class="predict-empty">${requestError}</div>`;
     document.getElementById('p1-badges').innerHTML=errorHtml;
     document.getElementById('p1-tbody').innerHTML=`<tr><td colspan="5">${errorHtml}</td></tr>`;
@@ -2631,7 +2688,7 @@ async function loadPredict(){
     _renderSimpleRows([], 'b32-tbody', 'b32-badges', requestError);
     _renderSimpleRows([], 'bt2-tbody', 'bt2-badges', requestError);
     document.getElementById('ref-tbody').innerHTML='<tr><td colspan="7"><div class="predict-empty">โหลดข้อมูลอ้างอิงไม่สำเร็จ</div></td></tr>';
-    toast(requestError,'error');
+    toast(requestError,'error',{announce:false});
     return;
   }
   const cats = r.categories||{};
@@ -2698,10 +2755,11 @@ async function loadPredict(){
   // Ref draws (same day+month)
   if(date){
     const [,m,dd]=date.split('-');
-    const h=await api('history?n=500');
+    const h=await api('history?n=500',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
     if(requestId!==_predictRequestId)return;
     if(h?.error||h?.detail||!Array.isArray(h?.data)){
       document.getElementById('ref-tbody').innerHTML='<tr><td colspan="7"><div class="predict-empty">โหลดข้อมูลอ้างอิงไม่สำเร็จ</div></td></tr>';
+      setPageStatus('predict-status','ผลทำนายพร้อมแล้ว แต่โหลดข้อมูลอ้างอิงไม่สำเร็จ');
       return;
     }
     const refs=h.data.filter(row=>{
@@ -2714,6 +2772,7 @@ async function loadPredict(){
       <td>${escHtml(row.top2||'')}</td><td>${escHtml(row.back3_1||'')}</td><td>${escHtml(row.back3_2||'')}</td><td>${escHtml(row.bottom2||'')}</td>
     </tr>`).join('')||'<tr><td colspan="7"><div class="predict-empty">ไม่พบงวดวันเดียวกันในอดีต</div></td></tr>';
   }
+  setPageStatus('predict-status',`ผลทำนายพร้อมแล้ว ${allRows.length} รายการ`);
 }
 
 async function loadLuckyNews(){
@@ -3485,7 +3544,7 @@ function bpEditableTicketHtml(plan){
         <span class="bp-groups">${tDots}</span>${tAgree}
         ${dcTrustBadge(r.trust)}${r.hand?'<span class="bp-handedit">แก้เอง</span>':''}
         <button class="bp-why-toggle" aria-expanded="false" title="ทำไมใบนี้" onclick="bpToggleRow('bp-tdetail-${i}',this)">▸</button>
-        <button class="bp-del" title="ลบใบนี้" onclick="bpDeleteRow(${i})">✕</button>
+        <button class="bp-del" aria-label="ลบใบนี้" title="ลบใบนี้" onclick="bpDeleteRow(${i})">✕</button>
       </div>
       <div class="bp-row-detail hidden" id="bp-tdetail-${i}">${bpTicketExplainHtml(r)}</div>
       <div class="bp-ladder">
@@ -3512,8 +3571,9 @@ function bpEditableTicketHtml(plan){
 }
 function bpAddTicketFormHtml(){
   return `<div class="bp-add-row">
-    <span class="bp-add-label">พิมพ์เลขใบเอง:</span>
+    <label class="bp-add-label" for="bp-add-ticket-num">เลขใบ 6 หลัก:</label>
     <input id="bp-add-ticket-num" class="bp-add-num" inputmode="numeric" placeholder="เลข 6 หลัก" style="width:120px">
+    <label class="bp-add-label" for="bp-add-ticket-qty">จำนวนใบ:</label>
     <input id="bp-add-ticket-qty" class="bp-add-stake" type="number" min="1" step="1" placeholder="กี่ใบ" value="1">
     <button class="btn" onclick="bpAddTicket()">+ เพิ่มใบ</button>
   </div>`;
@@ -3559,7 +3619,7 @@ function bpEditablePlanHtml(plan){
         <div class="bp-num-meta"><span class="bp-groups">${dots}</span><span class="bp-strength ${st.cls}">${st.word}${edgeTxt}</span></div></td>
       <td class="bp-field">${escHtml(BP_FIELD_LABELS[r.field]||r.field)}</td>
       <td class="bp-stake-edit"><input type="number" min="0" step="${plan.config.roundUnit}" value="${r.stake}" aria-label="เงินเดิมพันเลข ${escHtml(r.num)}" onchange="bpEditStake(${i},this.value)">฿</td>
-      <td class="bp-row-actions"><button class="bp-why-toggle" aria-expanded="false" title="ทำไมได้เลขนี้ เงินเท่านี้" onclick="bpToggleRow('bp-detail-${i}',this)">▸</button><button class="bp-del" title="ลบเลขนี้ (เจ้ามืออั้น/ไม่เอา)" onclick="bpDeleteRow(${i})">✕</button></td>
+      <td class="bp-row-actions"><button class="bp-why-toggle" aria-expanded="false" title="ทำไมได้เลขนี้ เงินเท่านี้" onclick="bpToggleRow('bp-detail-${i}',this)">▸</button><button class="bp-del" aria-label="ลบเลขนี้ (เจ้ามืออั้น/ไม่เอา)" title="ลบเลขนี้ (เจ้ามืออั้น/ไม่เอา)" onclick="bpDeleteRow(${i})">✕</button></td>
     </tr>
     <tr class="bp-row-detail hidden" id="bp-detail-${i}"><td colspan="4">${bpRowExplainHtml(r,plan.config.roundUnit)}</td></tr>`;
     }).join('');
@@ -3577,13 +3637,15 @@ function bpEditablePlanHtml(plan){
 }
 function bpAddFormHtml(){
   return `<div class="bp-add-row">
-    <span class="bp-add-label">เพิ่มเลขเอง:</span>
+    <label class="bp-add-label" for="bp-add-num">เลขที่ต้องการเพิ่ม:</label>
     <input id="bp-add-num" class="bp-add-num" inputmode="numeric" placeholder="เลข">
+    <label class="bp-add-label" for="bp-add-type">ประเภท:</label>
     <select id="bp-add-type" class="bp-add-type">
       <option value="bottom2">2 ตัวล่าง</option>
       <option value="prize1_last2">2 ตัวบน</option>
       <option value="back3">3 ตัวบน</option>
     </select>
+    <label class="bp-add-label" for="bp-add-stake">เงินเดิมพัน (฿):</label>
     <input id="bp-add-stake" class="bp-add-stake" type="number" min="0" step="10" placeholder="เงิน ฿">
     <button class="btn" onclick="bpAddRow()">+ เพิ่ม</button>
   </div>`;
@@ -3680,7 +3742,7 @@ function bpHistoryLedgerHtml(){
     const knownWin=won?` · ตรวจพบ ${won} รางวัลที่ยืนยันได้ (${sign(verifiedPayout)})`:'';
     return `<div class="bp-hist-item">
       <div class="bp-hist-meta"><b>${fmtDate(plan.date)}</b> · ${plan.rows.length} เลข · ${spent}฿ · ${BP_RISK_LABELS[plan.risk]||plan.risk} ${hand}${won?` · ถูก ${won} เลข`:''}${res.status==='unverifiable'?knownWin:''}</div>
-      <div class="bp-hist-right">${status}<button class="bp-del" onclick="bpDeletePlan('${plan.id}')" title="ลบทั้งชุด">✕</button></div>
+      <div class="bp-hist-right">${status}<button class="bp-del" aria-label="ลบทั้งชุด" onclick="bpDeletePlan('${plan.id}')" title="ลบทั้งชุด">✕</button></div>
     </div>`;
   }).join('');
   return `<div class="bp-history">${head}${summary}<div class="bp-hist-list">${items}</div></div>`;
@@ -3690,9 +3752,21 @@ function bpHistoryLedgerHtml(){
 function bpSyncControls(prefs){
   const bi=document.getElementById('bp-budget-input');
   if(bi&&document.activeElement!==bi)bi.value=prefs.budget;
-  document.querySelectorAll('.bp-risk-btn').forEach(b=>b.classList.toggle('active',b.dataset.risk===prefs.risk));
-  document.querySelectorAll('.bp-budget-quick').forEach(b=>b.classList.toggle('active',Number(b.dataset.amt)===Number(prefs.budget)));
-  document.querySelectorAll('.bp-mode-btn').forEach(b=>b.classList.toggle('active',b.dataset.mode===prefs.mode));
+  document.querySelectorAll('.bp-risk-btn').forEach(b=>{
+    const on=b.dataset.risk===prefs.risk;
+    b.classList.toggle('active',on);
+    b.setAttribute('aria-pressed',String(on));
+  });
+  document.querySelectorAll('.bp-budget-quick').forEach(b=>{
+    const on=Number(b.dataset.amt)===Number(prefs.budget);
+    b.classList.toggle('active',on);
+    b.setAttribute('aria-pressed',String(on));
+  });
+  document.querySelectorAll('.bp-mode-btn').forEach(b=>{
+    const on=b.dataset.mode===prefs.mode;
+    b.classList.toggle('active',on);
+    b.setAttribute('aria-pressed',String(on));
+  });
 }
 function bpSetMode(mode){
   if(mode!=='perNumber'&&mode!=='ticket')return;
@@ -3745,7 +3819,11 @@ function bpSetRisk(risk){
 window.bpSetRisk=bpSetRisk;
 function bpToggleConfig(){
   const el=document.getElementById('bp-config-panel');
-  if(el)el.classList.toggle('open');
+  const button=document.getElementById('bp-config-toggle');
+  if(!el)return;
+  const open=el.classList.toggle('open');
+  el.hidden=!open;
+  if(button)button.setAttribute('aria-expanded',String(open));
 }
 window.bpToggleConfig=bpToggleConfig;
 function bpSaveConfig(){
@@ -3785,13 +3863,14 @@ async function loadMixPage(){
   const requestId=++_mixLoadRequestId;
   root.className='dc-loading';
   root.textContent='กำลังผสมเลขจากทุกสูตร...';
+  setPageStatus('mix-status','กำลังผสมเลขจากทุกสูตร...');
   const dateEl=document.getElementById('mix-date');
   if(dateEl&&!dateEl.options.length){
     dateEl.innerHTML=clientDraws().map(d=>`<option value="${d.date}">${d.label}</option>`).join('');
   }
   const next=dateEl?.value||nextDrawInfo().iso;
   try{
-    const hist=await api('prize-history?n=260');
+    const hist=await api('prize-history?n=260',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
     if(requestId!==_mixLoadRequestId)return;
     const rows=(hist.data||[]).filter(Boolean);
     if(!rows.length||typeof _mixCompute!=='function')throw new Error('no data');
@@ -3799,6 +3878,7 @@ async function loadMixPage(){
     const mix=_mixCompute(frs);
     if(!mix||!mix.preds.length){
       root.textContent='ข้อมูลไม่พอสำหรับผสมเลขงวดนี้ ลองรีเฟรชข้อมูลก่อน';
+      setPageStatus('mix-status',root.textContent);
       return;
     }
     _mixHistRows=rows;
@@ -3881,11 +3961,13 @@ async function loadMixPage(){
         datasets:[{label:'Mix % ถูก (rolling 5 งวด)',data:trend.map(t=>t.value),borderColor:'#0a84ff',backgroundColor:'rgba(10,132,255,.15)',tension:.3,fill:true,pointRadius:2}]
       },options:opts});
     }
+    setPageStatus('mix-status',`ผสมเลขเสร็จแล้ว ${mix.preds.length} ชุด`);
   }catch(e){
     if(requestId!==_mixLoadRequestId)return;
     console.warn('loadMixPage failed',e);
     root.className='dc-loading';
     root.textContent='โหลดหน้านี้ไม่สำเร็จ ลองใหม่อีกครั้ง';
+    setPageStatus('mix-status',root.textContent);
   }
 }
 window.loadMixPage=loadMixPage;
@@ -3906,7 +3988,10 @@ function _renderBtTable(){
     return _btSortAsc?av-bv:bv-av;
   });
   const arr=k=>k===_btSortKey?(_btSortAsc?' ▲':' ▼'):' ⇅';
-  const th=(label,key,align)=>`<th style="cursor:pointer;user-select:none;white-space:nowrap${align?';text-align:'+align:''}" onclick="btSort('${key}')">${label}${arr(key)}</th>`;
+  const th=(label,key,align)=>{
+    const ariaSort=key===_btSortKey?(_btSortAsc?'ascending':'descending'):'none';
+    return `<th scope="col" aria-sort="${ariaSort}" style="white-space:nowrap${align?';text-align:'+align:''}"><button type="button" class="bt-sort-btn" onclick="btSort('${key}')">${label}<span aria-hidden="true">${arr(key)}</span></button></th>`;
+  };
   const typeColor=t=>t.includes('หน่วย')?'rgba(240,84,84,.18);color:var(--red)':t.includes('วิ่ง')?'rgba(168,85,247,.18);color:var(--purple)':'var(--surface2);color:var(--text2)';
   const rollingHtml=r=>[50,100,200].map(w=>{
     const rw=r.rolling?.[w];
@@ -3952,7 +4037,7 @@ function _renderBtTable(){
       <div class="formula-summary-item"><div class="formula-summary-label">Best hit rate</div><div class="formula-summary-value">${bestHit?`${bestHit.pct.toFixed(1)}%`:'—'}</div><div class="formula-summary-sub">${bestHit?bestHit.name:'ไม่มีข้อมูลครบ'}</div></div>
     </div>`;
     return `<div class="bt-board">
-      <div class="section-h">${board}</div>
+      <div class="section-h" role="heading" aria-level="2">${board}</div>
       ${mini}
       <div class="tbl-wrap"><table>${thead}<tbody>${rows.map(rowHtml).join('')}</tbody></table></div>
     </div>`;
@@ -4042,11 +4127,17 @@ async function loadBacktest(){
   const preset=document.getElementById('bt-preset')?.value||'optimized';
   const beam=document.getElementById('bt-beam')?.value||500;
   const kback=document.getElementById('bt-kback')?.value||100;
+  setPageStatus('backtest-status','กำลังรัน Backtest...');
   document.getElementById('bt-loading').style.display='block';
   document.getElementById('bt-results').style.display='none';
-  const d=await api(`backtest?n_draws=${n}&top_n=${topn}&beam_width=${beam}&k_back=${kback}&preset=${preset}`);
+  const d=await api(`backtest?n_draws=${n}&top_n=${topn}&beam_width=${beam}&k_back=${kback}&preset=${preset}`,{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
   document.getElementById('bt-loading').style.display='none';
-  if(d.error){toast('error: '+d.error,'error');return;}
+  if(!d||d.error){
+    const message=d?.error?'Backtest ไม่สำเร็จ ลองใหม่อีกครั้ง':'Backtest ไม่คืนข้อมูลที่ใช้ได้';
+    setPageStatus('backtest-status',message);
+    toast(d?.error?'error: '+d.error:message,'error',{announce:false});
+    return;
+  }
   document.getElementById('bt-results').style.display='block';
   const pct=v=>v!=null?(v*100).toFixed(2)+'%':'—';
   const lx=v=>v!=null?v.toFixed(2)+'x':'—';
@@ -4085,6 +4176,7 @@ async function loadBacktest(){
        borderWidth:0}
     ]},
     options:{...chartOpts('x',true),scales:{y:{min:0,ticks:{callback:v=>v+'x'}}}}});
+  setPageStatus('backtest-status',`Backtest เสร็จแล้ว ${d.n_tested??n} งวด`);
 }
 
 

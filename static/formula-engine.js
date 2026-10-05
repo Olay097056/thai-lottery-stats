@@ -261,6 +261,7 @@ function _clearFormulaResults(msg=''){
   const count=document.getElementById('formula-filter-count');
   if(count)count.textContent='';
   _formulaHasRun=false;
+  if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-status',msg||'ไม่มีผลสูตรให้แสดง');
 }
 
 function setFormulaLoading(msg='กำลังโหลดข้อมูลสูตร...'){
@@ -270,6 +271,7 @@ function setFormulaLoading(msg='กำลังโหลดข้อมูลส
     const el=document.getElementById(id);
     if(el){el.classList.remove('active');el.innerHTML='';}
   });
+  if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-status',msg);
 }
 
 async function initFormulaPage(){
@@ -280,7 +282,7 @@ async function initFormulaPage(){
   if(!sel.options.length){
     setFormulaLoading('กำลังเตรียมรายการงวดสำหรับสูตร...');
     try{
-      const h=await api('history?n=500');
+      const h=await api('history?n=500',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
       const rows=Array.isArray(h.data)?h.data:[];
       // build future/upcoming dates from pred-date select if available, else show last draws
       const predSel=document.getElementById('pred-date');
@@ -319,14 +321,16 @@ function switchFormulaTab(tab){
   document.querySelectorAll('.ftab-btn').forEach(btn=>{
     const on=btn.dataset.ftab===tab;
     btn.classList.toggle('active',on);
-    btn.setAttribute('aria-selected',on?'true':'false');
+    btn.setAttribute('aria-pressed',on?'true':'false');
   });
-  // sync dropdown กลุ่มสูตร: เลือกกลุ่ม → โชว์ค่านั้น + ไฮไลต์, เลือก ALL/BT → กลับ placeholder
+  // sync the native group selector with the currently exposed result group.
   const groupSel=document.getElementById('ftab-group-select');
   if(groupSel){
     const isGroup=['A','B','C','D','F','G','H','E','I','J','HM'].includes(tab);
     groupSel.value=isGroup?tab:'';
     groupSel.classList.toggle('ftab-select-active',isGroup);
+    if(isGroup)groupSel.setAttribute('aria-controls','formula-results-'+tab);
+    else groupSel.removeAttribute('aria-controls');
   }
   document.querySelectorAll('.ftab-info').forEach(el=>el.classList.add('hidden'));
   const desc=document.getElementById('ftab-desc-'+tab);
@@ -344,19 +348,6 @@ function switchFormulaTab(tab){
   if(tab!=='BT')filterFormulaCards();
 }
 
-// ลูกศรซ้าย/ขวา เลื่อน tab (WAI-ARIA tablist pattern)
-function ftabKeyNav(e){
-  if(e.key!=='ArrowRight'&&e.key!=='ArrowLeft'&&e.key!=='Home'&&e.key!=='End')return;
-  e.preventDefault();
-  const btns=[...document.querySelectorAll('.ftab-btn')];
-  let i=btns.findIndex(b=>b.dataset.ftab===_formulaActiveTab);
-  if(e.key==='Home')i=0;
-  else if(e.key==='End')i=btns.length-1;
-  else if(e.key==='ArrowRight')i=(i+1)%btns.length;
-  else i=(i-1+btns.length)%btns.length;
-  const next=btns[i];
-  if(next){switchFormulaTab(next.dataset.ftab);next.focus();}
-}
 
 // แปลง dd/mm/yyyy → Date object
 function _parseThai(dateStr){
@@ -391,7 +382,7 @@ async function autoFillFormula(clearStaleInputs=false){
   try{
     // prize-history (ไม่ใช่ history) เพราะมีคอลัมน์เดียวกันครบ + near1/prize2-5
     // เพิ่มเติม (จำเป็นสำหรับจักรพรรดิ กลุ่ม I ที่ใช้ pool รางวัล 1-5)
-    const h=await api('prize-history?n=500');
+    const h=await api('prize-history?n=500',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
     if(requestId!==_formulaAutoFillRequestId)return false;
     if(h?.error||h?.detail){
       _setFormulaAutoFillPending(false);
@@ -1744,7 +1735,10 @@ function _tycoonCards(prevRow,nextDay,nextMonth,nextYear2){
 
 function runAllFormulas(){
   if(_formulaAutoFillPending)return false;
-  if(!_validateFormulaInputs())return;
+  if(!_validateFormulaInputs()){
+    if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-status','มีช่องข้อมูลต้องตรวจสอบก่อนคำนวณ');
+    return;
+  }
   setFormulaLoading('กำลังคำนวณทุกสูตร...');
   const prize1=_fv('f-prize1').padStart(6,'0');
   const top3=_fv('f-top3').padStart(3,'0');
@@ -2056,6 +2050,7 @@ function runAllFormulas(){
   // เก็บ context ที่ผ่านการคำนวณแล้ว → ใช้เป็นฐานสร้างผลรางวัลของแต่ละหมวด
   switchFormulaTab(_formulaActiveTab);
   filterFormulaCards();
+  if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-status','คำนวณสูตรเสร็จแล้ว');
 }
 
 // ─── Mix. "ไม่รู้ซื้อเหี้ยไรดี" — derived meta-formula ────────────────────────────
@@ -2365,16 +2360,23 @@ async function runFormulaBacktest(){
   if(_btBtn){_btBtn.disabled=true;_btBtn.textContent='กำลังรัน...';}
   const n=parseInt(document.getElementById('bt-formula-n').value)||50;
   const targetTest=Math.max(n,...FORMULA_BT_WINDOWS);
+  if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-bt-status','กำลังรัน Backtest สูตร...');
   document.getElementById('formula-bt-loading').style.display='block';
   document.getElementById('formula-bt-table').innerHTML='';
   switchFormulaTab('BT');
   try{
 
-  const h=await api(`prize-history?n=${Math.min(600,targetTest+201)}`);
-  const rows=Array.isArray(h.data)?h.data:[];
+  const h=await api(`prize-history?n=${Math.min(600,targetTest+201)}`,{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
+  const rows=Array.isArray(h?.data)?h.data:[];
   _btFieldCheck=_formulaFieldMappingCheck(rows);
+  if(h?.error||h?.detail||!Array.isArray(h?.data)){
+    document.getElementById('formula-bt-table').innerHTML='<div class="formula-tab-empty" style="display:block">Backtest โหลดข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง</div>';
+    if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-bt-status','Backtest โหลดข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง');
+    return;
+  }
   if(rows.length<2){
     document.getElementById('formula-bt-table').innerHTML='<div class="formula-tab-empty" style="display:block">ยังไม่มีข้อมูลย้อนหลังเพียงพอสำหรับ Backtest</div>';
+    if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-bt-status','ข้อมูลย้อนหลังไม่พอสำหรับ Backtest');
     return;
   }
 
@@ -2486,6 +2488,7 @@ async function runFormulaBacktest(){
   });
   _btSortKey='edge';_btSortAsc=false;
   _renderBtTable();
+  if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-bt-status',`Backtest สูตรเสร็จแล้ว ${selectedTested} งวด`);
   if(_formulaHasRun){
     try{runAllFormulas();}catch(e){
       _renderFormulaFinalPicks();
@@ -2494,7 +2497,8 @@ async function runFormulaBacktest(){
   }
   }catch(e){
     document.getElementById('formula-bt-table').innerHTML='<div class="formula-tab-empty" style="display:block">รัน Backtest ไม่สำเร็จ ลองใหม่อีกครั้ง</div>';
-    if(typeof toast==='function')toast('รัน Backtest ไม่สำเร็จ','error');
+    if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-bt-status','รัน Backtest ไม่สำเร็จ ลองใหม่อีกครั้ง');
+    if(typeof toast==='function')toast('รัน Backtest ไม่สำเร็จ','error',{announce:false});
   }finally{
     document.getElementById('formula-bt-loading').style.display='none';
     _btRunning=false;

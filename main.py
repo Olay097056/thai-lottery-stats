@@ -3,16 +3,17 @@ FastAPI backend — Thai Lottery Intelligence Dashboard
 Run: uvicorn main:app --port 8509 --reload
 """
 from __future__ import annotations
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from pathlib import Path
 import re
+import ipaddress
 import pandas as pd
 import numpy as np
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from scraper import load_data, get_cache_info, incremental_update
 from analyzer import (
@@ -32,9 +33,58 @@ from watchlist import (
 
 app = FastAPI(title="Lottery Stats API", version="2.0")
 
-app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
-)
+
+def _same_local_origin(request: Request, origin: str) -> bool:
+    try:
+        parsed = urlsplit(origin)
+        origin_port = parsed.port
+        request_port = request.url.port
+    except ValueError:
+        return False
+    scheme = parsed.scheme.lower()
+    if (
+        not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in ("", "/")
+        or parsed.query
+        or parsed.fragment
+        or scheme not in {"http", "https"}
+        or scheme != request.url.scheme.lower()
+    ):
+        return False
+
+    origin_host = (parsed.hostname or "").lower()
+    request_host = (request.url.hostname or "").lower()
+    if not origin_host or origin_host != request_host:
+        return False
+
+    default_port = 443 if scheme == "https" else 80
+    origin_effective_port = origin_port if origin_port is not None else default_port
+    request_effective_port = request_port if request_port is not None else default_port
+    if origin_effective_port != request_effective_port:
+        return False
+    if origin_host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(origin_host).is_loopback
+    except ValueError:
+        return False
+
+
+# CORS controls response sharing, not form submission; keep unsafe browser requests same-origin.
+@app.middleware("http")
+async def reject_cross_origin_mutations(request: Request, call_next):
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        fetch_site = request.headers.get("sec-fetch-site", "").lower()
+        has_origin = "origin" in request.headers
+        origin = request.headers.get("origin")
+        if fetch_site and fetch_site not in {"same-origin", "none"}:
+            return JSONResponse({"detail": "cross-origin mutation blocked"}, status_code=403)
+        if has_origin and (not origin or not _same_local_origin(request, origin)):
+            return JSONResponse({"detail": "cross-origin mutation blocked"}, status_code=403)
+    return await call_next(request)
+
 
 BASE_DIR = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
@@ -826,4 +876,4 @@ def api_ticket_analysis(col: str = Query("top3"), numbers: str = Query(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8509, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=8509, reload=True)
