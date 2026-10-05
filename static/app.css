@@ -32,6 +32,7 @@
   --shadow-card:0 0 0 .5px rgba(255,255,255,.06) inset,0 8px 24px rgba(0,0,0,.35);
 }
 *{margin:0;padding:0;box-sizing:border-box}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 body{background:var(--bg);color:var(--text);font-family:'Noto Sans Thai','Syne',sans-serif;display:flex;min-height:100vh;overflow-x:hidden}
 #sidebar{width:var(--sidebar);min-width:var(--sidebar);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;z-index:100;overflow-y:auto}
 .logo{padding:20px 16px 16px;border-bottom:1px solid var(--border2)}
@@ -540,11 +541,15 @@ select:focus-visible,input:focus-visible,button:focus-visible,.ftab-btn:focus-vi
 .bt-board table{min-width:1040px}
 @media(max-width:900px){
   #main{margin-left:0;padding-bottom:78px}
-  #sidebar{width:100%;min-width:0;height:66px;top:auto;bottom:0;border-right:none;border-top:1px solid var(--border);overflow-x:auto;overflow-y:hidden;flex-direction:row;align-items:center}
+  #sidebar{width:100%;min-width:0;height:66px;top:auto;bottom:0;border-right:none;border-top:1px solid var(--border);overflow-x:hidden;overflow-y:hidden;flex-direction:row;align-items:center}
   #sidebar{scrollbar-width:none}
   #sidebar::-webkit-scrollbar,.nav::-webkit-scrollbar{display:none}
-  .logo,.sidebar-footer{display:none}
-  .nav{display:flex;flex:1;padding:0;overflow-x:auto}
+  .logo{display:none}
+  .nav{display:flex;flex:1;min-width:0;padding:0;overflow-x:auto}
+  .sidebar-footer{display:flex;flex:0 0 52px;min-width:52px;align-items:center;justify-content:center;padding:0 4px;border:0}
+  .sidebar-footer>#sidebar-draw-date{display:none!important}
+  .sidebar-footer>*:not(#theme-toggle){display:none}
+  .theme-toggle-btn{width:44px;min-width:44px;height:44px;flex:0 0 44px;margin:0;padding:0}
   .nav-item{min-width:92px;justify-content:center;flex-direction:column;gap:3px;border-left:none;border-top:3px solid transparent;padding:8px 10px;font-size:.68rem}
   .nav-item.active{border-left-color:transparent;border-top-color:var(--gold)}
   .nav-icon{width:auto}

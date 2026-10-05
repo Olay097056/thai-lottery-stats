@@ -129,24 +129,31 @@ function onPageLoad(p){
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
-let _apiInFlight=0;
-async function api(path){
+let _apiInFlight=0,_apiAnnouncingInFlight=0;
+async function api(path,options={}){
+  const spinner=document.getElementById('api-spinner');
   _apiInFlight++;
-  if(_apiInFlight===1) document.getElementById('api-spinner').classList.add('active');
+  if(!options.suppressSpinnerAnnouncement)_apiAnnouncingInFlight++;
+  if(_apiInFlight===1)spinner.classList.add('active');
+  if(_apiAnnouncingInFlight===0)spinner.setAttribute('aria-hidden','true');
+  else spinner.removeAttribute('aria-hidden');
   try{
     const r=await fetch('/api/'+path);
     return await r.json();
   }catch(e){
     // แจ้งผู้ใช้เมื่อโหลดล้มเหลว (throttle 5 วิ กันสแปมตอน server ล่มแล้วยิงหลาย call พร้อมกัน)
     const now=Date.now();
-    if(typeof toast==='function'&&now-(window._lastApiErrToast||0)>5000){
+    if(!options.suppressNetworkToast&&typeof toast==='function'&&now-(window._lastApiErrToast||0)>5000){
       window._lastApiErrToast=now;
       toast('เชื่อมต่อ server ไม่ได้ — ลองรีเฟรชหรือเช็กว่า server ยังรันอยู่','error');
     }
     return {error:String(e)};
   }finally{
     _apiInFlight=Math.max(0,_apiInFlight-1);
-    if(_apiInFlight===0) document.getElementById('api-spinner').classList.remove('active');
+    if(!options.suppressSpinnerAnnouncement)_apiAnnouncingInFlight=Math.max(0,_apiAnnouncingInFlight-1);
+    if(_apiInFlight===0)spinner.classList.remove('active');
+    if(_apiAnnouncingInFlight===0)spinner.setAttribute('aria-hidden','true');
+    else spinner.removeAttribute('aria-hidden');
   }
 }
 
@@ -156,7 +163,7 @@ function _applyTheme(t){
   document.documentElement.dataset.theme=t;
   try{localStorage.setItem(_THEME_KEY,t);}catch(e){}
   const b=document.getElementById('theme-toggle');
-  if(b)b.textContent=(t==='dark')?'☀️':'🌙';
+  if(b){b.textContent=(t==='dark')?'☀️':'🌙';b.setAttribute('aria-pressed',String(t==='dark'));}
 }
 function getTheme(){
   try{const s=localStorage.getItem(_THEME_KEY);if(s==='light'||s==='dark')return s;}catch(e){}
@@ -2071,35 +2078,61 @@ async function refreshData(){
 }
 
 // ─── Frequency ────────────────────────────────────────────────────────────────
+let _freqLoadRequestId=0;
 async function loadFreq(){
+  const requestId=++_freqLoadRequestId;
   const col = document.getElementById('freq-col').value;
-  const top = document.getElementById('freq-top').value;
+  const topEl=document.getElementById('freq-top');
   const isSanook = ['near1','prize2','prize3','prize4','prize5'].includes(col);
+  const statusEl=document.getElementById('freq-status');
+  const announce=message=>{if(statusEl)statusEl.textContent=message;};
+  announce('กำลังโหลดตารางความถี่...');
+  [...topEl.options].forEach(option=>{option.disabled=isSanook&&Number(option.value)>50;});
+  if(isSanook&&Number(topEl.value)>50)topEl.value='50';
+  const top = topEl.value;
   let rows, never=[];
-  document.getElementById('freq-tbody').innerHTML='<tr><td colspan="5"><div class="predict-empty">กำลังโหลดตารางความถี่...</div></td></tr>';
+  const freqBody=document.getElementById('freq-tbody');
+  freqBody.innerHTML='<tr><td colspan="5"><div class="predict-empty">กำลังโหลดตารางความถี่...</div></td></tr>';
   const neverEl = document.getElementById('never-list');
   if(neverEl)neverEl.innerHTML='<span style="color:var(--text3)">กำลังโหลด...</span>';
+  const showError=()=>{
+    announce('โหลดตารางความถี่ไม่สำเร็จ ลองใหม่อีกครั้ง');
+    freqBody.innerHTML='<tr><td colspan="5"><div class="predict-empty">โหลดตารางความถี่ไม่สำเร็จ ลองใหม่อีกครั้ง</div></td></tr>';
+    if(neverEl)neverEl.innerHTML='<span style="color:var(--text3)">โหลดข้อมูลความถี่ไม่สำเร็จ</span>';
+    if(_charts['freq-chart']){_charts['freq-chart'].destroy();delete _charts['freq-chart'];}
+  };
+  const isRecord=row=>row!==null&&typeof row==='object'&&!Array.isArray(row);
+  const isValidSanookRow=row=>isRecord(row)&&typeof row.number==='string'&&Number.isSafeInteger(row.count)&&row.count>=0&&typeof row.pct==='number'&&Number.isFinite(row.pct);
+  const isValidFrequencyRow=row=>isRecord(row)&&typeof row['เลข']==='string'&&Number.isSafeInteger(row['จำนวนครั้ง'])&&row['จำนวนครั้ง']>=0&&(row['อัตรา (%)']==null||(typeof row['อัตรา (%)']==='number'&&Number.isFinite(row['อัตรา (%)'])));
   if(isSanook){
-    const d = await api(`prize-freq?prize=${col}&top_n=${top}`);
-    rows = (d.data||[]).map(r=>({'เลข':r.number,'จำนวนครั้ง':r.count,'อัตรา (%)':r.pct}));
+    const d = await api(`prize-freq?prize=${col}&top_n=${top}`,{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
+    if(requestId!==_freqLoadRequestId)return;
+    if(d?.error||!Array.isArray(d?.data)||!d.data.every(isValidSanookRow)){showError();return;}
+    rows = d.data.map(r=>({'เลข':r.number,'จำนวนครั้ง':r.count,'อัตรา (%)':r.pct}));
   } else {
-    const d = await api(`freq-table?col=${col}&top_n=${top}`);
-    rows = d.data||[];
-    never = d.never||[];
+    const d = await api(`freq-table?col=${col}&top_n=${top}`,{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
+    if(requestId!==_freqLoadRequestId)return;
+    if(d?.error||!Array.isArray(d?.data)||!d.data.every(isValidFrequencyRow)||!Array.isArray(d?.never)||!d.never.every(n=>typeof n==='string')){showError();return;}
+    rows = d.data;
+    never = d.never;
   }
   const maxCnt = rows[0]?.['จำนวนครั้ง']||1;
-  document.getElementById('freq-tbody').innerHTML = rows.map((r,i)=>`<tr>
+  const formatRate=value=>Number.isFinite(value)?`${value.toFixed(2)}%`:'—';
+  announce(rows.length ? `แสดงผลความถี่ ${rows.length} รายการ` : 'ยังไม่มีข้อมูลความถี่');
+  freqBody.innerHTML = rows.length ? rows.map((r,i)=>`<tr>
     <td><span class="rank-badge ${i<3?'rank-'+(i+1):''}">${i+1}</span></td>
-    <td><b style="font-family:'IBM Plex Mono',monospace">${r['เลข']||''}</b></td>
+    <td><b style="font-family:'IBM Plex Mono',monospace">${escHtml(r['เลข']||'')}</b></td>
     <td>${r['จำนวนครั้ง']||0}</td>
-    <td>${(r['อัตรา (%)']||0).toFixed(2)}%</td>
+    <td>${formatRate(r['อัตรา (%)'])}</td>
     <td><div class="progress-bar"><div class="progress-fill" style="width:${((r['จำนวนครั้ง']||0)/maxCnt*100).toFixed(0)}%"></div></div></td>
-  </tr>`).join('');
+  </tr>`).join('') : '<tr><td colspan="5"><div class="predict-empty">ยังไม่มีข้อมูลความถี่</div></td></tr>';
   neverEl.innerHTML = isSanook
     ? `<span style="color:var(--text3);font-size:.78rem">* ข้อมูล Sanook — งวดเก่าก่อนปี ~2558 อาจไม่ครบ</span>`
-    : (never.length
-        ? `<div style="color:var(--text3);font-size:.78rem;margin-bottom:8px">ไม่เคยออก ${never.length} เลข:</div>`+never.map(n=>`<span class="num-badge" style="border-color:var(--text3);color:var(--text3)">${n}</span>`).join('')
-        : '<span style="color:var(--text3)">ทุกเลขเคยออกแล้ว</span>');
+    : col==='prize1'
+        ? '<span style="color:var(--text3);font-size:.78rem">ไม่รองรับรายการเลขที่ไม่เคยออกสำหรับรางวัลที่ 1</span>'
+        : (never.length
+            ? `<div style="color:var(--text3);font-size:.78rem;margin-bottom:8px">ไม่เคยออก ${never.length} เลข:</div>`+never.map(n=>`<span class="num-badge" style="border-color:var(--text3);color:var(--text3)">${escHtml(n)}</span>`).join('')
+            : '<span style="color:var(--text3)">ทุกเลขเคยออกแล้ว</span>');
   mkChart('freq-chart',{type:'bar',
     data:{labels:rows.slice(0,20).map(r=>String(r['เลข']||'')),datasets:[{data:rows.slice(0,20).map(r=>r['จำนวนครั้ง']||0),backgroundColor:'rgba(255,214,10,0.7)',borderWidth:0}]},
     options:chartOpts('ครั้ง')});
@@ -3943,20 +3976,62 @@ function _renderBtTable(){
     </div>`;
 }
 
-let _histData=[];
+let _histData=[],_histLoadError=false,_histLoadPending=false,_histLoadRequestId=0,_histStatusTimer=null,_histStatusAnnouncementId=0;
 async function loadHistory(){
+  const requestId=++_histLoadRequestId;
   const n=document.getElementById('hist-n').value;
-  const d=await api(`history?n=${n}`);
-  _histData=d.data||[];
+  _histLoadPending=true;
+  _histLoadError=false;
+  _histData=[];
+  filterHistory();
+  const d=await api(`history?n=${n}`,{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
+  if(requestId!==_histLoadRequestId)return;
+  _histLoadPending=false;
+  const resultFields=['prize1','top3','top2','front3_1','front3_2','back3_1','back3_2','bottom2'];
+  const isValidHistoryRow=row=>row!==null&&typeof row==='object'&&!Array.isArray(row)&&typeof row.date==='string'&&resultFields.every(field=>row[field]==null||typeof row[field]==='string');
+  _histLoadError=!!d?.error||!Array.isArray(d?.data)||!d.data.every(isValidHistoryRow);
+  _histData=_histLoadError?[]:d.data;
   filterHistory();
 }
 function filterHistory(){
+  const tbody=document.getElementById('hist-tbody');
+  const statusEl=document.getElementById('hist-status');
+  const announceStatus=(message,debounced=false)=>{
+    if(_histStatusTimer!==null){clearTimeout(_histStatusTimer);_histStatusTimer=null;}
+    const announcementId=++_histStatusAnnouncementId;
+    if(!statusEl)return;
+    if(debounced){
+      const requestId=_histLoadRequestId;
+      let timerId;
+      timerId=setTimeout(()=>{
+        if(_histStatusTimer===timerId)_histStatusTimer=null;
+        if(announcementId===_histStatusAnnouncementId&&!_histLoadPending&&requestId===_histLoadRequestId)statusEl.textContent=message;
+      },250);
+      _histStatusTimer=timerId;
+    }else statusEl.textContent=message;
+  };
+  if(_histLoadPending){
+    announceStatus('กำลังโหลดผลย้อนหลัง...');
+    tbody.innerHTML='<tr><td colspan="9"><div class="predict-empty">กำลังโหลดผลย้อนหลัง...</div></td></tr>';
+    return;
+  }
   const q=document.getElementById('hist-search').value.trim().toLowerCase();
   const rows=q?_histData.filter(r=>Object.values(r).some(v=>String(v).toLowerCase().includes(q))):_histData;
-  document.getElementById('hist-tbody').innerHTML=rows.map(r=>`<tr>
-    <td>${r.date||''}</td><td><b style="font-family:'IBM Plex Mono',monospace;color:var(--gold2)">${r.prize1||''}</b></td>
-    <td>${r.top3||''}</td><td>${r.top2||''}</td><td>${r.front3_1||''}</td>
-    <td>${r.front3_2||''}</td><td>${r.back3_1||''}</td><td>${r.back3_2||''}</td><td>${r.bottom2||''}</td>
+  if(_histLoadError){
+    announceStatus('โหลดผลย้อนหลังไม่สำเร็จ ลองใหม่อีกครั้ง');
+    tbody.innerHTML='<tr><td colspan="9"><div class="predict-empty">โหลดผลย้อนหลังไม่สำเร็จ ลองใหม่อีกครั้ง</div></td></tr>';
+    return;
+  }
+  if(!rows.length){
+    announceStatus('ไม่พบผลย้อนหลัง',!!q);
+    tbody.innerHTML='<tr><td colspan="9"><div class="predict-empty">ไม่พบผลย้อนหลัง</div></td></tr>';
+    return;
+  }
+  announceStatus(`แสดงผลย้อนหลัง ${rows.length} รายการ`,!!q);
+  tbody.innerHTML=rows.map(r=>`<tr>
+    <td>${escHtml(r.date||'')}</td><td><b style="font-family:'IBM Plex Mono',monospace;color:var(--gold2)">${escHtml(r.prize1||'')}</b></td>
+    <td>${escHtml(r.top3||'')}</td><td>${escHtml(r.top2||'')}</td><td>${escHtml(r.front3_1||'')}</td>
+    <td>${escHtml(r.front3_2||'')}</td><td>${escHtml(r.back3_1||'')}</td><td>${escHtml(r.back3_2||'')}</td><td>${escHtml(r.bottom2||'')}</td>
   </tr>`).join('');
 }
 

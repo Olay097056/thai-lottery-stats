@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<link rel="stylesheet" href="/static/app.css?v=hermes30">
+<link rel="stylesheet" href="/static/app.css?v=hermes36">
 </head>
 <body>
 
@@ -38,9 +38,12 @@
       <span style="color:var(--text2)">งวดล่าสุด:</span> <span id="sidebar-draw-date-val" style="color:var(--gold2);font-weight:600"></span>
     </div>
     <button class="refresh-btn" onclick="refreshData()">↻ รีเฟรชข้อมูล</button>
-    <button class="theme-toggle-btn" id="theme-toggle" onclick="toggleTheme()" title="สลับโหมดมืด/สว่าง" aria-label="สลับโหมดมืด/สว่าง">🌙</button>
+    <button class="theme-toggle-btn" id="theme-toggle" onclick="toggleTheme()" title="สลับโหมดมืด/สว่าง" aria-label="สลับโหมดมืด/สว่าง" aria-pressed="false">🌙</button>
   </div>
 </nav>
+<script id="theme-toggle-state-sync">
+  document.getElementById('theme-toggle')?.setAttribute('aria-pressed', String(document.documentElement.dataset.theme === 'dark'));
+</script>
 
 <main id="main">
 
@@ -145,6 +148,7 @@
     <div class="ctrl-group"><label class="ctrl-label" for="freq-col">ประเภท</label><select id="freq-col" onchange="loadFreq()"></select></div>
     <div class="ctrl-group"><label class="ctrl-label" for="freq-top">Top N</label><select id="freq-top" onchange="loadFreq()"><option value="30">30</option><option value="50">50</option><option value="100">100</option><option value="200">200</option></select></div>
   </div>
+  <div id="freq-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div class="grid-2">
     <div class="card">
       <div class="card-title">อันดับความถี่</div>
@@ -517,6 +521,7 @@
     <div class="ctrl-group"><label class="ctrl-label" for="hist-n">จำนวนงวด</label><select id="hist-n" onchange="loadHistory()"><option value="30">30</option><option value="50" selected>50</option><option value="100">100</option><option value="200">200</option></select></div>
     <div class="ctrl-group"><label class="ctrl-label" for="hist-search">กรองเลข</label><input type="text" id="hist-search" placeholder="000..." oninput="filterHistory()" style="width:160px"></div>
   </div>
+  <div id="hist-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div class="card">
     <div class="tbl-wrap" style="max-height:640px;overflow-y:auto">
       <table><thead><tr><th>วันที่</th><th>รางวัลที่ 1</th><th>3 บน</th><th>2 บน</th><th>3 หน้า 1</th><th>3 หน้า 2</th><th>3 ล่าง 1</th><th>3 ล่าง 2</th><th>2 ล่าง</th></tr></thead><tbody id="hist-tbody"></tbody></table>
@@ -607,10 +612,10 @@
 </main>
 
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
-<div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
+<div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล" aria-hidden="true"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script src="/static/formula-engine.js?v=hermes30"></script>
-<script src="/static/app.js?v=hermes30"></script>
+<script src="/static/formula-engine.js?v=hermes36"></script>
+<script src="/static/app.js?v=hermes36"></script>
 
 </body>
 </html>
