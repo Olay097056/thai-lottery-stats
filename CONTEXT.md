@@ -13,7 +13,7 @@ A 0–100 score for a Pick, combining agreement between Predict output, matching
 _Avoid_: score, rating (use the full term when referring to this specific metric)
 
 **Edge**:
-A formula's backtest accuracy minus the random baseline for its field type (e.g. 2-digit baseline = n/100). The comparable fairness metric across formula groups A–I. Displayed per Pick as the edge of its highest-weight supporting formula.
+A formula's backtest accuracy minus the random baseline for its field type (e.g. 2-digit baseline = n/100). Compare Edge only within the same field type; different prize-slot shapes have different random baselines. Displayed per Pick as the edge of its highest-weight supporting formula.
 _Avoid_: accuracy, hit rate (Edge is baseline-adjusted; hit rate is not)
 
 **Hit** (Decision Center track record):

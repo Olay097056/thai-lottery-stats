@@ -18,7 +18,7 @@ pip install -r requirements.txt
 uvicorn main:app --port 8509 --reload
 ```
 
-Open `http://localhost:8509`. On Windows, prefer the venv at `%LOCALAPPDATA%\lottery_stats_runtime\.venv\Scripts\python.exe` (has pandas/fastapi/sklearn installed) — plain `uvicorn` on PATH may resolve to a Python without dependencies. `.claude/launch.json` is configured to use this venv with `--app-dir lottery_stats --reload`.
+Open `http://localhost:8509`. On Windows, prefer the venv at `%LOCALAPPDATA%\lottery_stats_runtime\.venv\Scripts\python.exe` (has pandas/fastapi/sklearn installed) — plain `uvicorn` on PATH may resolve to a Python without dependencies. `.claude/launch.json` selects this venv and runs `uvicorn main:app --port 8509 --reload` from the project root.
 
 ## Key Files
 

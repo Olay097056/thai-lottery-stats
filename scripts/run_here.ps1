@@ -41,7 +41,15 @@ if ($SetupOnly) {
 Write-Host ""
 Write-Host "Thai Lottery Dashboard"
 Write-Host "URL: http://localhost:$Port"
+Write-Host "Browser will open once the local server responds."
 Write-Host "Press Ctrl+C to stop"
 Write-Host ""
-Start-Process "http://localhost:$Port"
+$readinessScript = Join-Path $PSScriptRoot 'open_when_ready.ps1'
+$readinessArgs = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Port {1} -TimeoutSeconds 30' -f $readinessScript, $Port
+$powerShellExe = if ($PSVersionTable.PSEdition -eq 'Core') {
+    Join-Path $PSHOME 'pwsh.exe'
+} else {
+    Join-Path $PSHOME 'powershell.exe'
+}
+Start-Process -FilePath $powerShellExe -ArgumentList $readinessArgs -WindowStyle Hidden | Out-Null
 & $venvPython -m uvicorn main:app --host 127.0.0.1 --port $Port --reload

@@ -5,18 +5,18 @@
 ### ▶ [Run the backtest in your browser](https://olay097056.github.io/thai-lottery-stats/demo/)
 
 Loads `static/formula-engine.js` — the real engine, not a rewrite — and scores
-every formula against 780 actual draws. Switch the window between 50 and 400
+every formula against historical draw data. Switch the window between 50 and 400
 draws and watch which formulas keep their edge. Most do not.
 
 ---
 
 A statistics and decision-support dashboard for Thai government lottery draws — built to answer one question honestly: **do any of these "lucky number formulas" actually beat random chance?**
 
-The short answer the app arrives at is *mostly no*, and that is the point. Rather than shipping a prediction tool that flatters the user, this project puts every formula through a backtest against ~777 real historical draws and reports its **Edge** — accuracy *minus the random baseline for that bet type*. Formulas that can't clear that bar keep a permanent **ทดลอง (Experimental)** badge instead of quietly disappearing.
+The short answer the app arrives at is *mostly no*, and that is the point. Rather than shipping a prediction tool that flatters the user, this project puts every formula through a backtest against historical draw data and reports its **Edge** — accuracy *minus the random baseline for that bet type*. Formulas that can't clear that bar keep a permanent **ทดลอง (Experimental)** badge instead of quietly disappearing.
 
 ## What it does
 
-- **Scrapes and caches 777 draws** of Thai lottery history from two sources (myhora.com for the main prizes, news.sanook.com JSON-LD for prizes 2–5), giving a full prize table rather than just the headline number.
+- **Scrapes and caches Thai lottery history** from two sources (myhora.com for the main prizes, news.sanook.com JSON-LD for prizes 2–5), giving a full prize table rather than just the headline number.
 - **Statistical prediction engine** — a composite score over 9 signals (same day+month frequency, day-of-month, month, weekday, recency-weighted frequency, year-over-year consistency, digit-position joint probability, geometric overdue probability, momentum, minus a lag penalty).
 - **Beam search for the 6-digit first prize** — decomposes the number into front-3 × back-3, scores each half under 3 weight configurations, and merges the rankings by harmonic mean.
 - **11 formula groups (A–J, HM)** — a mix of traditional Thai folk formulas transcribed into code and formulas discovered by systematic search over a declared arithmetic family.
