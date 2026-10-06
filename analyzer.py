@@ -1738,26 +1738,14 @@ def ensemble_predict(
 
 
 def overdue_with_prob(df: pd.DataFrame, col: str, top_n: int = 20) -> pd.DataFrame:
-    """overdue_numbers + คอลัมน์ความน่าจะเป็น (geometric model)"""
+    """overdue_numbers plus empirical valid-sample frequency for the next draw."""
     od = overdue_numbers(df, col, top_n=top_n)
-    # Keep the legacy denominator until the probability metric's contract is decided.
-    total = len(df)
-    if total == 0:
-        od["โอกาสออก (%)"] = 0.0
+    total_valid = len(_clean(df[col], col))
+    if total_valid == 0:
+        od["โอกาสออก (%)"] = pd.Series(dtype="float64")
         return od
 
-    prob_col = []
-    for _, row in od.iterrows():
-        times = row["ออกทั้งหมด"]
-        base_p = times / total if times > 0 else 0.0
-        overdue_draws = row["ค้างกี่งวด"]
-        # geometric: probability overdue_draws หรือนานกว่า → ยิ่งค้างนาน ยิ่ง "ถึงเวลา"
-        # แต่หวยเป็น memoryless จริงๆ เราแสดง expected wait vs actual wait
-        expected_gap = (1 / base_p) if base_p > 0 else 9999
-        score = min((overdue_draws / expected_gap) * base_p * 100, 99.9) if base_p > 0 else 0.0
-        prob_col.append(round(score, 2))
-
-    od["โอกาสออก (%)"] = prob_col
+    od["โอกาสออก (%)"] = (od["ออกทั้งหมด"] / total_valid * 100).round(2)
     return od
 
 

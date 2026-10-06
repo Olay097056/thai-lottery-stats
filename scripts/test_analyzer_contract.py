@@ -157,16 +157,38 @@ class AnalyzerContractTests(unittest.TestCase):
         self.assertIsNone(confidence["score"])
         self.assertEqual(confidence["level"], "NO_DATA")
 
-    def test_overdue_likelihood_preserves_legacy_score_until_semantics_are_defined(self):
-        dates = pd.to_datetime([f"{year}-01-01" for year in range(2019, 2023)])
-        df = pd.DataFrame({
+    def test_overdue_probability_uses_valid_sample_and_is_independent_of_gap(self):
+        dates = pd.to_datetime([
+            "2019-01-01", "2019-01-16", "2019-02-01", "2019-02-16", "2019-03-01"
+        ])
+        long_gap_df = pd.DataFrame({
             "date": dates,
-            "top2": ["02", "01", "", ""],
+            "top2": ["02", " 02 ", "01", "", "1.5"],
+        })
+        short_gap_df = pd.DataFrame({
+            "date": dates,
+            "top2": ["02", "01", "", "1.5", " 02 "],
         })
 
-        result = overdue_with_prob(df, "top2", top_n=100).set_index("เลข")
+        long_gap = overdue_with_prob(long_gap_df, "top2", top_n=100).set_index("เลข")
+        short_gap = overdue_with_prob(short_gap_df, "top2", top_n=100).set_index("เลข")
 
-        self.assertEqual(float(result.loc["02", "โอกาสออก (%)"]), 18.75)
+        self.assertEqual(int(long_gap.loc["02", "ออกทั้งหมด"]), 2)
+        self.assertEqual(float(long_gap.loc["02", "โอกาสออก (%)"]), 66.67)
+        self.assertEqual(float(short_gap.loc["02", "โอกาสออก (%)"]), 66.67)
+        self.assertGreater(
+            int(long_gap.loc["02", "ค้างกี่งวด"]),
+            int(short_gap.loc["02", "ค้างกี่งวด"]),
+        )
+        self.assertIn("02", long_gap.index)
+
+        no_sample_df = pd.DataFrame({
+            "date": pd.to_datetime(["2024-01-01", "2024-01-16"]),
+            "top2": ["", "1.5"],
+        })
+        no_sample = overdue_with_prob(no_sample_df, "top2")
+        self.assertTrue(no_sample.empty)
+        self.assertIn("โอกาสออก (%)", no_sample.columns)
 
     def test_overdue_numbers_returns_empty_for_unobserved_prize1(self):
         df = pd.DataFrame({
