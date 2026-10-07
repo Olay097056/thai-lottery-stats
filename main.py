@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from scraper import load_data, get_cache_info, incremental_update
 from analyzer import (
     predict_numbers, hot_cold_numbers,
+    PREDICT_NUMBERS_DEFAULT_WEIGHTS,
     prize1_backtest, prize1_digit_analysis,
     predict_prize1_ultimate,
     freq_table, heatmap_data, trend_data, never_appeared,
@@ -32,6 +33,7 @@ from watchlist import (
 )
 
 app = FastAPI(title="Lottery Stats API", version="2.0")
+PREDICT_ALL_SHARED_WEIGHTS = dict(PREDICT_NUMBERS_DEFAULT_WEIGHTS)
 
 
 def _same_local_origin(request: Request, origin: str) -> bool:
@@ -347,7 +349,9 @@ def api_predict_all(
         ("bottom2","ท้าย 2 ตัว", 2),
     ]:
         try:
-            pred = predict_with_reasons(df, col, target, top_n=top_n)
+            pred = predict_with_reasons(
+                df, col, target, top_n=top_n, weights=PREDICT_ALL_SHARED_WEIGHTS
+            )
             recs = _safe_records(pred) if pred is not None else []
             result["categories"][col] = {"label": label, "digits": digits, "numbers": recs}
         except Exception as e:

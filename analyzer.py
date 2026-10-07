@@ -4,6 +4,8 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from collections.abc import Mapping
+from types import MappingProxyType
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 _OVERDUE_ALERT_MULTIPLIER = 2.5   # กี่เท่าของ expected gap ถึงแจ้งเตือน
@@ -33,6 +35,39 @@ WEEKDAYS = ["จันทร์", "อังคาร", "พุธ", "พฤห�
 
 DAY_MAP = {0: "จันทร์", 1: "อังคาร", 2: "พุธ", 3: "พฤหัสบดี",
            4: "ศุกร์", 5: "เสาร์", 6: "อาทิตย์"}
+
+
+# The shared 2/3-digit ranker can receive a per-call weight vector. Keep its
+# shipped defaults explicit, and keep Prize 1's internal top3 ranker on an
+# immutable copy so tuning the external /api/predict/all fields cannot leak in.
+PREDICT_NUMBERS_DEFAULT_WEIGHTS = MappingProxyType({
+    "same_day": 0.18,
+    "recency_overall": 0.20,
+    "year_over_year": 0.16,
+    "day_month": 0.09,
+    "month": 0.09,
+    "weekday": 0.08,
+    "digit_position": 0.10,
+    "geometric_overdue": 0.06,
+    "momentum": 0.04,
+})
+PRIZE1_BACK3_RANKER_WEIGHTS = MappingProxyType(dict(PREDICT_NUMBERS_DEFAULT_WEIGHTS))
+
+
+def _resolve_predict_numbers_weights(weights: Mapping[str, float] | None) -> dict[str, float]:
+    """Return a validated copy of the shared ranker's weight vector."""
+    if weights is None:
+        return dict(PREDICT_NUMBERS_DEFAULT_WEIGHTS)
+    if not isinstance(weights, Mapping):
+        raise TypeError("predict_numbers weights must be a mapping")
+    if set(weights) != set(PREDICT_NUMBERS_DEFAULT_WEIGHTS):
+        raise ValueError("predict_numbers weights must define every known signal exactly")
+    resolved = {key: float(weights[key]) for key in PREDICT_NUMBERS_DEFAULT_WEIGHTS}
+    if any(not np.isfinite(value) or value < 0 for value in resolved.values()):
+        raise ValueError("predict_numbers weights must be finite and nonnegative")
+    if not np.isclose(sum(resolved.values()), 1.0, rtol=0.0, atol=1e-9):
+        raise ValueError("predict_numbers weights must sum to 1")
+    return resolved
 
 
 def _col_digits(col: str) -> int:
@@ -265,7 +300,13 @@ def next_thai_draw(from_date: datetime = None) -> list[dict]:
     return draws
 
 
-def predict_numbers(df: pd.DataFrame, col: str, target_date: datetime, top_n: int | None = 10) -> pd.DataFrame:
+def predict_numbers(
+    df: pd.DataFrame,
+    col: str,
+    target_date: datetime,
+    top_n: int | None = 10,
+    weights: Mapping[str, float] | None = None,
+) -> pd.DataFrame:
     """
     Multi-signal statistical prediction (8 independent components):
 
@@ -310,6 +351,7 @@ def predict_numbers(df: pd.DataFrame, col: str, target_date: datetime, top_n: in
     )
     if not valid.any():
         return pd.DataFrame()
+    score_weights = _resolve_predict_numbers_weights(weights)
 
     # ── Signal 1-4: Laplace-smoothed conditional frequencies via numpy ──
     def lp_np(mask: np.ndarray) -> dict:
@@ -454,16 +496,16 @@ def predict_numbers(df: pd.DataFrame, col: str, target_date: datetime, top_n: in
 
         # Weights: coordinate-descent optimized on 200-draw val set (generalize on held-out test)
         composite = (
-            p2       * 0.18 +   # same day-of-month (more data, more robust than joint p1)
-            p5       * 0.20 +   # recency-weighted overall
-            yoy      * 0.16 +   # year-over-year consistency (distinct years appeared on D/M)
-            p1       * 0.09 +   # joint day+month (sparse — kept low weight)
-            p3       * 0.09 +   # same month
-            p4       * 0.08 +   # same weekday
-            dp_norm  * 0.10 +   # digit-position joint prob
-            geo      * 0.06 +   # geometric overdue
-            mom_norm * 0.04     # 3m vs 12m momentum
-        ) * lag_factor          # weights sum to 1.00
+            p2       * score_weights["same_day"] +
+            p5       * score_weights["recency_overall"] +
+            yoy      * score_weights["year_over_year"] +
+            p1       * score_weights["day_month"] +
+            p3       * score_weights["month"] +
+            p4       * score_weights["weekday"] +
+            dp_norm  * score_weights["digit_position"] +
+            geo      * score_weights["geometric_overdue"] +
+            mom_norm * score_weights["momentum"]
+        ) * lag_factor
 
         rows.append({
             "เลข":                  num,
@@ -992,7 +1034,10 @@ def predict_prize1_ultimate(
     # Keep only the ranked pool needed to build the final back3 shortlist; this
     # makes repeated prize1 backtests practical without changing the scorer.
     back_pool_n = min(1000, max(k_back * _back_pool_factor, k_back, 100))
-    back_pred = predict_numbers(df, "top3", target_date, top_n=back_pool_n)
+    back_pred = predict_numbers(
+        df, "top3", target_date, top_n=back_pool_n,
+        weights=PRIZE1_BACK3_RANKER_WEIGHTS,
+    )
     if back_pred is None or back_pred.empty:
         return pd.DataFrame()
     back_max = float(back_pred["คะแนนรวม"].max()) or 1.0
@@ -1595,9 +1640,15 @@ def number_profile(df: pd.DataFrame, col: str, number: str) -> dict:
     }
 
 
-def predict_with_reasons(df: pd.DataFrame, col: str, target_date: datetime, top_n: int = 10) -> pd.DataFrame:
+def predict_with_reasons(
+    df: pd.DataFrame,
+    col: str,
+    target_date: datetime,
+    top_n: int = 10,
+    weights: Mapping[str, float] | None = None,
+) -> pd.DataFrame:
     """predict_numbers + คอลัมน์เหตุผลภาษาไทย"""
-    pred = predict_numbers(df, col, target_date, top_n=top_n)
+    pred = predict_numbers(df, col, target_date, top_n=top_n, weights=weights)
     total_draws = len(_clean(df[col], col))
     reasons = []
     badges = []
