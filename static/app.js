@@ -2507,9 +2507,10 @@ function renderPredictFinalPanel(cats,config={}){
   const maxScore=Math.max(1,...p1rows.map(r=>predScore(r,scoreKey)));
   const topP1=topRows(p1rows,5);
   const top3=[
-    ...(cats.front3_1?.numbers||[]).slice(0,3),
-    ...(cats.front3_2?.numbers||[]).slice(0,3),
-  ].map(predNum).filter(Boolean);
+    ...(cats.front3_1?.numbers||[]).slice(0,3).map(predNum),
+    ...(cats.front3_2?.numbers||[]).slice(0,3).map(predNum),
+    ...topP1.map(p1Back),
+  ].filter(Boolean);
   const bottom=(cats.bottom2?.numbers||[]).slice(0,6).map(predNum).filter(Boolean);
   const supported=[...support.values()].filter(x=>x.count>1).sort((a,b)=>b.count-a.count||a.num.localeCompare(b.num)).slice(0,8);
   const topCopy=[...topP1.map(predNum),...bottom.slice(0,3)].filter(Boolean).join(' ');
