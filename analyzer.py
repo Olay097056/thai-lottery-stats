@@ -51,6 +51,9 @@ PREDICT_NUMBERS_DEFAULT_WEIGHTS = MappingProxyType({
     "geometric_overdue": 0.06,
     "momentum": 0.04,
 })
+PREDICT_NUMBERS_COMPONENT_NAMES = tuple(PREDICT_NUMBERS_DEFAULT_WEIGHTS)
+PREDICT_NUMBERS_SCORE_SCALE = 1000
+PREDICT_NUMBERS_SCORE_DECIMALS = 2
 PRIZE1_BACK3_RANKER_WEIGHTS = MappingProxyType(dict(PREDICT_NUMBERS_DEFAULT_WEIGHTS))
 
 
@@ -306,6 +309,7 @@ def predict_numbers(
     target_date: datetime,
     top_n: int | None = 10,
     weights: Mapping[str, float] | None = None,
+    include_components: bool = False,
 ) -> pd.DataFrame:
     """
     Multi-signal statistical prediction (8 independent components):
@@ -507,9 +511,12 @@ def predict_numbers(
             mom_norm * score_weights["momentum"]
         ) * lag_factor
 
-        rows.append({
+        row = {
             "เลข":                  num,
-            "คะแนนรวม":             round(composite * 1000, 2),
+            "คะแนนรวม":             round(
+                composite * PREDICT_NUMBERS_SCORE_SCALE,
+                PREDICT_NUMBERS_SCORE_DECIMALS,
+            ),
             "วัน+เดือนเดียวกัน":    count_dm.get(num, 0),
             "วันที่เดียวกัน":       count_day.get(num, 0),
             "เดือนเดียวกัน":        count_mon.get(num, 0),
@@ -517,7 +524,24 @@ def predict_numbers(
             "รวมทั้งหมด":           count_all.get(num, 0),
             "ค้างกี่งวด":           overdue,
             "momentum":             round((r3 - r12) * 100, 2),
-        })
+        }
+        if include_components:
+            row.update({
+                f"component_{name}": value
+                for name, value in {
+                    "same_day": p2,
+                    "recency_overall": p5,
+                    "year_over_year": yoy,
+                    "day_month": p1,
+                    "month": p3,
+                    "weekday": p4,
+                    "digit_position": dp_norm,
+                    "geometric_overdue": geo,
+                    "momentum": mom_norm,
+                }.items()
+            })
+            row["lag_factor"] = lag_factor
+        rows.append(row)
 
     result = pd.DataFrame(rows).sort_values("คะแนนรวม", ascending=False).reset_index(drop=True)
     result.index = range(1, len(result) + 1)
