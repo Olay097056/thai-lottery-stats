@@ -15,16 +15,16 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<link rel="stylesheet" href="/static/app.css?v=hermes40">
+<link rel="stylesheet" href="/static/app.css?v=hermes52">
 </head>
 <body>
 
-<nav id="sidebar">
+<nav id="sidebar" aria-label="เมนูหลัก">
   <div class="logo">
     <div class="logo-title">🎯 Lottery Intel</div>
     <div class="logo-sub">Thai Stats Dashboard</div>
   </div>
-  <div class="nav" role="navigation" aria-label="เมนูหลัก">
+  <div id="sidebar-nav" class="nav">
     <div class="nav-item active" role="button" tabindex="0" data-page="dashboard" aria-current="page" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('dashboard')}"><span class="nav-icon">📊</span>Dashboard</div>
     <div class="nav-item" role="button" tabindex="0" data-page="frequency" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('frequency')}"><span class="nav-icon">📋</span>ตารางความถี่</div>
     <div class="nav-item" role="button" tabindex="0" data-page="predict" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('predict')}"><span class="nav-icon">🔮</span>ทำนาย / สูตร</div>
@@ -33,6 +33,7 @@
     <div class="nav-item" role="button" tabindex="0" data-page="history" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('history')}"><span class="nav-icon">📅</span>ผลย้อนหลัง</div>
     <div class="nav-item" role="button" tabindex="0" data-page="backtest" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showPage('backtest')}"><span class="nav-icon">⚗️</span>Backtest</div>
   </div>
+  <button type="button" id="nav-scroll-control" class="nav-scroll-control" aria-label="เลื่อนเมนูไปทางขวา" aria-controls="sidebar-nav" onclick="scrollSidebarNav()" hidden><span aria-hidden="true">→</span></button>
   <div class="sidebar-footer">
     <div id="sidebar-draw-date" style="font-size:.72rem;color:var(--text3);margin-bottom:8px;text-align:center;display:none">
       <span style="color:var(--text2)">งวดล่าสุด:</span> <span id="sidebar-draw-date-val" style="color:var(--gold2);font-weight:600"></span>
@@ -132,7 +133,8 @@
     </div>
   </div>
   <div class="card"><div class="dash-card-head"><div class="card-title">15 งวดล่าสุด</div><button class="dash-link" onclick="showPage('history')">เปิดหน้าผลย้อนหลัง</button></div>
-    <div class="tbl-wrap"><table id="recent-tbl">
+    <div class="tbl-wrap" tabindex="0" role="region" aria-label="ผลรางวัล 15 งวดล่าสุด เลื่อนแนวนอนเพื่อดูคอลัมน์เพิ่มเติม"><table id="recent-tbl">
+      <caption class="sr-only">ผลรางวัล 15 งวดล่าสุด</caption>
       <thead><tr><th>วันที่</th><th>รางวัลที่ 1</th><th>3 บน</th><th>2 บน</th><th>3 หน้า 1</th><th>3 หน้า 2</th><th>3 ล่าง 1</th><th>3 ล่าง 2</th><th>2 ล่าง</th></tr></thead>
       <tbody id="recent-tbody"></tbody>
     </table></div>
@@ -152,8 +154,8 @@
   <div class="grid-2">
     <div class="card">
       <div class="card-title">อันดับความถี่</div>
-      <div class="tbl-wrap" style="max-height:480px;overflow-y:auto">
-        <table><thead><tr><th>#</th><th>เลข</th><th>จำนวนครั้ง</th><th>อัตรา %</th><th>ความถี่</th></tr></thead>
+      <div class="tbl-wrap" tabindex="0" role="region" aria-label="อันดับความถี่ เลื่อนแนวนอนเพื่อดูคอลัมน์เพิ่มเติม" style="max-height:480px;overflow-y:auto">
+        <table><caption class="sr-only">อันดับความถี่ของเลขตามประเภทที่เลือก</caption><thead><tr><th>#</th><th>เลข</th><th>จำนวนครั้ง</th><th>อัตรา %</th><th>ความถี่</th></tr></thead>
         <tbody id="freq-tbody"></tbody></table>
       </div>
     </div>
@@ -180,16 +182,9 @@
         <option value="back3">ท้าย 3</option>
         <option value="bottom2">ท้าย 2 ล่าง</option>
       </select></div>
-      <div class="ctrl-group"><label class="ctrl-label" for="shared-workflow">มุมมอง</label><select id="shared-workflow" onchange="switchPredTab(this.value)">
-        <option value="predict">ทำนาย</option>
-        <option value="formula">สูตรคำนวณ</option>
-        <option value="decision">สรุปงวดนี้</option>
-        <option value="oldver">(OLD VER)</option>
-      </select></div>
     </div>
     <div class="pred-shared-actions">
-      <button class="btn btn-primary" onclick="runSharedPrimaryAction()">รันมุมมองนี้</button>
-      <button class="btn btn-secondary" onclick="showPage('decision')">สรุปงวดนี้</button>
+      <button type="button" id="pred-primary-run" class="btn btn-primary" onclick="runSharedPrimaryAction()">ทำนายทุกประเภท</button>
     </div>
   </div>
   <!-- Main page tabs -->
@@ -198,25 +193,26 @@
     <button type="button" id="pred-main-btn-formula" class="pred-main-tab-btn" aria-pressed="false" aria-controls="pred-main-tab-formula" onclick="switchPredTab('formula')">🔢 สูตรคำนวณ</button>
     <button type="button" id="pred-main-btn-decision" class="pred-main-tab-btn" aria-pressed="false" aria-controls="pred-main-tab-decision" onclick="switchPredTab('decision')">🎯 สรุปงวดนี้</button>
     <button type="button" id="pred-main-btn-oldver" class="pred-main-tab-btn" aria-pressed="false" aria-controls="pred-main-tab-oldver" onclick="switchPredTab('oldver')">🗄️ (OLD VER)</button>
+
   </div>
   <!-- Tab panel: ทำนาย -->
   <div id="pred-main-tab-predict" class="pred-main-tab-panel">
   <div class="card predict-toolbar">
     <div class="predict-controls">
       <div class="ctrl-group tab-local-date"><label class="ctrl-label" for="pred-date">งวด</label><select id="pred-date"></select></div>
-      <div class="ctrl-group"><label class="ctrl-label" for="pred-topn">Top N</label><select id="pred-topn"><option value="5">5</option><option value="10" selected>10</option><option value="15">15</option><option value="20">20</option><option value="30">30</option><option value="50">50</option></select></div>
-      <div class="ctrl-group"><label class="ctrl-label" for="p1-preset">Risk Filter</label><select id="p1-preset"><option value="optimized" selected>เน้นแม่น</option><option value="balanced">สมดุล</option><option value="coverage">เน้นครอบคลุม</option></select></div>
-      <div class="ctrl-group"><label class="ctrl-label" for="p1-beam">Beam</label><input type="number" id="p1-beam" value="500" min="50" max="1000" style="width:88px"></div>
-      <div class="ctrl-group"><label class="ctrl-label" for="p1-kback">Back3 Pool</label><input type="number" id="p1-kback" value="100" min="10" max="200" style="width:88px"></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="pred-topn">Top N</label><select id="pred-topn" aria-describedby="p1-topn-help"><option value="5">5</option><option value="10" selected>10</option><option value="15">15</option><option value="20">20</option><option value="30">30</option><option value="50">50</option></select><span id="p1-topn-help" class="ctrl-hint">จำนวนอันดับสูงสุดที่แสดง ไม่ได้เปลี่ยนคะแนนคำนวณ</span></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="p1-preset">Risk Filter</label><select id="p1-preset" aria-describedby="p1-risk-help"><option value="optimized" selected>เน้นแม่น</option><option value="balanced">สมดุล</option><option value="coverage">เน้นครอบคลุม</option></select><span id="p1-risk-help" class="ctrl-hint">เลือกสมดุลการคัดเลข ไม่ใช่โอกาสถูกรางวัล</span></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="p1-beam">Beam width</label><input type="number" id="p1-beam" value="500" min="50" max="1000" aria-describedby="p1-beam-help" style="width:88px"><span id="p1-beam-help" class="ctrl-hint">จำนวนสถานะผู้สมัครที่ Beam Search เก็บระหว่างขยายเลข 6 หลัก</span></div>
+      <div class="ctrl-group"><label class="ctrl-label" for="p1-kback">Back3 Pool</label><input type="number" id="p1-kback" value="100" min="10" max="200" aria-describedby="p1-kback-help" style="width:88px"><span id="p1-kback-help" class="ctrl-hint">จำนวนเลขท้าย 3 หลักที่เก็บไว้เป็นผู้สมัคร</span></div>
     </div>
     <div class="predict-actions">
-      <button class="btn btn-primary" onclick="loadPredict()">ทำนายทุกประเภท</button>
       <button class="btn btn-secondary" onclick="predictSaveSnapshot()">บันทึก Snapshot</button>
       <button class="btn btn-secondary" onclick="loadLuckyNews()">ข่าวเลขเด็ด</button>
       <button class="btn btn-secondary" onclick="exportPredCSV()">Export CSV</button>
     </div>
   </div>
   <div class="card" style="margin-bottom:14px"><div class="dc-label">Snapshot หน้าทำนาย</div><div id="predict-snapshot-list" class="dc-row"></div></div>
+  <p class="predict-score-note">คะแนนนี้ใช้จัดอันดับภายในชุดคำนวณเท่านั้น ไม่ใช่ความน่าจะเป็นหรือเปอร์เซ็นต์ความมั่นใจ และยังไม่ยืนยันความแม่นยำ</p>
   <div id="predict-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="predict-summary" class="predict-summary"></div>
   <div id="predict-final" class="predict-final"></div>
@@ -245,8 +241,8 @@
       <div class="section-h" role="heading" aria-level="2" style="background:linear-gradient(90deg,rgba(255,214,10,.12),transparent);border-left:3px solid var(--accent)">🏆 รางวัลที่ 1 (6 หลัก)</div>
       <div class="card predict-card" data-pred-group="prize1" style="border:1px solid var(--accent)44">
         <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px" id="p1-badges"></div>
-        <div class="tbl-wrap" style="max-height:320px;overflow-y:auto">
-          <table><thead><tr><th>#</th><th>เลข 6 หลัก</th><th>หน้า3</th><th>ท้าย3</th><th>คะแนน</th></tr></thead>
+        <div class="tbl-wrap" tabindex="0" role="region" aria-label="ผลทำนายรางวัลที่ 1 เลื่อนแนวนอนเพื่อดูคอลัมน์เพิ่มเติม" style="max-height:320px;overflow-y:auto">
+          <table><caption class="sr-only">อันดับเลขทำนายรางวัลที่ 1</caption><thead><tr><th>#</th><th>เลข 6 หลัก</th><th>หน้า3</th><th>ท้าย3</th><th>คะแนน</th></tr></thead>
           <tbody id="p1-tbody"></tbody></table>
         </div>
       </div>
@@ -257,29 +253,29 @@
       <div class="card predict-card" data-pred-group="front3" style="border-top:2px solid #4d9de0">
         <div class="card-title" style="color:#4d9de0">หน้า 3 ตัว ชุด 1</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px" id="f31-badges"></div>
-        <div class="tbl-wrap" style="max-height:240px;overflow-y:auto">
-          <table><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="f31-tbody"></tbody></table>
+        <div class="tbl-wrap" tabindex="0" role="region" aria-label="ผลทำนายเลขหน้า 3 ตัว ชุด 1 เลื่อนแนวนอนเพื่อดูคอลัมน์เพิ่มเติม" style="max-height:240px;overflow-y:auto">
+          <table><caption class="sr-only">อันดับเลขทำนายหน้า 3 ตัว ชุด 1</caption><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="f31-tbody"></tbody></table>
         </div>
       </div>
       <div class="card predict-card" data-pred-group="front3" style="border-top:2px solid #4d9de0">
         <div class="card-title" style="color:#4d9de0">หน้า 3 ตัว ชุด 2</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px" id="f32-badges"></div>
-        <div class="tbl-wrap" style="max-height:240px;overflow-y:auto">
-          <table><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="f32-tbody"></tbody></table>
+        <div class="tbl-wrap" tabindex="0" role="region" aria-label="ผลทำนายเลขหน้า 3 ตัว ชุด 2 เลื่อนแนวนอนเพื่อดูคอลัมน์เพิ่มเติม" style="max-height:240px;overflow-y:auto">
+          <table><caption class="sr-only">อันดับเลขทำนายหน้า 3 ตัว ชุด 2</caption><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="f32-tbody"></tbody></table>
         </div>
       </div>
       <div class="card predict-card" data-pred-group="back3" style="border-top:2px solid #a855f7">
         <div class="card-title" style="color:#a855f7">ท้าย 3 ตัว ชุด 1</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px" id="b31-badges"></div>
-        <div class="tbl-wrap" style="max-height:240px;overflow-y:auto">
-          <table><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="b31-tbody"></tbody></table>
+        <div class="tbl-wrap" tabindex="0" role="region" aria-label="ผลทำนายเลขท้าย 3 ตัว ชุด 1 เลื่อนแนวนอนเพื่อดูคอลัมน์เพิ่มเติม" style="max-height:240px;overflow-y:auto">
+          <table><caption class="sr-only">อันดับเลขทำนายท้าย 3 ตัว ชุด 1</caption><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="b31-tbody"></tbody></table>
         </div>
       </div>
       <div class="card predict-card" data-pred-group="back3" style="border-top:2px solid #a855f7">
         <div class="card-title" style="color:#a855f7">ท้าย 3 ตัว ชุด 2</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px" id="b32-badges"></div>
-        <div class="tbl-wrap" style="max-height:240px;overflow-y:auto">
-          <table><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="b32-tbody"></tbody></table>
+        <div class="tbl-wrap" tabindex="0" role="region" aria-label="ผลทำนายเลขท้าย 3 ตัว ชุด 2 เลื่อนแนวนอนเพื่อดูคอลัมน์เพิ่มเติม" style="max-height:240px;overflow-y:auto">
+          <table><caption class="sr-only">อันดับเลขทำนายท้าย 3 ตัว ชุด 2</caption><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="b32-tbody"></tbody></table>
         </div>
       </div>
     </div>
@@ -289,15 +285,15 @@
       <div class="card predict-card" data-pred-group="bottom2" style="border-top:2px solid #3dd68c">
         <div class="card-title" style="color:#3dd68c">ท้าย 2 ตัว</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px" id="bt2-badges"></div>
-        <div class="tbl-wrap" style="max-height:200px;overflow-y:auto">
-          <table><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="bt2-tbody"></tbody></table>
+        <div class="tbl-wrap" tabindex="0" role="region" aria-label="ผลทำนายเลขท้าย 2 ตัว เลื่อนแนวนอนเพื่อดูคอลัมน์เพิ่มเติม" style="max-height:200px;overflow-y:auto">
+          <table><caption class="sr-only">อันดับเลขทำนายท้าย 2 ตัว</caption><thead><tr><th>#</th><th>เลข</th><th>คะแนน</th></tr></thead><tbody id="bt2-tbody"></tbody></table>
         </div>
       </div>
       <div id="ref-section">
         <div class="card" style="border-top:2px solid var(--border2)">
           <div class="card-title">📋 งวดเดียวกันในอดีต</div>
-          <div class="tbl-wrap" style="max-height:200px;overflow-y:auto">
-            <table><thead><tr><th>วันที่</th><th>รางวัลที่1</th><th>3บน</th><th>2บน</th><th>3ล่าง1</th><th>3ล่าง2</th><th>2ล่าง</th></tr></thead><tbody id="ref-tbody"></tbody></table>
+          <div class="tbl-wrap" tabindex="0" role="region" aria-label="ผลทำนายอ้างอิงจากงวดเดียวกันในอดีต เลื่อนแนวนอนเพื่อดูคอลัมน์เพิ่มเติม" style="max-height:200px;overflow-y:auto">
+            <table><caption class="sr-only">ผลรางวัลอ้างอิงจากงวดเดียวกันในอดีต</caption><thead><tr><th>วันที่</th><th>รางวัลที่1</th><th>3บน</th><th>2บน</th><th>3ล่าง1</th><th>3ล่าง2</th><th>2ล่าง</th></tr></thead><tbody id="ref-tbody"></tbody></table>
           </div>
         </div>
       </div>
@@ -352,6 +348,7 @@
       </div>
     </div>
 
+    <div id="formula-input-status" class="formula-input-status" role="alert" aria-live="assertive" aria-atomic="true"></div>
     <div class="formula-section-grid">
       <div class="formula-section">
         <div class="formula-section-title">ผลรางวัลหลัก</div>
@@ -438,6 +435,7 @@
       <option value="HM">HM · Hermes Pool 1-4 (ทดลอง)</option>
     </select>
     <button type="button" id="ftab-btn-BT" class="ftab-btn" aria-pressed="false" aria-controls="formula-results-BT" data-color="orange" data-ftab="BT" onclick="switchFormulaTab('BT')">Backtest</button>
+    <button type="button" id="ftab-btn-ASTRA" class="ftab-btn" aria-pressed="false" aria-controls="formula-results-ASTRA" data-color="gold" data-ftab="ASTRA" onclick="showAstraFormulaView()">Astra <span class="astra-tab-trial">ทดลอง</span></button>
   </div>
 
   <!-- Tab descriptions -->
@@ -459,6 +457,7 @@
   <div id="ftab-desc-I" class="ftab-info hidden" data-color="violet">จักรพรรดิ — นับความถี่เลขแต่ละหลักจาก pool รางวัลที่ 1-5 ของงวดก่อนหน้าเดียว (near1+prize2-5, ~168 เลข) แล้วประกอบเลข 6 หลักจาก 2 อันดับแรกต่อหลัก เกณฑ์ถูก: ตรงกับตัวใดตัวหนึ่งใน pool รางวัล 1-5</div>
   <div id="ftab-desc-J" class="ftab-info hidden" data-color="green">เจ้าสัว 🧪 ทดลอง — สูตรจากการค้นหาระบบ (arithmetic search) ท้าย 2 ตัว = pad2(|ท้าย3ชุด2งวดก่อน − (วัน+เดือน+ปี พ.ศ.2หลัก งวดถัดไป)|) ผ่านการทดสอบ train/validation/holdout แล้วไม่ผ่านเกณฑ์บน holdout จึงติดป้ายทดลอง (ยังใช้งานได้ปกติ ไม่ถูกตัดออกจาก Picks/เลขแนะนำ)</div>
   <div id="ftab-desc-BT" class="ftab-info hidden" data-color="orange">ทดสอบความแม่นของแต่ละสูตรย้อนหลัง — ใช้ผลงวดจริงจาก DB เปรียบเทียบ</div>
+  <div id="ftab-desc-ASTRA" class="ftab-info hidden" data-color="gold">รายงานจัดอันดับแยกตามหมวดรางวัล · อ่านข้อมูลเดิมแบบอ่านอย่างเดียว · คะแนนไม่ใช่ความน่าจะเป็น</div>
 
   <!-- Results per tab -->
   <div id="formula-results-A" class="formula-results-panel active" role="group" aria-label="ผลสูตรกลุ่ม A"></div>
@@ -482,6 +481,122 @@
   <div id="formula-bt-loading" style="display:none;text-align:center;padding:24px;color:var(--text3)">กำลังคำนวณ...</div>
     <div id="formula-bt-table"></div>
   </div>
+
+  <section id="formula-results-ASTRA" class="formula-results-panel astra-formula-panel" role="group" aria-labelledby="astra-heading">
+    <header class="astra-hero">
+      <div class="astra-hero-mark" aria-hidden="true">A</div>
+      <div class="astra-hero-copy">
+        <h2 id="astra-heading">Astra <span class="astra-badge">ทดลอง</span></h2>
+        <p>จัดอันดับเลข 7 หมวดแยกกันสำหรับงวดที่เลือก — รางวัลที่ 1 เป็นเป้าหมายหลัก</p>
+      </div>
+      <div class="astra-hero-note"><span>วิธีอ่านคะแนน</span><strong>อันดับทดลอง</strong><span>ไม่ใช่ความน่าจะเป็น</span></div>
+    </header>
+
+    <div class="astra-version-row">
+      <span class="astra-control-label">รุ่นสูตร</span>
+      <div class="astra-version-toggle" role="group" aria-label="เลือกรุ่นสูตร Astra">
+        <button type="button" id="astra-version-v1" class="btn btn-secondary" aria-pressed="true" onclick="selectAstraVersion('astra-v1')">Astra v1 <span>ฐานเดิม</span></button>
+        <button type="button" id="astra-version-sigma" class="btn btn-secondary" aria-pressed="false" onclick="selectAstraVersion('astra-sigma')">Astra-Σ <span>ทดลอง v0.1</span></button>
+      </div>
+    </div>
+
+    <div id="astra-v1-content">
+      <div class="astra-runbar">
+        <div><strong>Astra v1</strong><span id="astra-target-label">งวด Astra: ใช้ตามงวดหลัก</span><span class="astra-run-note">ผลคำนวณมือไม่บันทึกถาวร</span></div>
+        <button type="button" id="astra-run" class="btn btn-primary" onclick="loadAstra({recompute:true})">คำนวณงวดนี้</button>
+      </div>
+
+      <section id="astra-automation" class="astra-automation" aria-labelledby="astra-auto-heading">
+        <div class="astra-automation-head">
+          <div><h3 id="astra-auto-heading">รายงานอัตโนมัติ</h3><p>อ่านสถานะล่าสุดได้โดยไม่สั่งคำนวณหรือบันทึก ระบบตรวจทุก 900 วินาทีเมื่อ backend พร้อม และหยุดเมื่อปิด backend หรือคอมพิวเตอร์ สถานะจากการอ่านครั้งล่าสุดไม่อัปเดตเองในหน้านี้</p></div>
+          <button type="button" id="astra-auto-refresh" class="btn btn-secondary" onclick="loadAstra({statusOnly:true})">อ่านสถานะ</button>
+        </div>
+        <p id="astra-auto-status" class="astra-status" data-state="idle" role="status" aria-live="polite" aria-atomic="true">ยังไม่ได้อ่านสถานะ จึงยังไม่ยืนยันว่าระบบอัตโนมัติทำงาน</p>
+        <div id="astra-auto-meta" class="astra-auto-meta"></div>
+        <button type="button" id="astra-auto-target" class="btn btn-secondary" hidden onclick="showAstraAutomaticTarget()">ดูงวดอัตโนมัติ</button>
+      </section>
+
+      <p id="astra-status" class="astra-status" role="status" aria-live="polite" aria-atomic="true">ยังไม่ได้คำนวณ เลือกงวดด้านบนแล้วคำนวณ Astra</p>
+      <div id="astra-results" data-state="idle" aria-busy="false">
+        <div id="astra-meta" class="astra-meta">สูตร Astra v1 · ทดลอง · ยังไม่มีรายงานสำหรับงวดที่เลือก</div>
+        <div id="astra-warnings" class="astra-warnings" hidden></div>
+        <div id="astra-categories" class="astra-results-layout">
+          <article id="astra-category-prize1" class="card astra-card astra-card-primary" aria-labelledby="astra-heading-prize1">
+            <div class="astra-card-heading"><h3 id="astra-heading-prize1">รางวัลที่ 1</h3><span>เป้าหมายหลัก</span></div>
+            <div id="astra-body-prize1">6 หลัก · 5 เลข · ยังไม่ได้คำนวณ</div>
+          </article>
+          <section class="astra-result-section" aria-labelledby="astra-secondary-heading">
+            <h3 id="astra-secondary-heading">รางวัลที่ 2–4 <span>รายงานแยกหมวด</span></h3>
+            <div class="astra-grid astra-grid-prizes">
+              <article id="astra-category-prize2" class="card astra-card" aria-labelledby="astra-heading-prize2"><h4 id="astra-heading-prize2">รางวัลที่ 2</h4><div id="astra-body-prize2">6 หลัก · 5 เลข · ยังไม่ได้คำนวณ</div></article>
+              <article id="astra-category-prize3" class="card astra-card" aria-labelledby="astra-heading-prize3"><h4 id="astra-heading-prize3">รางวัลที่ 3</h4><div id="astra-body-prize3">6 หลัก · 5 เลข · ยังไม่ได้คำนวณ</div></article>
+              <article id="astra-category-prize4" class="card astra-card" aria-labelledby="astra-heading-prize4"><h4 id="astra-heading-prize4">รางวัลที่ 4</h4><div id="astra-body-prize4">6 หลัก · 5 เลข · ยังไม่ได้คำนวณ</div></article>
+            </div>
+          </section>
+          <section class="astra-result-section" aria-labelledby="astra-fields-heading">
+            <h3 id="astra-fields-heading">เลขหน้าและเลขท้าย <span>แยกจากรางวัลที่ 1</span></h3>
+            <div class="astra-grid astra-grid-fields">
+              <article id="astra-category-front3" class="card astra-card" aria-labelledby="astra-heading-front3"><h4 id="astra-heading-front3">เลขหน้า 3 ตัว</h4><div id="astra-body-front3">3 หลัก · 2 เลข · ยังไม่ได้คำนวณ</div></article>
+              <article id="astra-category-back3" class="card astra-card" aria-labelledby="astra-heading-back3"><h4 id="astra-heading-back3">เลขท้าย 3 ตัวทางการ</h4><div id="astra-body-back3">3 หลัก · 2 เลข · ยังไม่ได้คำนวณ</div></article>
+              <article id="astra-category-bottom2" class="card astra-card" aria-labelledby="astra-heading-bottom2"><h4 id="astra-heading-bottom2">เลขท้าย 2 ตัว</h4><div id="astra-body-bottom2">2 หลัก · 1 เลข · ยังไม่ได้คำนวณ</div></article>
+            </div>
+          </section>
+        </div>
+      </div>
+      <details id="astra-method" class="astra-method">
+        <summary>วิธีคำนวณ Astra v1 และข้อจำกัด</summary>
+        <ol>
+          <li>ใช้ผลของแต่ละหมวดแยกกัน จากไม่เกิน 200 งวดล่าสุดที่อยู่ก่อนงวดเป้าหมาย ต้องมีอย่างน้อย 20 งวดที่ถูกต้องต่อหมวด มิฉะนั้นไม่แสดงเลขหมวดนั้น เลขหน้า 3 และเลขท้าย 3 ทางการไม่ได้ตัดจากรางวัลที่ 1</li>
+          <li>น้ำหนักงวดอายุ a คือ 0.5 + 0.5 × 2^(−a/24) แต่ละงวดมีน้ำหนักรวมเท่ากันก่อนปรับอายุ แม้หมวดนั้นมีหลายรางวัล</li>
+          <li>นับเลขแต่ละตำแหน่งโดยเติม prior 1 ต่อเลข และนับคู่เลขติดกันด้วย backoff 10 ผสม log ของตำแหน่งและคู่เลขด้วยน้ำหนัก 0.5 / 0.5 ใช้ k-best หาอันดับตรงตามคะแนน ผูกอันดับด้วยเลขเรียงจากน้อยไปมาก</li>
+          <li>log_score เป็นคะแนนจัดอันดับภายในหมวด ไม่ใช่ความน่าจะเป็นถูกรางวัลหรือเปอร์เซ็นต์ความมั่นใจ ค่าคงที่ถูกล็อกไว้ ไม่ได้ปรับให้เข้ากับผลย้อนหลัง</li>
+          <li>แจ้งเตือนเมื่อข้อมูลล่าสุดเก่ากว่าวันสร้างรายงานเกิน 35 วัน ตรวจวันข้อมูลล่าสุดของแต่ละหมวดด้วย การทดสอบข้อมูลจำลองยืนยันการทำงานของโค้ด ไม่ได้พิสูจน์ความแม่นยำ และหน้านี้ไม่มีการทดสอบย้อนหลัง</li>
+        </ol>
+      </details>
+    </div>
+
+    <section id="astra-sigma-content" aria-labelledby="astra-sigma-heading" hidden style="display:none">
+      <div class="astra-runbar astra-sigma-runbar">
+        <div><h3 id="astra-sigma-heading">Astra-Σ <span class="astra-badge">ทดลอง · v0.1</span></h3><span>สูตรผสมสัญญาณสถิติและตัวเลขเชิงความเชื่อ · ไม่มีหลักฐานว่าเพิ่มโอกาสถูกรางวัล</span><span class="astra-run-note">ผลคำนวณมือไม่บันทึกถาวร</span></div>
+        <button type="button" id="astra-sigma-run" class="btn btn-primary" onclick="loadAstraSigma({recompute:true})">คำนวณงวดนี้</button>
+      </div>
+      <p class="astra-target-line">เป้าหมาย: <span id="astra-sigma-target-label">ใช้ตามงวดหลัก</span> · คะแนนเป็นอันดับทดลอง ไม่ใช่ความน่าจะเป็น</p>
+      <p id="astra-sigma-status" class="astra-status" role="status" aria-live="polite" aria-atomic="true">ยังไม่ได้คำนวณ Astra-Σ</p>
+      <div id="astra-sigma-results" data-state="idle" aria-busy="false">
+        <div id="astra-sigma-meta" class="astra-meta">Astra-Σ v0.1 · ทดลอง · ยังไม่มีรายงาน</div>
+        <div id="astra-sigma-warnings" class="astra-warnings" hidden></div>
+        <div id="astra-sigma-categories" class="astra-results-layout">
+          <article id="astra-sigma-category-prize1" class="card astra-card astra-card-primary" aria-labelledby="astra-sigma-heading-prize1"><div class="astra-card-heading"><h3 id="astra-sigma-heading-prize1">รางวัลที่ 1</h3><span>เป้าหมายหลัก</span></div><div id="astra-sigma-body-prize1">6 หลัก · ยังไม่ได้คำนวณ</div></article>
+          <section class="astra-result-section" aria-labelledby="astra-sigma-secondary-heading">
+            <h3 id="astra-sigma-secondary-heading">รางวัลที่ 2–4 <span>รายงานแยกหมวด</span></h3>
+            <div class="astra-grid astra-grid-prizes">
+              <article class="card astra-card" aria-labelledby="astra-sigma-heading-prize2"><h4 id="astra-sigma-heading-prize2">รางวัลที่ 2</h4><div id="astra-sigma-body-prize2">6 หลัก · ยังไม่ได้คำนวณ</div></article>
+              <article class="card astra-card" aria-labelledby="astra-sigma-heading-prize3"><h4 id="astra-sigma-heading-prize3">รางวัลที่ 3</h4><div id="astra-sigma-body-prize3">6 หลัก · ยังไม่ได้คำนวณ</div></article>
+              <article class="card astra-card" aria-labelledby="astra-sigma-heading-prize4"><h4 id="astra-sigma-heading-prize4">รางวัลที่ 4</h4><div id="astra-sigma-body-prize4">6 หลัก · ยังไม่ได้คำนวณ</div></article>
+            </div>
+          </section>
+          <section class="astra-result-section" aria-labelledby="astra-sigma-fields-heading">
+            <h3 id="astra-sigma-fields-heading">เลขหน้าและเลขท้าย <span>แยกจากรางวัลที่ 1</span></h3>
+            <div class="astra-grid astra-grid-fields">
+              <article class="card astra-card" aria-labelledby="astra-sigma-heading-front3"><h4 id="astra-sigma-heading-front3">เลขหน้า 3 ตัว</h4><div id="astra-sigma-body-front3">3 หลัก · ยังไม่ได้คำนวณ</div></article>
+              <article class="card astra-card" aria-labelledby="astra-sigma-heading-back3"><h4 id="astra-sigma-heading-back3">เลขท้าย 3 ตัวทางการ</h4><div id="astra-sigma-body-back3">3 หลัก · ยังไม่ได้คำนวณ</div></article>
+              <article class="card astra-card" aria-labelledby="astra-sigma-heading-bottom2"><h4 id="astra-sigma-heading-bottom2">เลขท้าย 2 ตัว</h4><div id="astra-sigma-body-bottom2">2 หลัก · ยังไม่ได้คำนวณ</div></article>
+            </div>
+          </section>
+        </div>
+      </div>
+      <details id="astra-sigma-method" class="astra-method">
+        <summary>วิธีคำนวณ Astra-Σ v0.1 และข้อจำกัด</summary>
+        <ol>
+          <li>คะแนนรวม = 0.50A + 0.10H + 0.10D + 0.12N + 0.08L + 0.10B โดย A คือ percentile ของคะแนน astra-v1 ครบทุกเลขในหมวดนั้น</li>
+          <li>H คือสัดส่วนเลขตำแหน่งเดียวกันใน 24 งวดที่ใช้ได้ล่าสุด; D คือจำนวนงวดที่เลขตำแหน่งนั้นไม่ปรากฏ จำกัด 24 งวด ทั้งสองเป็นสัญญาณทดลองที่หักล้างกันได้ ไม่ใช่ข้อเท็จจริงเชิงทำนาย</li>
+          <li>N คือ digital-root ของเลขเทียบกับวันที่งวดเป้าหมาย; L ให้แต้มกับเลข 8/9; B วัดสมดุลคี่/คู่ ต่ำ/สูง และเลขไม่ซ้ำ ส่วน numerology และเลขนำโชคเป็นความเชื่อ ไม่ใช่หลักฐาน</li>
+          <li>จัดอันดับด้วยคะแนนดิบไม่ปัดเศษและเรียงเลขจากน้อยไปมากเมื่อคะแนนเท่ากัน คะแนนไม่ใช่ความน่าจะเป็น ค่าคงที่ไม่ผ่านการจูนจากผลย้อนหลัง</li>
+          <li>การทดสอบสังเคราะห์ยืนยันตรรกะโค้ดเท่านั้น; ยังไม่มีการ backtest เพราะขอบเขต holdout เดิมกู้คืนไม่ได้</li>
+        </ol>
+      </details>
+    </section>
+  </section>
 
   <div id="formula-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="formula-empty" style="text-align:center;padding:40px;color:var(--text3)">กรอกข้อมูลงวดก่อนแล้วกด ⚡ คำนวณทุกสูตร</div>
@@ -528,8 +643,8 @@
   </div>
   <div id="hist-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div class="card">
-    <div class="tbl-wrap" style="max-height:640px;overflow-y:auto">
-      <table><thead><tr><th>วันที่</th><th>รางวัลที่ 1</th><th>3 บน</th><th>2 บน</th><th>3 หน้า 1</th><th>3 หน้า 2</th><th>3 ล่าง 1</th><th>3 ล่าง 2</th><th>2 ล่าง</th></tr></thead><tbody id="hist-tbody"></tbody></table>
+    <div class="tbl-wrap" tabindex="0" role="region" aria-label="ผลรางวัลย้อนหลัง เลื่อนแนวนอนเพื่อดูคอลัมน์เพิ่มเติม" style="max-height:640px;overflow-y:auto">
+      <table><caption class="sr-only">ผลสลากย้อนหลัง</caption><thead><tr><th>วันที่</th><th>รางวัลที่ 1</th><th>3 บน</th><th>2 บน</th><th>3 หน้า 1</th><th>3 หน้า 2</th><th>3 ล่าง 1</th><th>3 ล่าง 2</th><th>2 ล่าง</th></tr></thead><tbody id="hist-tbody"></tbody></table>
     </div>
   </div>
 </div>
@@ -621,8 +736,8 @@
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล" aria-hidden="true"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script src="/static/formula-engine.js?v=hermes40"></script>
-<script src="/static/app.js?v=hermes40"></script>
+<script src="/static/formula-engine.js?v=hermes52"></script>
+<script src="/static/app.js?v=hermes52"></script>
 
 </body>
 </html>

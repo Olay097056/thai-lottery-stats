@@ -38,6 +38,7 @@ const sandbox = {
   fetch: () => Promise.reject(new Error('no network in test sandbox')),
 };
 sandbox.window = sandbox;
+sandbox.addEventListener = () => {};
 vm.createContext(sandbox);
 vm.runInContext(engineSrc, sandbox);
 vm.runInContext(appSrc, sandbox);

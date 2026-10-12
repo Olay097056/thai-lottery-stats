@@ -42,6 +42,7 @@ function makeHarness(rows, formulaFactory, n = 1) {
   const sandbox = {
     console,
     document,
+    escHtml: value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
     localStorage: { getItem: () => null, setItem: () => {} },
     fetch: () => Promise.reject(new Error('network is disabled in this test')),
   };
@@ -236,6 +237,7 @@ async function testNoDataRendererUsesUnavailableState() {
     }
     return source.slice(match.index, i);
   }
+  vm.runInContext(extract(appSrc, 'escHtml'), sandbox);
   vm.runInContext(extract(appSrc, '_renderBtTable'), sandbox);
   vm.runInContext(`_btRowData=[{
     name:'T contract',group:'T',groupColor:'#aaa',field:'bottom2',typeLabel:'เต็ม 2หลัก',board:'2-digit exact',

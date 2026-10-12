@@ -203,17 +203,37 @@ function _bindFormulaInputSanitizers(){
 
 function _clearFormulaErrors(){
   document.querySelectorAll('.formula-field-error').forEach(el=>el.remove());
-  document.querySelectorAll('.formula-input-error').forEach(el=>el.classList.remove('formula-input-error'));
+  document.querySelectorAll('.formula-input-error').forEach(el=>{
+    el.classList.remove('formula-input-error');
+    el.removeAttribute('aria-invalid');
+    const errorId=el.dataset.formulaErrorId;
+    if(errorId){
+      const described=(el.getAttribute('aria-describedby')||'').split(/\s+/).filter(id=>id&&id!==errorId);
+      if(described.length)el.setAttribute('aria-describedby',described.join(' '));
+      else el.removeAttribute('aria-describedby');
+      delete el.dataset.formulaErrorId;
+    }
+  });
+  const status=document.getElementById('formula-input-status');
+  if(status)status.textContent='';
 }
 
 function _formulaError(id,msg){
   const el=document.getElementById(id);
-  if(!el)return;
+  if(!el)return null;
   el.classList.add('formula-input-error');
+  const errorId=`formula-error-${id}`;
+  el.dataset.formulaErrorId=errorId;
+  el.setAttribute('aria-invalid','true');
+  const described=new Set((el.getAttribute('aria-describedby')||'').split(/\s+/).filter(Boolean));
+  described.add(errorId);
+  el.setAttribute('aria-describedby',[...described].join(' '));
   const div=document.createElement('div');
   div.className='formula-field-error';
+  div.id=errorId;
   div.textContent=msg;
   el.insertAdjacentElement('afterend',div);
+  return el;
 }
 
 function _validateFormulaInputs(){
@@ -239,7 +259,13 @@ function _validateFormulaInputs(){
     if(!(bmi>=1&&bmi<=12)){_formulaError('f-bmon','เดือน 1-12');ok=false;}
     if(!(byi>=2480&&byi<=2580)){_formulaError('f-byear','ใช้ปี พ.ศ. 2480-2580');ok=false;}
   }
-  if(!ok)toast('ตรวจข้อมูลในช่องที่เป็นสีแดง','error');
+  const status=document.getElementById('formula-input-status');
+  if(!ok){
+    const invalid=document.querySelector('.formula-input-error');
+    if(status)status.textContent=`พบข้อมูลไม่ถูกต้อง ${document.querySelectorAll('.formula-input-error').length} ช่อง กรุณาตรวจข้อความใต้ช่องที่มีกรอบแดง`;
+    invalid?.focus();
+    toast('ตรวจข้อมูลในช่องที่เป็นสีแดง','error');
+  }
   return ok;
 }
 
@@ -344,8 +370,8 @@ function switchFormulaTab(tab){
     panel.classList.add('active');
   }
   const tools=document.getElementById('formula-tools');
-  if(tools)tools.classList.toggle('active',_formulaHasRun&&tab!=='BT');
-  if(tab!=='BT')filterFormulaCards();
+  if(tools)tools.classList.toggle('active',_formulaHasRun&&tab!=='BT'&&tab!=='ASTRA');
+  if(tab!=='BT'&&tab!=='ASTRA')filterFormulaCards();
 }
 
 
@@ -2559,7 +2585,8 @@ function _renderPool14Comparison(rows){
       baseline สุ่ม ${k} ชุด = ${baseP.toFixed(3)}%/งวด (66/1,000,000) · ${tested14} งวดที่วัดได้ ≈ คาดถูกโดยบังเอิญ ${(tested14*k*66/1e6).toFixed(2)} ครั้งตลอด —
       ผล "0 hit ทุกสูตร / เทียบไม่ได้" คือผลที่คาดไว้ตาม PRD ไม่ใช่ความล้มเหลว
     </div>
-    <div class="tbl-wrap"><table>
+    <div class="tbl-wrap" tabindex="0" role="region" aria-label="ตารางเปรียบเทียบ Backtest Pool 1-4 เลื่อนแนวนอนเพื่อดูคอลัมน์เพิ่มเติม"><table>
+      <caption class="sr-only">เปรียบเทียบผล Backtest ของสูตร Pool 1-4</caption>
       <thead><tr><th>สูตร</th><th style="text-align:right">ถูก</th><th style="text-align:right">งวด</th><th style="text-align:right">%แม่น</th><th style="text-align:right">Baseline</th><th style="text-align:right">Edge</th></tr></thead>
       <tbody>${sorted.map(tr).join('')}</tbody>
     </table></div>

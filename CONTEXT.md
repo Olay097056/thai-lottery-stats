@@ -20,6 +20,12 @@ _Avoid_: accuracy, hit rate (Edge is baseline-adjusted; hit rate is not)
 Whether a past Pick matched the actual draw result once it becomes known. Definition depends on digit length: 6-digit Picks hit only on an exact รางวัลที่ 1 match; 3-digit Picks hit if they match *any* of the five 3-digit result slots (3 ตัวบน, 3 ตัวหน้า×2, 3 ตัวล่าง×2) drawn that period; 2-digit Picks hit only on an exact 2 ตัวล่าง match. This is a coarser, single-line yes/no check — not the per-field-type breakdown used on the Backtest page.
 _Avoid_: win, correct (use "hit" consistently to distinguish from formula-level backtest hits)
 
+**astra**:
+A standalone experimental, future-only report with seven separate prize-category rankings. It is not part of the default rankers, formula batch, Mix, Picks, Buy Plan or historical scorer. Its fixed method is defined in PRD-astra.md; synthetic verification does not establish predictive accuracy.
+
+**astra automatic snapshot**:
+A backend-persisted, immutable astra report keyed by formula version, source draw date and future target. Captured after owner-authorized new-draw ingestion, using the authoritative calendar rather than guessed nominal dates; records cutoffs, capture time and source/engine hashes. Separate from the browser Auto-snapshot below and the older manual capture. A status GET only reads it; explicit manual recomputation is unsaved. Automation requires the backend and network to remain available. See PRD-astra-automation.md.
+
 **Auto-snapshot**:
 A record of the Decision Center's picks, mode, and target draw date, saved automatically every time the สรุปงวดนี้ page loads (not on manual action). Stored client-side, capped to the most recent 60. Backs both the track record list and the hit-rate trend chart.
 _Avoid_: snapshot save, manual snapshot (removed as a user-triggered action — saving is now always automatic)

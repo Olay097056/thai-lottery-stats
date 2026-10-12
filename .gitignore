@@ -38,6 +38,7 @@ __pycache__/
 # Lottery app runtime files
 .ml_cache/
 lottery_cache.csv
+astra_runtime/
 watchlist.json
 
 # Rust build (if using Rust projects)

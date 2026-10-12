@@ -190,6 +190,7 @@ const btSandbox = {
 btSandbox.window = btSandbox;
 vmFull.createContext(btSandbox);
 vmFull.runInContext(src, btSandbox); // full formula-engine.js: globals _btRowData etc, _formulaBtSummaryHtml, _formulaMappingBannerHtml
+vmFull.runInContext(extractFrom(appSrc, 'escHtml'), btSandbox);
 vmFull.runInContext(extractFrom(appSrc, '_renderBtTable'), btSandbox);
 // _btRowData etc are `let`-declared module globals inside the vm's lexical scope, not own
 // properties of the sandbox object — must assign via vm-executed code, not host-side property sets.

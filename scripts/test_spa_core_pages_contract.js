@@ -7,6 +7,10 @@ const vm = require('vm');
 const appSrc = fs.readFileSync(path.join(__dirname, '..', 'static', 'app.js'), 'utf8');
 const cssSrc = fs.readFileSync(path.join(__dirname, '..', 'static', 'app.css'), 'utf8');
 const indexSrc = fs.readFileSync(path.join(__dirname, '..', 'static', 'index.html'), 'utf8');
+const astraStart = appSrc.indexOf('// ─── astra: isolated');
+const astraEnd = appSrc.indexOf('// ─── HyperUI theme', astraStart);
+if (astraStart < 0 || astraEnd <= astraStart) throw new Error('missing production astra state/helpers');
+const astraSource = appSrc.slice(astraStart, astraEnd);
 function extractFunction(source, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const start = new RegExp('(?:async\\s+)?function\\s+' + escaped + '\\s*\\([^)]*\\)\\s*\\{', 'm').exec(source);
@@ -387,12 +391,15 @@ vm.runInContext(frequencyState + String.fromCharCode(10) + extractFunction(appSr
     Option: function (label, value) { return { label, value }; },
     fmtDate: value => 'fixture ' + value,
   };
+  dateSandbox.window = dateSandbox;
   vm.createContext(dateSandbox);
   vm.runInContext([
     'let _sharedDateSyncing=false;',
+    astraSource,
     extractFunction(appSrc, '_setSelectValueKeepingOptions'), extractFunction(appSrc, 'syncSharedDrawDate'),
   ].join(testNewline), dateSandbox);
   dateSandbox.syncSharedDrawDate('2026-08-16', false);
+  check('non-user shared date synchronization invalidates astra without initializing it', vm.runInContext('_astraRequestId===1&&!_astraStarted', dateSandbox));
   check('shared draw date synchronizes all six date controls',
     dateIds.every(id => dateControls[id].value === '2026-08-16' && dateControls[id].options.some(option => option.value === '2026-08-16')));
 

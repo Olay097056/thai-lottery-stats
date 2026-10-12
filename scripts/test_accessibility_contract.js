@@ -72,8 +72,11 @@ const bpDeleteTags = [...app.matchAll(/<button class="bp-del"[^>]*>/g)].map(m =>
 check(bpDeleteTags.length === 3 && bpDeleteTags.every(tag => tag.includes('aria-label=')), 'Buy Plan delete actions expose descriptive accessible names');
 const predViewGroup = index.match(/<div class="pred-page-tabs"[^>]*>/)?.[0] || '';
 const predViewButtons = [...index.matchAll(/<button[^>]*id="pred-main-btn-[^"]+"[^>]*>/g)].map(m => m[0]);
-check(predViewGroup.includes('role="group"') && predViewButtons.length === 4 && predViewButtons.every(tag => tag.includes('aria-pressed=') && tag.includes('aria-controls=')) && app.includes("setAttribute('aria-pressed'"), 'Predict subviews expose a synchronized pressed state and panel relationship');
+const predViews = ['predict', 'formula', 'decision', 'oldver'];
+check(predViewGroup.includes('role="group"') && predViewButtons.length === predViews.length && predViews.every(view => predViewButtons.some(tag => tag.includes(`id="pred-main-btn-${view}"`) && tag.includes(`aria-controls="pred-main-tab-${view}"`) && tag.includes('aria-pressed='))) && app.includes("setAttribute('aria-pressed'"), 'All four Predict subviews expose a synchronized pressed state and their exact panel relationship');
 const formulaViewGroup = index.match(/<div class="ftab-nav"[^>]*>/)?.[0] || '';
+const astraFormulaButton = index.match(/<button[^>]*id="ftab-btn-ASTRA"[^>]*>/)?.[0] || '';
+check(astraFormulaButton.includes('aria-pressed="false"') && astraFormulaButton.includes('aria-controls="formula-results-ASTRA"') && astraFormulaButton.includes('data-ftab="ASTRA"') && !index.includes('id="pred-main-btn-astra"'), 'Astra is an accessible Formula subview, not a separate Predict view');
 const brokenLabelRefs = [...index.matchAll(/aria-labelledby="([^"]+)"/g)].map(m => m[1]).filter(id => !new RegExp(`id="${id}"`).test(index));
 check(formulaViewGroup.includes('role="group"') && !formulaViewGroup.includes('role="tablist"') && !formulaViewGroup.includes('onkeydown=') && !/role="tab"/.test(index) && brokenLabelRefs.length === 0, 'Formula controls use valid group semantics without missing tab relationships');
 const formulaGroupSelect = index.match(/<select id="ftab-group-select"[^>]*>/)?.[0] || '';

@@ -2,6 +2,31 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-10-08 — astra automation: งวดใหม่ → cache → รายงานถาวร (local delivery)
+
+ขอบเขตที่อนุมัติใน `PRD-astra-automation.md`: รับเฉพาะงวดที่ใหม่กว่าแคชเดิม แล้วคำนวณ frozen astra สำหรับงวดอนาคต ไม่แก้ผลเก่า ไม่ backtest/tune/เปิด holdout และไม่แทน ranker เดิม
+
+- เพิ่ม `astra_source.py`, `astra_storage.py`, `astra_automation.py`; worker ผูก FastAPI lifespan ตรวจทุก 900 วินาที มี durable deadline, shared OS writer lock, retry/catch-up oldest-first สูงสุด 4 งวดต่อรอบ และ kill switch `ASTRA_AUTO_ENABLED=0`
+- ใช้ปฏิทิน GLO และผลจาก Sanook; ตรวจวัน/จำนวน/รูปแบบ/ความไม่ซ้ำก่อน append, รองรับข้อความท้ายบทความที่ขึ้นบรรทัดใหม่โดยไม่ตัดเลขเกินทิ้ง; คงทุก byte ของผลเดิม
+- เก็บ snapshot แบบ immutable ใน `astra_runtime/automation.sqlite3`, อ่านกลับตรวจ exact key/payload; GET `/api/astra/automation` ไม่ poll/infer/write; แท็บ astra ใช้รายงานบันทึกก่อน และแยก manual ว่า “ยังไม่บันทึก”
+- รองรับงวดเลื่อนด้วยปุ่มเลือกเฉพาะ astra ไม่เปลี่ยน shared date; strict schema/provenance และ stale-request/ABA guards; ทดสอบ keyboard/light/dark/mobile; assets `hermes44`
+- ทดสอบจริง: Python 177 cases/13 suites ผ่าน; Node 30/31 ไฟล์ผ่าน เหลือ docs contract เดิม 2 ข้อใน CLAUDE.md ที่ห้ามแก้; UI เดิม 448 + automation 224 synthetic cases
+- วงจรแหล่งจริงรอบสำเร็จ: เพิ่มเฉพาะ 2026-09-16 และ 2026-10-01, cache 781 → 783 rows; คำนวณ 1 ครั้ง บันทึก 1 snapshot สำหรับ 2026-10-16 เมื่อ 2026-10-08T18:21:05.026539+07:00 ใช้ข้อมูลถึง 2026-10-01; repeat tick ไม่เรียกแหล่งข้อมูล/คำนวณซ้ำ
+- ยืนยัน actual API/DOM: 25 เลขตรงกับ snapshot ทุกตัว ไม่มี inference เพิ่ม, SQLite ไม่เปลี่ยนระหว่างอ่าน; รายงานเดิมและ source ที่ป้องกัน 7 ไฟล์ hash ไม่เปลี่ยน; หลักฐานอยู่ `.scratch/astra-automation-2026-10-08/`
+- งานอัตโนมัติทำเฉพาะตอน backend/เครือข่ายพร้อม ไม่ต้องเปิดแท็บค้าง แต่ไม่ใช่บริการ 24/7; ยังไม่ stage/commit/push/deploy; synthetic tests ไม่พิสูจน์ความแม่น
+
+## 2026-10-08 — astra-v1: สูตรทดลองแยก 7 หมวด (local delivery)
+
+อ้างอิง `PRD-astra.md` ที่เจ้าของอนุมัติ: เพิ่ม `astra.py`, read-only `GET /api/predict/astra?date=YYYY-MM-DD`, CLI `scripts/predict_astra.py --target-date YYYY-MM-DD` และแท็บ **astra** ในหน้าทำนาย-สูตร จำนวนเลข 5/2/2/1/5/5/5 แยกรางวัลที่ 1, หน้า3, ท้าย3ทางการ, ท้าย2, ที่2, ที่3 และที่4 ไม่ใช่ pool รวม
+
+- สูตรคงที่: ประวัติที่มีอยู่ไม่เกิน 200 งวด, อย่างน้อย 20 งวดใช้ได้ต่อหมวด, positional smoothing + adjacent-digit backoff และน้ำหนักตามอายุงวดที่ล็อกก่อนอ่านผลจริง แต่ละงวดมีมวลน้ำหนักเท่ากันไม่ว่าหมวดนั้นมีกี่รางวัล
+- ค้น top-k แยก last-digit state พร้อม numeric dominance guard: reviewer พบว่าคะแนน prefix ต่างกันอาจรวมเป็น exact tie หลังบวก suffix จึงเพิ่ม regression แบบ exhaustive ครบโดเมน 6 หลักและแก้การ prune โดยไม่ปัดคะแนนหรือเปลี่ยนสูตร
+- API/CLI ปฏิเสธวันนี้/อดีต/วันที่ไม่ canonical ก่อนเปิดไฟล์; missing/invalid cache fail closed ไม่ refresh ไม่สร้างผลรางวัล และไม่ใช้ loader เดิมที่ดึงข้อมูลได้
+- UI แสดง 7 หัวข้อเสมอ, provenance/cutoff/counts, ป้ายทดลอง, loading/error/empty/partial, ป้องกันผลเก่าทับงวดใหม่, escape ข้อมูล และรองรับ keyboard/light/dark/mobile; static asset version `hermes42`
+- ไม่เปลี่ยน `/api/predict/all`, Prize1 ranker, `analyzer.py`, `formula-engine.js`, Mix/Picks/Buy Plan หรือหลักฐาน holdout เดิม; ไม่อ้างความแม่นจาก synthetic tests
+- หลักฐาน: engine 38 tests, API/CLI 10 tests, UI 448 synthetic cases; Chrome fixture-only ที่ 375/767/768/1280/1440px ไม่มี overflow; known documentation contract failures 2 ข้อใน `CLAUDE.md` ยังอยู่นอกขอบเขต
+- สถานะส่งมอบ: focused independent re-review APPROVE แล้ว; รัน CLI ครั้งเดียวเมื่อ 2026-10-08T15:14:18.312300+07:00 สำหรับ target 2026-10-16 ได้ครบ 25 เลข; cutoff ทุกหมวด 2026-09-01 มีคำเตือนข้อมูลเก่า; cache hash ก่อน/หลังตรงกัน ไม่มี write/network attempts; รายงานอยู่ `.scratch/astra-2026-10-08/astra-v1-2026-10-16.json`; ยังไม่ commit/push/deploy
+
 ## 2026-08-11 — HyperUI design system port (light-first + dark toggle) — gold brand primary
 
 เริ่ม rollout "ใช้ HyperUI คุม theme ทุกโปรเจค" ที่ lottery_stats (ทำกับ switch-wr-tool → portfolio-tracker → printer-monitor มาก่อน) — ตามสกิล `hyperui-spa-theme-port` + canonical spec · grilling ครบ 3 ข้อ (ล็อกใน `.scratch/hyperui-redesign/issues/02`):

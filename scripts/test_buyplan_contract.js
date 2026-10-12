@@ -14,6 +14,7 @@ const sandbox = {
   fetch: () => Promise.reject(new Error('network disabled in test sandbox')),
 };
 sandbox.window = sandbox;
+sandbox.addEventListener = () => {};
 vm.createContext(sandbox);
 vm.runInContext(engineSrc, sandbox);
 vm.runInContext(appSrc, sandbox);

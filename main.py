@@ -8,6 +8,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from pathlib import Path
+from contextlib import asynccontextmanager
+import asyncio
+import logging
+import threading
 import re
 import ipaddress
 import pandas as pd
@@ -32,7 +36,19 @@ from watchlist import (
     remove_from_watchlist, watchlist_status,
 )
 
-app = FastAPI(title="Lottery Stats API", version="2.0")
+@asynccontextmanager
+async def _lifespan(application):
+    worker = _create_astra_automation()
+    application.state.astra_automation = worker
+    worker.start()
+    try:
+        yield
+    finally:
+        if not await asyncio.to_thread(worker.stop):
+            logging.getLogger(__name__).warning('astra worker did not finish within shutdown timeout')
+
+
+app = FastAPI(title="Lottery Stats API", version="2.0", lifespan=_lifespan)
 PREDICT_ALL_SHARED_WEIGHTS = dict(PREDICT_NUMBERS_DEFAULT_WEIGHTS)
 
 
@@ -94,6 +110,8 @@ STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 _df_cache: pd.DataFrame | None = None
+_df_signature = None
+_df_mutex = threading.RLock()
 
 LOTTERY_WIDTHS = {
     "prize1": 6,
@@ -151,11 +169,22 @@ LOTTERY_COLS = set(LOTTERY_WIDTHS)
 ML_COLS = LOTTERY_COLS - {"prize1"}
 
 
+def _cache_signature():
+    try:
+        stat = (BASE_DIR / 'lottery_cache.csv').stat()
+        return stat.st_mtime_ns, stat.st_size
+    except OSError:
+        return None
+
+
 def get_df() -> pd.DataFrame:
-    global _df_cache
-    if _df_cache is None:
-        _df_cache = load_data()
-    return _df_cache
+    global _df_cache, _df_signature
+    with _df_mutex:
+        signature = _cache_signature()
+        if _df_cache is None or (_df_signature is not None and signature != _df_signature):
+            _df_cache = load_data()
+            _df_signature = signature if signature is not None else _cache_signature()
+        return _df_cache
 
 
 def _safe_records(df: pd.DataFrame | None) -> list[dict]:
@@ -278,6 +307,84 @@ def api_summary():
         "recent_draws": _safe_records(recent),
         "cache_info": cache_info,
     }
+
+
+def _create_astra_automation():
+    import os
+    from astra_automation import Automation
+    return Automation(BASE_DIR / 'lottery_cache.csv', BASE_DIR / 'astra_runtime' / 'automation.sqlite3',
+                      enabled=os.environ.get('ASTRA_AUTO_ENABLED', '1') != '0',
+                      on_cache_change=_invalidate_dataframe)
+
+
+def _invalidate_dataframe():
+    global _df_cache, _df_signature
+    with _df_mutex:
+        _df_cache = None
+        _df_signature = None
+
+
+@app.get("/api/astra/automation")
+def api_astra_automation(date: str | None = Query(None)):
+    from astra_storage import canonical_date
+    if date is not None:
+        try:
+            canonical_date(date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail='date must use canonical YYYY-MM-DD') from None
+    worker = getattr(app.state, 'astra_automation', None)
+    if worker is None:
+        worker = _create_astra_automation()  # Read-only fallback outside ASGI lifespan.
+    return JSONResponse(worker.status(date), headers={'Cache-Control': 'no-store'})
+
+
+@app.get("/api/predict/astra")
+def api_predict_astra(date: str = Query(...)):
+    """Future-only astra inference; deliberately bypasses all refresh-capable loaders."""
+    import astra
+
+    generated_at = datetime.now(astra.THAILAND_TZ)
+    try:
+        astra.validate_astra_target_date(date, generated_at=generated_at)
+        history = astra.load_existing_astra_history()
+        report = astra.build_astra_report(history, date, generated_at=generated_at)
+    except astra.AstraInputError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="astra requires a canonical future Thailand date and valid dated history",
+        ) from exc
+    except astra.AstraCacheError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="astra local cache is missing or unreadable; no refresh was attempted",
+        ) from exc
+    report["source"] = "existing_local_cache"
+    return report
+
+
+@app.get("/api/predict/astra-sigma")
+def api_predict_astra_sigma(date: str = Query(...)):
+    """Future-only Astra-Σ inference through the existing read-only cache loader."""
+    import astra
+    import astra_sigma
+
+    generated_at = datetime.now(astra.THAILAND_TZ)
+    try:
+        astra.validate_astra_target_date(date, generated_at=generated_at)
+        history = astra.load_existing_astra_history()
+        report = astra_sigma.build_astra_sigma_report(history, date, generated_at=generated_at)
+    except astra.AstraInputError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Astra-Σ requires a canonical future Thailand date and valid dated history",
+        ) from exc
+    except astra.AstraCacheError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Astra-Σ local cache is missing or unreadable; no refresh was attempted",
+        ) from exc
+    report["source"] = "existing_local_cache"
+    return report
 
 
 @app.get("/api/predict/prize1")
@@ -498,9 +605,17 @@ def api_cache_info():
 
 @app.post("/api/refresh")
 def api_refresh():
-    global _df_cache
-    _df_cache = incremental_update()
-    return {"status": "ok", "rows": int(len(_df_cache))}
+    global _df_cache, _df_signature
+    from astra_storage import StorageError, writer_lock
+    try:
+        with _df_mutex, writer_lock(BASE_DIR / 'astra_runtime' / 'cache.lock') as acquired:
+            if not acquired:
+                raise HTTPException(status_code=409, detail='result cache update is already running')
+            _df_cache = incremental_update()
+            _df_signature = _cache_signature()
+            return {"status": "ok", "rows": int(len(_df_cache))}
+    except StorageError:
+        raise HTTPException(status_code=503, detail='result cache writer is unavailable') from None
 
 
 # ── NEW ENDPOINTS ────────────────────────────────────────────────────────────

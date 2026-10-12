@@ -28,6 +28,7 @@ const sandbox = {
     createElement: () => stubEl,
     addEventListener: () => {},
   },
+  addEventListener: () => {},
   localStorage: { getItem: () => null, setItem: () => {} },
   fetch: () => Promise.reject(new Error('no network in test sandbox')),
 };

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-A Thai lottery statistics and prediction dashboard, macOS-dark-themed, desktop-first.
+A Thai lottery statistics and prediction dashboard, HyperUI light-first with a dark theme and responsive desktop/mobile layouts.
 - **Backend**: FastAPI (`main.py`, port 8509)
 - **Frontend**: Single-page HTML (`static/index.html`) + `static/formula-engine.js`
 - **Prediction engine**: `analyzer.py` (statistical)
@@ -31,10 +31,10 @@ Open `http://localhost:8509`. On Windows, prefer the venv at `%LOCALAPPDATA%\lot
 | `sanook_scraper.py` | Scrapes near1/prize2/prize3/prize4/prize5 from news.sanook.com JSON-LD |
 | `enrich_from_sanook.py` | One-off backfill script for historical Sanook data |
 | `watchlist.py` | JSON-backed watchlist CRUD — endpoints kept, not exposed in current UI |
-| `static/index.html` | SPA shell markup only — 5 pages; styles and script now split out (no build step) |
-| `static/app.css` | All CSS — macOS dark palette, layout, component styles |
+| `static/index.html` | SPA shell markup only — 7 pages; styles and script now split out (no build step) |
+| `static/app.css` | HyperUI light/dark theme tokens, responsive layout, and component styles |
 | `static/app.js` | Core JS — init, api(), showPage/switchPredTab, loadXxx page loaders, Chart.js wiring. Loaded after `formula-engine.js` (its `init()` call at the bottom relies on formula-engine being defined first) |
-| `static/formula-engine.js` | Formula calculators (A–H groups), backtest engine |
+| `static/formula-engine.js` | Formula calculators (A–J groups and named HM family), backtest engine |
 
 Dev/debug/one-off scripts (not imported by production code) live in `scripts/`: `debug.py`, `sweep.py`, `_rebuild_analyzer.py`, `test_scrape.py`, `test_multi_year.py`, `scrape_all.py`. Run them from the project root, e.g. `python scripts/debug.py` — they add the project root to `sys.path` themselves.
 

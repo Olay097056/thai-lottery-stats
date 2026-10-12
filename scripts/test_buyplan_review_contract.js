@@ -8,7 +8,7 @@ const raw=fs.readFileSync(path.join(ROOT,'static','app.js'),'utf8');
 const src=raw.replace(/^startCountdown\(\);\s*$/m,'').replace(/^init\(\);\s*$/m,'');
 const engine=fs.readFileSync(path.join(ROOT,'static','formula-engine.js'),'utf8');
 const sandbox={console,document:{getElementById:()=>null,querySelector:()=>null,querySelectorAll:()=>[],createElement:()=>({}),addEventListener:()=>{}},localStorage:{getItem:()=>null,setItem:()=>{},removeItem:()=>{}}};
-sandbox.window=sandbox;vm.createContext(sandbox);vm.runInContext(engine,sandbox);vm.runInContext(src,sandbox);
+sandbox.window=sandbox;sandbox.addEventListener=()=>{};vm.createContext(sandbox);vm.runInContext(engine,sandbox);vm.runInContext(src,sandbox);
 let passed=0;function check(name,ok){if(!ok)throw Error('FAIL '+name);passed++;}
 const full={date:'16/07/2026',prize1:'123456',front3_1:'789',front3_2:'012',back3_1:'456',back3_2:'111',bottom2:'56',near1_1:'123455',near1_2:'123457',prize2_1:'222222',prize2_2:'222223',prize2_3:'222224',prize2_4:'222225',prize2_5:'222226',prize3_1:'333333',prize3_2:'333334',prize3_3:'333335',prize3_4:'333336',prize3_5:'333337',prize3_6:'333338',prize3_7:'333339',prize3_8:'333340',prize3_9:'333341',prize3_10:'333310',prize4:Array.from({length:50},(_,i)=>String(400000+i)).join(' '),prize5:Array.from({length:100},(_,i)=>String(500000+i)).join(' ')};
 const plan=(rows,mode='ticket')=>({mode,date:'2026-07-16',budget:100,config:{ticketPrice:80,pay2:95,pay3:950},rows});

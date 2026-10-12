@@ -7,6 +7,10 @@ const vm = require('vm');
 const appSrc = fs.readFileSync(path.join(__dirname, '..', 'static', 'app.js'), 'utf8');
 const engineSrc = fs.readFileSync(path.join(__dirname, '..', 'static', 'formula-engine.js'), 'utf8');
 const indexSrc = fs.readFileSync(path.join(__dirname, '..', 'static', 'index.html'), 'utf8');
+const astraStart = appSrc.indexOf('// ─── astra: isolated');
+const astraEnd = appSrc.indexOf('// ─── HyperUI theme', astraStart);
+if (astraStart < 0 || astraEnd <= astraStart) throw new Error('missing production astra state/helpers');
+const astraSource = appSrc.slice(astraStart, astraEnd);
 
 function extractFunction(source, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -284,6 +288,7 @@ function makeSharedActionHarness(autofillResult) {
   const calls = [];
   const sandbox = {
     currentPredTab: 'formula',
+    _formulaActiveTab: 'A',
     autoFillFormula: async () => autofillResult,
     runAllFormulas: () => calls.push('run'),
   };
@@ -324,6 +329,7 @@ function makeSnapshotHarness() {
   const loaded = [];
   const autoFillCalls = [];
   const code = [
+    astraSource,
     extractFunction(appSrc, '_setSelectValueKeepingOptions'),
     extractFunction(appSrc, 'syncSharedDrawDate'),
     extractFunction(appSrc, 'loadPageSnapshot'),
@@ -335,9 +341,11 @@ function makeSnapshotHarness() {
     fmtDate: value => String(value),
     Option: TestOption,
     _sharedDateSyncing: false,
+    _formulaActiveTab: 'A',
     autoFillFormula: (...args) => autoFillCalls.push(args),
     loadPredict: () => loaded.push({ pred: elements['pred-date'].value, shared: elements['shared-draw-date'].value }),
   };
+  sandbox.window = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(code, sandbox);
   return { sandbox, elements, loaded, dateIds, autoFillCalls };
@@ -515,6 +523,7 @@ async function main() {
 
   const snapshot = makeSnapshotHarness();
   snapshot.sandbox.loadPageSnapshot('predict', 'predict_fixture');
+  check('saved snapshot date invalidates astra without initializing or requesting it', vm.runInContext('_astraRequestId===1&&!_astraStarted', snapshot.sandbox));
   check('loading a saved Predict snapshot synchronizes all visible draw-date selectors', snapshot.dateIds.every(id => snapshot.elements[id].value === '2026-11-01'));
   check('the prediction request uses the saved snapshot date and shared date', snapshot.loaded.length === 1 && snapshot.loaded[0].pred === '2026-11-01' && snapshot.loaded[0].shared === '2026-11-01');
 

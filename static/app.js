@@ -27,28 +27,63 @@ function toast(msg, type='', options={}){
   document.getElementById('toast-container').appendChild(el);
   setTimeout(()=>el.remove(), 3500);
 }
+let _undoToastNode=null,_undoToastTimer=null;
+function showUndoToast(message,onUndo){
+  const host=document.getElementById('toast-container');
+  if(!host||typeof onUndo!=='function'){toast(message);return;}
+  if(_undoToastTimer!==null)clearTimeout(_undoToastTimer);
+  _undoToastNode?.remove();
+  const el=document.createElement('div');
+  el.className='toast toast-undo';
+  el.setAttribute('role','status');
+  el.setAttribute('aria-live','polite');
+  const text=document.createElement('span');
+  text.textContent=message;
+  const button=document.createElement('button');
+  button.type='button';
+  button.className='toast-undo-btn';
+  button.textContent='เลิกทำ';
+  button.setAttribute('aria-label',`เลิกทำ: ${message}`);
+  button.addEventListener('click',()=>{
+    if(_undoToastTimer!==null)clearTimeout(_undoToastTimer);
+    _undoToastTimer=null;
+    _undoToastNode=null;
+    el.remove();
+    onUndo();
+    toast('กู้คืนข้อมูลแล้ว','success');
+  });
+  el.append(text,button);
+  host.appendChild(el);
+  _undoToastNode=el;
+  _undoToastTimer=setTimeout(()=>{
+    if(_undoToastNode===el)_undoToastNode=null;
+    _undoToastTimer=null;
+    el.remove();
+  },8000);
+}
+function deleteWithUndo(key,message,mutate,render){
+  const previous=localStorage.getItem(key);
+  if(mutate()===false)return false;
+  if(typeof render==='function')render();
+  showUndoToast(message,()=>{
+    if(previous===null)localStorage.removeItem(key);
+    else localStorage.setItem(key,previous);
+    if(typeof render==='function')render();
+  });
+  return true;
+}
 
 // ─── Nav ──────────────────────────────────────────────────────────────────────
 let currentPage = 'dashboard';
 let currentPredTab = 'predict';
+let _restoringPageLocation=false;
 function setPageStatus(id,message){
   const status=document.getElementById(id);
   if(status)status.textContent=String(message??'');
 }
 window.setPageStatus=setPageStatus;
 document.querySelectorAll('.nav-item').forEach(item=>{
-  item.addEventListener('click',()=>{
-    const p = item.dataset.page;
-    document.querySelectorAll('.nav-item').forEach(n=>{
-      n.classList.remove('active');
-      n.removeAttribute('aria-current');
-    });
-    item.classList.add('active');
-    item.setAttribute('aria-current','page');
-    document.querySelectorAll('.page').forEach(pg=>pg.classList.remove('active'));
-    document.getElementById('page-'+p).classList.add('active');
-    if(p!==currentPage){ currentPage=p; onPageLoad(p); }
-  });
+  item.addEventListener('click',()=>showPage(item.dataset.page));
 });
 document.addEventListener?.('keydown',event=>{
   const row=event.target?.closest?.('.dash-hot-row,.dash-recent-item');
@@ -57,17 +92,22 @@ document.addEventListener?.('keydown',event=>{
   showPage(row.classList.contains('dash-hot-row')?'frequency':'history');
 });
 
-function switchPredTab(tab){
+function switchPredTab(tab,options={}){
+  if(tab==='astra')return showAstraFormulaView();
   currentPredTab=tab;
-  const workflow=document.getElementById('shared-workflow');
-  if(workflow&&workflow.value!==tab)workflow.value=tab;
+  syncPrimaryRunAction(tab);
   ['predict','formula','decision','oldver'].forEach(t=>{
     const panel=document.getElementById('pred-main-tab-'+t);
     if(panel){panel.hidden=t!==tab;panel.style.display=t===tab?'':'none';}
     const button=document.getElementById('pred-main-btn-'+t);
     if(button){button.classList.toggle('active',t===tab);button.setAttribute('aria-pressed',t===tab?'true':'false');}
   });
-  if(tab==='formula'){ initFormulaPage(); renderPageSnapshots('formula'); }
+  syncPredTabLocation(tab);
+  if(currentPage==='predict')focusPageHeading('predict',tab,false);
+  if(tab==='formula'){
+    initFormulaPage(); renderPageSnapshots('formula');
+    if(_formulaActiveTab==='ASTRA'&&!options.deferAstraLoad)return loadSelectedAstraFormula();
+  }
   else if(tab==='decision'){ loadDecisionCenter(); }
   else if(tab==='oldver'){ loadDecisionCenterOld(); }
   else { renderPageSnapshots('predict'); }
@@ -80,10 +120,9 @@ function showPage(p){
     const already=currentPage==='predict';
     if(!already) showPage('predict');
     switchPredTab(p);
+    focusPageHeading('predict',p);
     return;
   }
-  const item=document.querySelector(`.nav-item[data-page="${p}"]`);
-  if(item){item.click();return;}
   const page=document.getElementById('page-'+p);
   if(!page)return;
   document.querySelectorAll('.nav-item').forEach(n=>{
@@ -95,8 +134,78 @@ function showPage(p){
   document.querySelectorAll('.page').forEach(pg=>pg.classList.remove('active'));
   page.classList.add('active');
   if(p!==currentPage){currentPage=p;onPageLoad(p);}
+  syncPageLocation(p,currentPredTab);
+  focusPageHeading(p);
 }
 window.showPage=showPage;
+
+function syncPageLocation(page,tab=currentPredTab){
+  if(_restoringPageLocation)return;
+  const hash=page==='predict'&&tab!=='predict'?`#predict/${tab}`:`#${page}`;
+  if(window.location.hash===hash)return;
+  window.history.pushState({page,tab},'',`${window.location.pathname}${window.location.search}${hash}`);
+}
+function syncPredTabLocation(tab){
+  if(currentPage==='predict')syncPageLocation('predict',tab);
+}
+function restorePageLocation(){
+  _restoringPageLocation=true;
+  try{
+    const [route,tab]=window.location.hash.replace(/^#/,'').split('/');
+    const predTabs=['predict','formula','decision','oldver','astra'];
+    if(route==='predict'){
+      showPage('predict');
+      switchPredTab(predTabs.includes(tab)?tab:'predict');
+    }else if(predTabs.includes(route)&&route!=='predict'){
+      showPage('predict');
+      switchPredTab(route);
+    }else if(route&&document.getElementById('page-'+route))showPage(route);
+    else if(!route)showPage('dashboard');
+  }finally{_restoringPageLocation=false;}
+}
+window.addEventListener('popstate',restorePageLocation);
+
+function focusPageHeading(page,tab='',shouldFocus=true){
+  const heading=document.querySelector(`#page-${page} .page-title`);
+  if(!heading)return;
+  const labels={predict:'ทำนาย',formula:'สูตรคำนวณ',decision:'สรุปงวดนี้',oldver:'สรุปงวดนี้ (รุ่นเดิม)'};
+  const label=labels[tab]||heading.textContent.trim();
+  document.title=`${label} · Thai Lottery Intelligence`;
+  if(!shouldFocus)return;
+  if(!heading.hasAttribute('tabindex'))heading.setAttribute('tabindex','-1');
+  heading.focus();
+}
+
+function syncPrimaryRunAction(tab=currentPredTab){
+  const button=document.getElementById('pred-primary-run');
+  if(!button)return;
+  const labels={predict:'ทำนายทุกประเภท',formula:'คำนวณสูตร',decision:'คำนวณสรุปงวดนี้',oldver:'คำนวณรุ่นเดิม'};
+  button.textContent=labels[tab]||'รันมุมมองนี้';
+  // Formula and astra already have local primary actions beside their controls.
+  button.hidden=tab==='formula';
+}
+
+function updateSidebarScrollControl(){
+  const nav=document.getElementById('sidebar-nav');
+  const button=document.getElementById('nav-scroll-control');
+  if(!nav||!button)return;
+  const overflowing=nav.scrollWidth>nav.clientWidth+1;
+  button.hidden=window.innerWidth>900||!overflowing;
+  if(button.hidden)return;
+  const atEnd=nav.scrollLeft+nav.clientWidth>=nav.scrollWidth-1;
+  button.textContent=atEnd?'←':'→';
+  button.setAttribute('aria-label',atEnd?'เลื่อนเมนูกลับไปทางซ้าย':'เลื่อนเมนูไปทางขวา');
+}
+function scrollSidebarNav(){
+  const nav=document.getElementById('sidebar-nav');
+  if(!nav)return;
+  const atEnd=nav.scrollLeft+nav.clientWidth>=nav.scrollWidth-1;
+  nav.scrollBy({left:(atEnd?-1:1)*Math.max(120,nav.clientWidth*.75),behavior:'smooth'});
+}
+window.scrollSidebarNav=scrollSidebarNav;
+document.getElementById('sidebar-nav')?.addEventListener('scroll',updateSidebarScrollControl,{passive:true});
+window.addEventListener('resize',updateSidebarScrollControl);
+updateSidebarScrollControl();
 
 let _sharedDateSyncing=false;
 function _setSelectValueKeepingOptions(id,value){
@@ -108,12 +217,18 @@ function _setSelectValueKeepingOptions(id,value){
 }
 
 function syncSharedDrawDate(value,userAction=false){
-  if(_sharedDateSyncing||!value)return;
+  if(_sharedDateSyncing)return;
+  // Invalidate before the userAction/visibility guards, including startup/date resets.
+  invalidateAstra(value);
+  if(!value)return;
   _sharedDateSyncing=true;
   ['shared-draw-date','pred-date','f-target-date','dc-date','dc-date-old','dash-date'].forEach(id=>_setSelectValueKeepingOptions(id,value));
   _sharedDateSyncing=false;
   if(!userAction)return;
-  if(currentPredTab==='formula')autoFillFormula(true);
+  if(currentPredTab==='formula'&&_formulaActiveTab==='ASTRA'){
+    if(currentPage==='predict')return loadSelectedAstraFormula();
+  }
+  else if(currentPredTab==='formula')autoFillFormula(true);
   else if(currentPredTab==='decision')loadDecisionCenter();
   else if(currentPredTab==='oldver')loadDecisionCenterOld();
 }
@@ -132,11 +247,14 @@ window.applySharedLotteryFocus=applySharedLotteryFocus;
 
 function runSharedPrimaryAction(){
   if(currentPredTab==='formula'){
+    if(_formulaActiveTab==='ASTRA')return loadSelectedAstraFormula({recompute:true});
     autoFillFormula().then(ok=>{if(ok)runAllFormulas();});
   }else if(currentPredTab==='decision'){
     loadDecisionCenter();
   }else if(currentPredTab==='oldver'){
     loadDecisionCenterOld();
+  }else if(currentPredTab==='astra'){
+    return _astraSelectedVersion==='astra-sigma'?loadAstraSigma({recompute:true}):loadAstra({recompute:true});
   }else{
     loadPredict();
   }
@@ -144,7 +262,10 @@ function runSharedPrimaryAction(){
 window.runSharedPrimaryAction=runSharedPrimaryAction;
 
 function onPageLoad(p){
-  if(p==='predict'){ renderPageSnapshots('predict'); }
+  if(p==='predict'){
+    renderPageSnapshots('predict');
+    if(currentPredTab==='formula'&&_formulaActiveTab==='ASTRA')loadSelectedAstraFormula();
+  }
   else if(p==='frequency') loadFreq();
   else if(p==='history') loadHistory();
   else if(p==='mix') loadMixPage();
@@ -162,6 +283,8 @@ async function api(path,options={}){
   else spinner.removeAttribute('aria-hidden');
   try{
     const r=await fetch('/api/'+path);
+    // Opt-in for astra's strict report contract; legacy callers keep their behavior.
+    if(options.requireOk&&!r.ok)throw new Error('API request failed');
     return await r.json();
   }catch(e){
     // แจ้งผู้ใช้เมื่อโหลดล้มเหลว (throttle 5 วิ กันสแปมตอน server ล่มแล้วยิงหลาย call พร้อมกัน)
@@ -179,6 +302,431 @@ async function api(path,options={}){
     else spinner.removeAttribute('aria-hidden');
   }
 }
+
+// ─── astra: isolated next-draw report (never enters historical scoring) ────────
+let _astraRequestId=0,_astraStarted=false;
+let _astraAutoTarget='',_astraTargetOverride=null;
+function astraTargetDate(){
+  const shared=document.getElementById('shared-draw-date')?.value||'';
+  return _astraTargetOverride?.shared===shared?_astraTargetOverride.date:shared;
+}
+function showAstraAutomaticTarget(){
+  if(!_astraIsDate(_astraAutoTarget))return;
+  _astraTargetOverride={date:_astraAutoTarget,shared:document.getElementById('shared-draw-date')?.value||''};
+  return loadAstra({statusOnly:true});
+}
+function setAstraAutomaticTarget(date=''){
+  _astraAutoTarget=date;
+  const button=document.getElementById('astra-auto-target');
+  if(button){
+    button.hidden=!date||date===astraTargetDate();
+    button.textContent=date?'ดูงวดอัตโนมัติ '+date:'ดูงวดอัตโนมัติ';
+  }
+}
+const ASTRA_CATEGORIES=[
+  ['prize1','รางวัลที่ 1',6,5],['front3','เลขหน้า 3 ตัว',3,2],
+  ['back3','เลขท้าย 3 ตัวทางการ',3,2],['bottom2','เลขท้าย 2 ตัว',2,1],
+  ['prize2','รางวัลที่ 2',6,5],['prize3','รางวัลที่ 3',6,5],['prize4','รางวัลที่ 4',6,5]
+];
+const ASTRA_SETTINGS={max_draws:200,min_valid_draws:20,half_life_draws:24,weight_floor:0.5,
+  positional_prior:1,pair_backoff_strength:10,positional_log_weight:0.5,conditional_log_weight:0.5,stale_days:35};
+function _astraHasKeys(value,keys){
+  return !!value&&typeof value==='object'&&!Array.isArray(value)&&
+    Object.keys(value).length===keys.length&&keys.every(key=>Object.prototype.hasOwnProperty.call(value,key));
+}
+function _astraIsDate(value){
+  if(typeof value!=='string'||value.length!==10||!/[0-9]{4}-[0-9]{2}-[0-9]{2}/.test(value)||value.startsWith('0000'))return false;
+  const date=new Date(value+'T00:00:00Z');
+  return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===value;
+}
+function _astraGenerationDay(value){
+  if(typeof value!=='string')return '';
+  const parts=/^([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.[0-9]{1,6})?(Z|[+-]([0-9]{2}):([0-9]{2}))$/.exec(value);
+  if(!parts||parts[0]!==value||!_astraIsDate(parts[1])||Number(parts[2])>23||Number(parts[3])>59||Number(parts[4])>59||Number(parts[6]||0)>23||Number(parts[7]||0)>59)return '';
+  const timestamp=Date.parse(value);
+  return Number.isFinite(timestamp)?new Date(timestamp+7*60*60*1000).toISOString().slice(0,10):'';
+}
+function validateAstraReport(report,target){
+  if(!_astraHasKeys(report,['schema_version','formula','version','trust','target_date','generated_at',
+    'training_cutoff_date','source','window_draws','settings','warnings','categories']))return false;
+  if(report.schema_version!==1||report.formula!=='astra'||report.version!=='astra-v1'||report.trust!=='ทดลอง'||
+    !['existing_local_cache','supplied_history'].includes(report.source)||!_astraIsDate(target)||report.target_date!==target)return false;
+  const generationDay=_astraGenerationDay(report.generated_at);
+  if(!generationDay||target<=generationDay)return false;
+  if(!Number.isInteger(report.window_draws)||report.window_draws<0||report.window_draws>ASTRA_SETTINGS.max_draws)return false;
+  const cutoff=report.training_cutoff_date;
+  if(report.window_draws===0?cutoff!==null:(!_astraIsDate(cutoff)||cutoff>=target||cutoff>generationDay))return false;
+  if(!_astraHasKeys(report.settings,Object.keys(ASTRA_SETTINGS))||
+    !Object.entries(ASTRA_SETTINGS).every(([key,value])=>report.settings[key]===value))return false;
+  if(!Array.isArray(report.warnings)||!Array.from(report.warnings).every(w=>typeof w==='string'&&w.trim().length>0))return false;
+  if(!_astraHasKeys(report.categories,ASTRA_CATEGORIES.map(([key])=>key)))return false;
+  return ASTRA_CATEGORIES.every(([key,label,digits,requested])=>{
+    const category=report.categories[key];
+    if(!_astraHasKeys(category,['label','digits','requested_count','status','valid_draws','invalid_draws','training_cutoff_date','numbers'])||
+      category.label!==label||category.digits!==digits||category.requested_count!==requested)return false;
+    if(!Number.isInteger(category.valid_draws)||category.valid_draws<0||!Number.isInteger(category.invalid_draws)||category.invalid_draws<0||
+      category.valid_draws+category.invalid_draws!==report.window_draws)return false;
+    if(category.valid_draws===0?category.training_cutoff_date!==null:
+      (!_astraIsDate(category.training_cutoff_date)||category.training_cutoff_date>cutoff))return false;
+    const sufficient=category.valid_draws>=ASTRA_SETTINGS.min_valid_draws;
+    if(category.status!==(sufficient?'ok':'insufficient_data')||!Array.isArray(category.numbers)||category.numbers.length!==(sufficient?requested:0))return false;
+    const seen=new Set();
+    for(let i=0;i<category.numbers.length;i++){
+      const row=category.numbers[i],previous=category.numbers[i-1];
+      if(!_astraHasKeys(row,['number','rank','log_score'])||typeof row.number!=='string'||row.number.length!==digits||
+        !/^[0-9]+$/.test(row.number)||row.rank!==i+1||!Number.isFinite(row.log_score)||seen.has(row.number))return false;
+      if(previous&&(row.log_score>previous.log_score||(row.log_score===previous.log_score&&row.number<previous.number)))return false;
+      seen.add(row.number);
+    }
+    return true;
+  });
+}
+const ASTRA_AUTO_PHASES={idle:'รอเริ่มตรวจ',checking:'กำลังตรวจผลใหม่',waiting:'รอรอบตรวจถัดไป',
+  saved:'บันทึกรายงานแล้ว',waiting_results:'รอผลรางวัลครบ',waiting_calendar:'รอปฏิทินงวด',
+  catching_up:'กำลังรับงวดใหม่ที่ค้าง',error:'ตรวจหรือบันทึกไม่สำเร็จ',disabled:'ปิดระบบอัตโนมัติ',stopped:'ตัวทำงานหยุดแล้ว'};
+const ASTRA_AUTO_ERRORS={cache_missing:'ไม่พบแคชผลรางวัล',cache_invalid:'แคชผลรางวัลไม่ถูกต้อง',
+  cache_changed:'แคชเปลี่ยนระหว่างตรวจ',storage_unavailable:'พื้นที่บันทึกใช้งานไม่ได้',storage_invalid:'ข้อมูลบันทึกไม่ถูกต้อง',
+  source_unavailable:'ติดต่อแหล่งผลไม่ได้',source_invalid:'ข้อมูลจากแหล่งผลไม่ถูกต้อง',results_pending:'รอผลรางวัลครบ',
+  calendar_invalid:'ปฏิทินงวดไม่ถูกต้อง',calendar_unavailable:'ยังอ่านปฏิทินงวดไม่ได้',inference_failed:'คำนวณไม่สำเร็จ',internal_error:'ระบบอัตโนมัติขัดข้อง'};
+function validateAstraSnapshot(snapshot,target){
+  if(!_astraHasKeys(snapshot,['formula_version','source_draw_date','target_date','captured_at',
+    'cache_sha256','engine_sha256','source','calendar_source','report']))return false;
+  if(snapshot.formula_version!=='astra-v1'||snapshot.target_date!==target||!_astraIsDate(snapshot.source_draw_date)||
+    snapshot.source!=='sanook'||snapshot.calendar_source!=='glo')return false;
+  if(!['cache_sha256','engine_sha256'].every(key=>typeof snapshot[key]==='string'&&snapshot[key].length===64&&/^[0-9a-f]+$/.test(snapshot[key])))return false;
+  const report=snapshot.report;
+  return validateAstraReport(report,target)&&report.source==='existing_local_cache'&&report.version===snapshot.formula_version&&
+    report.generated_at===snapshot.captured_at&&report.training_cutoff_date===snapshot.source_draw_date;
+}
+function validateAstraAutomation(state,target){
+  if(!_astraHasKeys(state,['enabled','running','phase','poll_interval_seconds','last_check_at','next_check_at',
+    'last_success_at','latest_source_date','target_date','snapshot_count','error','snapshot']))return false;
+  if(typeof state.enabled!=='boolean'||typeof state.running!=='boolean'||typeof state.phase!=='string'||
+    !Object.prototype.hasOwnProperty.call(ASTRA_AUTO_PHASES,state.phase)||state.poll_interval_seconds!==900||
+    !Number.isSafeInteger(state.snapshot_count)||state.snapshot_count<0)return false;
+  if(state.error!==null&&(typeof state.error!=='string'||!Object.prototype.hasOwnProperty.call(ASTRA_AUTO_ERRORS,state.error)))return false;
+  if(!['last_check_at','next_check_at','last_success_at'].every(key=>state[key]===null||_astraIsDate(_astraGenerationDay(state[key]))))return false;
+  if(!['latest_source_date','target_date'].every(key=>state[key]===null||_astraIsDate(state[key])))return false;
+  // Status dates describe the worker, while the saved report must match the selected target.
+  return state.snapshot===null||(state.snapshot_count>0&&validateAstraSnapshot(state.snapshot,target));
+}
+function setAstraAutomationState(state,message){
+  setAstraAutomaticTarget();
+  const status=document.getElementById('astra-auto-status');
+  if(status){status.dataset.state=state;status.textContent=message;}
+  const meta=document.getElementById('astra-auto-meta');
+  if(meta)meta.innerHTML='';
+}
+function renderAstraAutomation(state){
+  setAstraAutomaticTarget(state.target_date||'');
+  const status=document.getElementById('astra-auto-status');
+  if(status){
+    status.dataset.state=state.error?'error':state.phase;
+    status.textContent=`${state.enabled?'ตั้งค่าเปิดใช้งาน':'ปิดใช้งาน'} · ${state.running?'ตัวทำงานกำลังทำงาน':'ตัวทำงานหยุด'} · ${ASTRA_AUTO_PHASES[state.phase]}`+
+      (state.error?` · ${ASTRA_AUTO_ERRORS[state.error]} (${state.error})`:'');
+  }
+  const meta=document.getElementById('astra-auto-meta');
+  if(meta)meta.innerHTML='<dl>'+[
+    ['ตรวจล่าสุด',state.last_check_at??'ยังไม่เคยตรวจ'],['ตรวจครั้งถัดไป',state.next_check_at??'ยังไม่กำหนด'],
+    ['สำเร็จล่าสุด',state.last_success_at??'ยังไม่เคยสำเร็จ'],['ช่วงตรวจ (วินาที)',state.poll_interval_seconds],
+    ['งวดต้นทางล่าสุดของระบบ',state.latest_source_date??'ยังไม่มีข้อมูล'],['งวดเป้าหมายของระบบ',state.target_date??'ยังไม่กำหนด'],
+    ['จำนวนรายงานบันทึกทั้งหมด',state.snapshot_count]
+  ].map(([label,value])=>`<div><dt>${escHtml(label)}</dt><dd>${escHtml(value)}</dd></div>`).join('')+'</dl>';
+}
+function setAstraState(state,date,message){
+  const targetLabel=document.getElementById('astra-target-label');
+  if(targetLabel)targetLabel.textContent=`งวด astra: ${date||'ยังไม่เลือก'} · `+
+    (_astraTargetOverride?.date===date?'เลือกจากปฏิทินอัตโนมัติเฉพาะ astra; เปลี่ยนงวดหลักเพื่อกลับไปใช้ร่วมกัน':'ใช้ตามงวดหลัก');
+  const run=document.getElementById('astra-run');
+  if(run)run.disabled=state==='loading';
+  const results=document.getElementById('astra-results');
+  if(results){results.dataset.state=state;results.setAttribute('aria-busy',String(state==='loading'));}
+  const status=document.getElementById('astra-status');
+  if(status){status.dataset.state=state;status.textContent=message;}
+  const meta=document.getElementById('astra-meta');
+  if(meta)meta.innerHTML=`สูตร astra-v1 · ทดลอง · งวดเป้าหมาย ${escHtml(date||'ยังไม่เลือก')} · วันสร้างรายงาน / ข้อมูลล่าสุด: ยังไม่มีรายงาน`;
+  const warnings=document.getElementById('astra-warnings');
+  if(warnings){warnings.hidden=true;warnings.innerHTML='';}
+  ASTRA_CATEGORIES.forEach(([key,,digits,requested])=>{
+    const body=document.getElementById('astra-body-'+key);
+    if(body)body.innerHTML=`<p>${digits} หลัก · ขอ ${requested} เลข · ${escHtml(message)}</p><p>งวดใช้ได้ — · ใช้ไม่ได้ —</p><p>ข้อมูลล่าสุดหมวดนี้: ยังไม่มีรายงาน</p>`;
+  });
+}
+function renderAstraReport(report,snapshot=null){
+  const run=document.getElementById('astra-run');
+  if(run)run.disabled=false;
+  const meta=document.getElementById('astra-meta');
+  if(meta)meta.innerHTML='<dl>'+[
+    ['สูตร / เวอร์ชัน / สถานะ',`${report.formula} / ${report.version} / ${report.trust}`],
+    ['งวดเป้าหมาย',report.target_date],['สร้างรายงานเมื่อ',report.generated_at],
+    ['ข้อมูลล่าสุดรวม',report.training_cutoff_date??'ไม่มีข้อมูล'],['งวดในหน้าต่างข้อมูล',report.window_draws],
+    ['แหล่งข้อมูล',report.source==='existing_local_cache'?'แคชในเครื่อง (อ่านอย่างเดียว) / existing_local_cache':'ข้อมูลทดสอบ / supplied_history'],
+    ...(snapshot?[
+      ['ที่มาของรายงาน','บันทึกถาวรอัตโนมัติ · ไม่เขียนทับ'],['บันทึกเมื่อ',snapshot.captured_at],
+      ['งวดต้นทาง',snapshot.source_draw_date],['แหล่งผล / ปฏิทิน',`${snapshot.source} / ${snapshot.calendar_source}`],
+      ['SHA-256 แคช',snapshot.cache_sha256],['SHA-256 สูตร',snapshot.engine_sha256]
+    ]:[['ที่มาของรายงาน','คำนวณอ่านอย่างเดียว · ยังไม่บันทึก · ไม่แทนรายงานถาวร']])
+  ].map(([label,value])=>`<div><dt>${escHtml(label)}</dt><dd>${escHtml(value)}</dd></div>`).join('')+'</dl>';
+  const messages=[...report.warnings];
+  const generationDay=_astraGenerationDay(report.generated_at);
+  if(report.training_cutoff_date&&Date.parse(generationDay)-Date.parse(report.training_cutoff_date)>ASTRA_SETTINGS.stale_days*86400000){
+    messages.push('ข้อมูลล่าสุดเก่ากว่าวันสร้างรายงานเกิน 35 วัน โปรดตรวจวันข้อมูลล่าสุดของแต่ละหมวด');
+  }
+  const warnings=document.getElementById('astra-warnings');
+  if(warnings){
+    warnings.hidden=!messages.length;
+    warnings.innerHTML=messages.length?`<strong>ข้อจำกัดข้อมูล</strong><ul>${messages.map(w=>`<li>${escHtml(w)}</li>`).join('')}</ul>`:'';
+  }
+  let count=0,available=0;
+  ASTRA_CATEGORIES.forEach(([key,,digits,requested])=>{
+    const category=report.categories[key];
+    count+=category.numbers.length;
+    if(category.status==='ok')available++;
+    const body=document.getElementById('astra-body-'+key);
+    if(!body)return;
+    body.innerHTML=`<p>${digits} หลัก · ขอ ${requested} เลข · ${category.status==='ok'?'ข้อมูลเพียงพอ':'ข้อมูลไม่เพียงพอ (ต้องมีอย่างน้อย 20 งวด)'}</p>
+      <p>งวดใช้ได้ ${escHtml(category.valid_draws)} · ใช้ไม่ได้ ${escHtml(category.invalid_draws)}</p>
+      <p>ข้อมูลล่าสุดหมวดนี้: ${escHtml(category.training_cutoff_date??'ไม่มีข้อมูล')}</p>`+
+      (category.numbers.length?`<ol class="astra-numbers">${category.numbers.map(row=>`<li><span class="astra-rank">อันดับ ${escHtml(row.rank)}</span><span class="astra-number">${escHtml(row.number)}</span><span class="astra-score">log_score ${escHtml(row.log_score)}</span></li>`).join('')}</ol>`:'<p>ไม่แสดงเลขทดแทนเมื่อข้อมูลไม่พอ</p>');
+  });
+  const results=document.getElementById('astra-results');
+  if(results){results.dataset.state=count?'ready':'empty';results.setAttribute('aria-busy','false');}
+  const status=document.getElementById('astra-status');
+  if(status)status.dataset.state=count?'ready':'empty';
+  setPageStatus('astra-status',(count?`astra แสดง ${count} เลข · ข้อมูลเพียงพอ ${available}/7 หมวด · ทดลอง`:'astra ไม่มีหมวดที่มีข้อมูลเพียงพอ · ไม่แสดงเลขทดแทน')+(snapshot?' · รายงานบันทึกถาวร':' · คำนวณอ่านอย่างเดียว ยังไม่บันทึก')+(messages.length?' · มีคำเตือนข้อมูล':''));
+}
+function invalidateAstra(date=document.getElementById('shared-draw-date')?.value||''){
+  ++_astraRequestId;
+  ++_astraSigmaRequestId;
+  _astraTargetOverride=null;
+  setAstraAutomaticTarget();
+  // Startup synchronizes shared controls, but must not initialize or fetch astra.
+  if(_astraStarted){
+    setAstraState('idle',date,'งวดถูกปรับแล้ว เลือกแท็บเพื่ออ่านรายงาน หรือคำนวณใหม่แบบไม่บันทึก');
+    setAstraAutomationState('idle','งวดถูกปรับแล้ว ยังไม่ยืนยันสถานะอัตโนมัติสำหรับงวดที่เลือก');
+  }
+  if(_astraSigmaStarted)setAstraSigmaState('idle',date,'งวดถูกปรับแล้ว เลือกแท็บเพื่อคำนวณ Astra-Σ ใหม่แบบอ่านอย่างเดียว');
+}
+window.invalidateAstra=invalidateAstra;
+async function loadAstra({recompute=false,statusOnly=false}={}){
+  const requestId=++_astraRequestId;
+  _astraStarted=true;
+  const date=astraTargetDate(),sharedDate=document.getElementById('shared-draw-date')?.value||'';
+  const isCurrent=()=>requestId===_astraRequestId&&date===astraTargetDate()&&sharedDate===(document.getElementById('shared-draw-date')?.value||'');
+  let checkingAutomation=!recompute;
+  setAstraState('loading',date,(checkingAutomation?'กำลังอ่านรายงาน astra สำหรับงวด ':'กำลังคำนวณ astra สำหรับงวด ')+date);
+  if(checkingAutomation){
+    setAstraAutomationState('loading','กำลังอ่านสถานะและรายงานที่บันทึกสำหรับงวด '+date);
+    // A slow status read must not lock out the independent, read-only manual route.
+    const run=document.getElementById('astra-run');
+    if(run)run.disabled=false;
+  }else if(document.getElementById('astra-auto-status')?.dataset.state==='loading'){
+    setAstraAutomationState('idle','ยังไม่ยืนยันสถานะอัตโนมัติ · กำลังคำนวณเองแบบไม่บันทึก');
+  }
+  try{
+    if(!_astraIsDate(date))throw new Error('Invalid astra target');
+    if(!recompute){
+      const state=await api('astra/automation?date='+encodeURIComponent(date),{
+        suppressNetworkToast:true,suppressSpinnerAnnouncement:true,requireOk:true
+      });
+      if(!isCurrent())return;
+      if(!validateAstraAutomation(state,date))throw new Error('Invalid astra automation');
+      renderAstraAutomation(state);
+      checkingAutomation=false;
+      if(state?.snapshot){
+        renderAstraReport(state.snapshot.report,state.snapshot);
+        return;
+      }
+      if(statusOnly){
+        setAstraState('idle',date,'ไม่มีรายงานบันทึกสำหรับงวดนี้ เลือกคำนวณใหม่แบบอ่านอย่างเดียวได้ (ไม่บันทึก)');
+        return;
+      }
+      setAstraState('loading',date,'ไม่มีรายงานบันทึก · กำลังคำนวณ astra แบบไม่บันทึกสำหรับงวด '+date);
+    }
+    const report=await api('predict/astra?date='+encodeURIComponent(date),{
+      suppressNetworkToast:true,suppressSpinnerAnnouncement:true,requireOk:true
+    });
+    if(!isCurrent())return;
+    if(!validateAstraReport(report,date))throw new Error('Invalid astra report');
+    renderAstraReport(report);
+  }catch{
+    if(!isCurrent())return;
+    if(checkingAutomation)setAstraAutomationState('error','อ่านสถานะอัตโนมัติไม่สำเร็จ จึงไม่ยืนยันว่าระบบอัตโนมัติทำงาน · ยังใช้คำนวณใหม่แบบไม่บันทึกได้');
+    setAstraState('error',date,'โหลด astra ไม่สำเร็จ ตรวจงวดและข้อมูลแคชในเครื่อง แล้วลองรันใหม่');
+  }
+}
+window.loadAstra=loadAstra;
+
+// Astra-Σ is a separate, read-only experimental view; it never enters astra-v1 automation.
+let _astraSelectedVersion='astra-v1',_astraSigmaRequestId=0,_astraSigmaStarted=false;
+const ASTRA_SIGMA_VERSION='astra-sigma-v0.1';
+const ASTRA_SIGMA_WEIGHTS={A:0.50,H:0.10,D:0.10,N:0.12,L:0.08,B:0.10};
+const ASTRA_SIGMA_SETTINGS={
+  max_draws:200,min_valid_draws:20,signal_window_valid_draws:24,overdue_cap_valid_draws:24,
+  hot_definition:'position_digit_fraction; equal weight per draw then slot',
+  overdue_definition:'valid category draws since same-position appearance; capped at 24',
+  numerology:'digit-sum modulo 9; circular distance on residues 0..8',
+  lucky_digits:'fraction of digits equal to 8 or 9',
+  balance:'mean of odd-even, low-high (0-4/5-9), and distinct-digit balance',
+  tie_break:'descending unrounded score, then ascending digit string',
+  weights:ASTRA_SIGMA_WEIGHTS
+};
+const ASTRA_SIGMA_COMPONENTS=Object.keys(ASTRA_SIGMA_WEIGHTS);
+function selectAstraVersion(version){
+  if(version!=='astra-v1'&&version!=='astra-sigma')return;
+  _astraSelectedVersion=version;
+  const sigma=version==='astra-sigma';
+  const v1=document.getElementById('astra-v1-content');
+  const sigmaPanel=document.getElementById('astra-sigma-content');
+  const v1Button=document.getElementById('astra-version-v1');
+  const sigmaButton=document.getElementById('astra-version-sigma');
+  const v1Run=document.getElementById('astra-run');
+  if(v1){v1.hidden=sigma;v1.style.display=sigma?'none':'';}
+  if(sigmaPanel){sigmaPanel.hidden=!sigma;sigmaPanel.style.display=sigma?'':'none';}
+  if(v1Run){v1Run.hidden=sigma;v1Run.style.display=sigma?'none':'';}
+  if(v1Button)v1Button.setAttribute('aria-pressed',sigma?'false':'true');
+  if(sigmaButton)sigmaButton.setAttribute('aria-pressed',sigma?'true':'false');
+  if(sigma)return loadAstraSigma();
+  return loadAstra();
+}
+window.selectAstraVersion=selectAstraVersion;
+function loadSelectedAstraFormula(options={}){
+  return _astraSelectedVersion==='astra-sigma'?loadAstraSigma(options):loadAstra(options);
+}
+function showAstraFormulaView(){
+  if(currentPredTab!=='formula')switchPredTab('formula',{deferAstraLoad:true});
+  switchFormulaTab('ASTRA');
+  focusPageHeading('predict','formula',false);
+  document.title='Astra · สูตรคำนวณ · Thai Lottery Intelligence';
+  const heading=document.getElementById('astra-heading');
+  if(heading&&heading.getAttribute('tabindex')===null)heading.setAttribute('tabindex','-1');
+  if(document.activeElement?.id==='ftab-btn-ASTRA')heading?.focus();
+  return loadSelectedAstraFormula();
+}
+window.showAstraFormulaView=showAstraFormulaView;
+window.loadSelectedAstraFormula=loadSelectedAstraFormula;
+function validateAstraSigmaReport(report,target){
+  if(!_astraHasKeys(report,['schema_version','formula','version','trust','target_date','generated_at',
+    'training_cutoff_date','source','window_draws','settings','warnings','categories']))return false;
+  if(report.schema_version!==1||report.formula!=='astra'||report.version!==ASTRA_SIGMA_VERSION||report.trust!=='ทดลอง'||
+    !['existing_local_cache','supplied_history'].includes(report.source)||!_astraIsDate(target)||report.target_date!==target)return false;
+  const generationDay=_astraGenerationDay(report.generated_at);
+  if(!generationDay||target<=generationDay)return false;
+  if(!Number.isInteger(report.window_draws)||report.window_draws<0||report.window_draws>ASTRA_SIGMA_SETTINGS.max_draws)return false;
+  const cutoff=report.training_cutoff_date;
+  if(report.window_draws===0?cutoff!==null:(!_astraIsDate(cutoff)||cutoff>=target||cutoff>generationDay))return false;
+  if(!_astraHasKeys(report.settings,Object.keys(ASTRA_SIGMA_SETTINGS))||
+    !Object.entries(ASTRA_SIGMA_SETTINGS).every(([key,value])=>{
+      if(key==='weights')return _astraHasKeys(report.settings[key],ASTRA_SIGMA_COMPONENTS)&&
+        ASTRA_SIGMA_COMPONENTS.every(component=>report.settings[key][component]===value[component]);
+      return report.settings[key]===value;
+    }))return false;
+  if(!_astraHasKeys(report.settings.weights,ASTRA_SIGMA_COMPONENTS)||
+    !ASTRA_SIGMA_COMPONENTS.every(key=>report.settings.weights[key]===ASTRA_SIGMA_WEIGHTS[key]))return false;
+  if(!Array.isArray(report.warnings)||!report.warnings.every(w=>typeof w==='string'&&w.trim().length>0))return false;
+  if(!_astraHasKeys(report.categories,ASTRA_CATEGORIES.map(([key])=>key)))return false;
+  return ASTRA_CATEGORIES.every(([key,label,digits,requested])=>{
+    const category=report.categories[key];
+    if(!_astraHasKeys(category,['label','digits','requested_count','status','valid_draws','invalid_draws','training_cutoff_date','numbers'])||
+      category.label!==label||category.digits!==digits||category.requested_count!==requested)return false;
+    if(!Number.isInteger(category.valid_draws)||category.valid_draws<0||!Number.isInteger(category.invalid_draws)||category.invalid_draws<0||
+      category.valid_draws+category.invalid_draws!==report.window_draws)return false;
+    if(category.valid_draws===0?category.training_cutoff_date!==null:
+      (!_astraIsDate(category.training_cutoff_date)||category.training_cutoff_date>cutoff))return false;
+    const sufficient=category.valid_draws>=ASTRA_SIGMA_SETTINGS.min_valid_draws;
+    if(category.status!==(sufficient?'ok':'insufficient_data')||!Array.isArray(category.numbers)||
+      category.numbers.length!==(sufficient?requested:0))return false;
+    const seen=new Set();
+    for(let i=0;i<category.numbers.length;i++){
+      const row=category.numbers[i],previous=category.numbers[i-1];
+      if(!_astraHasKeys(row,['number','rank','score','base_score','components'])||typeof row.number!=='string'||
+        row.number.length!==digits||!/^[0-9]+$/.test(row.number)||row.rank!==i+1||
+        !Number.isFinite(row.score)||row.score<0||row.score>1||!Number.isFinite(row.base_score)||seen.has(row.number)||
+        !_astraHasKeys(row.components,ASTRA_SIGMA_COMPONENTS)||
+        !ASTRA_SIGMA_COMPONENTS.every(component=>Number.isFinite(row.components[component])&&row.components[component]>=0&&row.components[component]<=1))return false;
+      let expectedScore=0;
+      for(const component of ASTRA_SIGMA_COMPONENTS)expectedScore+=ASTRA_SIGMA_WEIGHTS[component]*row.components[component];
+      if(Math.abs(expectedScore-row.score)>1e-12)return false;
+      if(previous&&(row.score>previous.score||(row.score===previous.score&&row.number<previous.number)))return false;
+      seen.add(row.number);
+    }
+    return true;
+  });
+}
+function setAstraSigmaState(state,date,message){
+  _astraSigmaStarted=true;
+  const target=document.getElementById('astra-sigma-target-label');
+  if(target)target.textContent=`${date||'ยังไม่เลือก'} · ใช้ตามงวดหลัก`;
+  const run=document.getElementById('astra-sigma-run');
+  if(run)run.disabled=state==='loading';
+  const results=document.getElementById('astra-sigma-results');
+  if(results){results.dataset.state=state;results.setAttribute('aria-busy',String(state==='loading'));}
+  const status=document.getElementById('astra-sigma-status');
+  if(status){status.dataset.state=state;status.textContent=message;}
+  const meta=document.getElementById('astra-sigma-meta');
+  if(meta)meta.innerHTML=`สูตร astra / ${escHtml(ASTRA_SIGMA_VERSION)} / ทดลอง · งวดเป้าหมาย ${escHtml(date||'ยังไม่เลือก')} · ยังไม่มีรายงาน`;
+  const warnings=document.getElementById('astra-sigma-warnings');
+  if(warnings){warnings.hidden=true;warnings.innerHTML='';}
+  ASTRA_CATEGORIES.forEach(([key,,digits,requested])=>{
+    const body=document.getElementById('astra-sigma-body-'+key);
+    if(body)body.innerHTML=`<p>${digits} หลัก · ขอ ${requested} เลข · ${escHtml(message)}</p><p>งวดใช้ได้ — · ใช้ไม่ได้ —</p><p>ข้อมูลล่าสุดหมวดนี้: ยังไม่มีรายงาน</p>`;
+  });
+}
+function renderAstraSigmaReport(report){
+  const run=document.getElementById('astra-sigma-run');
+  if(run)run.disabled=false;
+  const meta=document.getElementById('astra-sigma-meta');
+  if(meta)meta.innerHTML='<dl>'+[
+    ['สูตร / เวอร์ชัน / สถานะ',`${report.formula} / ${report.version} / ${report.trust}`],
+    ['งวดเป้าหมาย',report.target_date],['สร้างรายงานเมื่อ',report.generated_at],
+    ['ข้อมูลล่าสุดรวม',report.training_cutoff_date??'ไม่มีข้อมูล'],['งวดในหน้าต่างข้อมูล',report.window_draws],
+    ['แหล่งข้อมูล',report.source==='existing_local_cache'?'แคชในเครื่อง (อ่านอย่างเดียว)':'ข้อมูลทดสอบ / supplied_history'],
+    ['คะแนน', 'คะแนนจัดอันดับ · ไม่ใช่ความน่าจะเป็น']
+  ].map(([label,value])=>`<div><dt>${escHtml(label)}</dt><dd>${escHtml(value)}</dd></div>`).join('')+'</dl>';
+  const messages=[...report.warnings];
+  const generationDay=_astraGenerationDay(report.generated_at);
+  if(report.training_cutoff_date&&Date.parse(generationDay)-Date.parse(report.training_cutoff_date)>35*86400000)
+    messages.push('ข้อมูลล่าสุดเก่ากว่าวันสร้างรายงานเกิน 35 วัน โปรดตรวจวันข้อมูลล่าสุดของแต่ละหมวด');
+  const warnings=document.getElementById('astra-sigma-warnings');
+  if(warnings){warnings.hidden=!messages.length;warnings.innerHTML=messages.length?
+    `<strong>ข้อจำกัดข้อมูล</strong><ul>${messages.map(w=>`<li>${escHtml(w)}</li>`).join('')}</ul>`:'';}
+  let shown=0,available=0;
+  ASTRA_CATEGORIES.forEach(([key,,digits,requested])=>{
+    const category=report.categories[key],body=document.getElementById('astra-sigma-body-'+key);
+    if(category.status==='ok')available++;
+    if(!body)return;
+    shown+=category.numbers.length;
+    body.innerHTML=`<p>${digits} หลัก · ขอ ${requested} เลข · งวดใช้ได้ ${category.valid_draws} · ใช้ไม่ได้ ${category.invalid_draws}</p>`+
+      `<p>ข้อมูลล่าสุดหมวดนี้: ${escHtml(category.training_cutoff_date??'ไม่มีข้อมูล')}</p>`+
+      (category.numbers.length?`<ol class="astra-numbers">${category.numbers.map(row=>`<li><span class="astra-rank">อันดับ ${escHtml(row.rank)}</span><span class="astra-number">${escHtml(row.number)}</span><span class="astra-score">คะแนนจัดอันดับ ${row.score.toFixed(6)}</span><span class="astra-components">A ${row.components.A.toFixed(3)} · H ${row.components.H.toFixed(3)} · D ${row.components.D.toFixed(3)} · N ${row.components.N.toFixed(3)} · L ${row.components.L.toFixed(3)} · B ${row.components.B.toFixed(3)}</span></li>`).join('')}</ol>`:'<p>ข้อมูลไม่ถึงขั้นต่ำ 20 งวดที่ใช้ได้ · ไม่แสดงเลขทดแทน</p>');
+  });
+  const results=document.getElementById('astra-sigma-results');
+  if(results){results.dataset.state=shown?'ready':'empty';results.setAttribute('aria-busy','false');}
+  const status=document.getElementById('astra-sigma-status');
+  if(status)status.dataset.state=shown?'ready':'empty';
+  setPageStatus('astra-sigma-status',(shown?`Astra-Σ แสดง ${shown} เลข · ข้อมูลเพียงพอ ${available}/7 หมวด · ทดลอง`:
+    'Astra-Σ ไม่มีหมวดที่มีข้อมูลเพียงพอ · ไม่แสดงเลขทดแทน')+' · คำนวณอ่านอย่างเดียว ไม่บันทึก'+(messages.length?' · มีคำเตือนข้อมูล':''));
+}
+async function loadAstraSigma(){
+  const requestId=++_astraSigmaRequestId;
+  _astraSigmaStarted=true;
+  const date=document.getElementById('shared-draw-date')?.value||'';
+  const isCurrent=()=>requestId===_astraSigmaRequestId&&date===(document.getElementById('shared-draw-date')?.value||'');
+  setAstraSigmaState('loading',date,`กำลังคำนวณ Astra-Σ สำหรับงวด ${date} จากแคชเดิมแบบอ่านอย่างเดียว`);
+  try{
+    if(!_astraIsDate(date))throw new Error('Invalid Astra-Σ target');
+    const report=await api('predict/astra-sigma?date='+encodeURIComponent(date),{
+      suppressNetworkToast:true,suppressSpinnerAnnouncement:true,requireOk:true
+    });
+    if(!isCurrent())return;
+    if(!validateAstraSigmaReport(report,date))throw new Error('Invalid Astra-Σ report');
+    renderAstraSigmaReport(report);
+  }catch{
+    if(!isCurrent())return;
+    setAstraSigmaState('error',date,'คำนวณ Astra-Σ ไม่สำเร็จ ตรวจงวดและแคชในเครื่อง แล้วลองใหม่');
+  }
+}
+window.loadAstraSigma=loadAstraSigma;
 
 // ─── HyperUI theme (light-first) — storage 'lottery_theme' ─────────────────────
 const _THEME_KEY='lottery_theme';
@@ -239,6 +787,7 @@ async function init(){
   await loadDashboard();
   renderPageSnapshots('predict');
   renderPageSnapshots('formula');
+  restorePageLocation();
 }
 
 function dcAddSource(map,num,kind,label,detail=''){
@@ -653,18 +1202,21 @@ function dcLoadSnapshot(date){
 }
 
 function dcDeleteSnapshot(date){
-  const list=dcSnapshots().filter(x=>x.date!==date);
-  localStorage.setItem('lottery_dc_snapshots',JSON.stringify(list));
-  const el=document.getElementById('dc-snapshot-list');
-  if(el)el.innerHTML=dcSnapshotTrackHtml(_dcHistRows);
-  toast('ลบ Snapshot แล้ว','success');
+  return deleteWithUndo('lottery_dc_snapshots','ลบ Snapshot แล้ว',()=>{
+    const list=dcSnapshots().filter(x=>x.date!==date);
+    localStorage.setItem('lottery_dc_snapshots',JSON.stringify(list));
+  },()=>{
+    const el=document.getElementById('dc-snapshot-list');
+    if(el)el.innerHTML=dcSnapshotTrackHtml(_dcHistRows);
+  });
 }
 
 function dcClearSnapshots(){
-  localStorage.removeItem('lottery_dc_snapshots');
-  const el=document.getElementById('dc-snapshot-list');
-  if(el)el.innerHTML=dcSnapshotTrackHtml(_dcHistRows);
-  toast('ลบ Snapshot ทั้งหมดแล้ว','success');
+  if(!confirm('ลบ Snapshot ที่บันทึกไว้ทั้งหมดหรือไม่?'))return false;
+  return deleteWithUndo('lottery_dc_snapshots','ลบ Snapshot ทั้งหมดแล้ว',()=>localStorage.removeItem('lottery_dc_snapshots'),()=>{
+    const el=document.getElementById('dc-snapshot-list');
+    if(el)el.innerHTML=dcSnapshotTrackHtml(_dcHistRows);
+  });
 }
 
 function pageSnapshots(key){
@@ -713,15 +1265,16 @@ function loadPageSnapshot(key,id){
 }
 
 function deletePageSnapshot(key,id){
-  localStorage.setItem(`lottery_${key}_snapshots`,JSON.stringify(pageSnapshots(key).filter(x=>x.id!==id)));
-  renderPageSnapshots(key);
-  toast('ลบ Snapshot แล้ว','success');
+  const storageKey=`lottery_${key}_snapshots`;
+  return deleteWithUndo(storageKey,'ลบ Snapshot แล้ว',()=>{
+    localStorage.setItem(storageKey,JSON.stringify(pageSnapshots(key).filter(x=>x.id!==id)));
+  },()=>renderPageSnapshots(key));
 }
 
 function clearPageSnapshots(key){
-  localStorage.removeItem(`lottery_${key}_snapshots`);
-  renderPageSnapshots(key);
-  toast('ลบ Snapshot ทั้งหมดแล้ว','success');
+  if(!confirm('ลบ Snapshot ทั้งหมดของหน้านี้หรือไม่?'))return false;
+  const storageKey=`lottery_${key}_snapshots`;
+  return deleteWithUndo(storageKey,'ลบ Snapshot ทั้งหมดแล้ว',()=>localStorage.removeItem(storageKey),()=>renderPageSnapshots(key));
 }
 
 function dcLottoSummaryBoard({next,scored,formulaMatches,btRows,p1,bottom,front,cats,mode,support}){
@@ -1693,18 +2246,21 @@ function dcLoadSnapshotOld(date){
 }
 
 function dcDeleteSnapshotOld(date){
-  const list=dcSnapshotsOld().filter(x=>x.date!==date);
-  localStorage.setItem('lottery_dc_snapshots_old',JSON.stringify(list));
-  const el=document.getElementById('dc-snapshot-list-old');
-  if(el)el.innerHTML=dcSnapshotTrackHtmlOld(_dcHistRowsOld);
-  toast('ลบ Snapshot แล้ว','success');
+  return deleteWithUndo('lottery_dc_snapshots_old','ลบ Snapshot แล้ว',()=>{
+    const list=dcSnapshotsOld().filter(x=>x.date!==date);
+    localStorage.setItem('lottery_dc_snapshots_old',JSON.stringify(list));
+  },()=>{
+    const el=document.getElementById('dc-snapshot-list-old');
+    if(el)el.innerHTML=dcSnapshotTrackHtmlOld(_dcHistRowsOld);
+  });
 }
 
 function dcClearSnapshotsOld(){
-  localStorage.removeItem('lottery_dc_snapshots_old');
-  const el=document.getElementById('dc-snapshot-list-old');
-  if(el)el.innerHTML=dcSnapshotTrackHtmlOld(_dcHistRowsOld);
-  toast('ลบ Snapshot ทั้งหมดแล้ว','success');
+  if(!confirm('ลบ Snapshot รุ่นเดิมทั้งหมดหรือไม่?'))return false;
+  return deleteWithUndo('lottery_dc_snapshots_old','ลบ Snapshot ทั้งหมดแล้ว',()=>localStorage.removeItem('lottery_dc_snapshots_old'),()=>{
+    const el=document.getElementById('dc-snapshot-list-old');
+    if(el)el.innerHTML=dcSnapshotTrackHtmlOld(_dcHistRowsOld);
+  });
 }
 function dcLottoSummaryBoardOld({next,scored,formulaMatches,btRows,p1,bottom,front,cats,mode,support}){
   const pickByLen=(len,n)=>scored.all.filter(x=>String(x.num).length===len).slice(0,n);
@@ -2133,7 +2689,7 @@ async function loadFreq(){
   if(neverEl)neverEl.innerHTML='<span style="color:var(--text3)">กำลังโหลด...</span>';
   const showError=()=>{
     announce('โหลดตารางความถี่ไม่สำเร็จ ลองใหม่อีกครั้ง');
-    freqBody.innerHTML='<tr><td colspan="5"><div class="predict-empty">โหลดตารางความถี่ไม่สำเร็จ ลองใหม่อีกครั้ง</div></td></tr>';
+    freqBody.innerHTML='<tr><td colspan="5"><div class="predict-empty">โหลดตารางความถี่ไม่สำเร็จ<button type="button" class="btn btn-secondary retry-inline" onclick="loadFreq()">ลองอีกครั้ง</button></div></td></tr>';
     if(neverEl)neverEl.innerHTML='<span style="color:var(--text3)">โหลดข้อมูลความถี่ไม่สำเร็จ</span>';
     if(_charts['freq-chart']){_charts['freq-chart'].destroy();delete _charts['freq-chart'];}
   };
@@ -2285,9 +2841,9 @@ function formulaSaveSnapshot(){
 function predictConfidence(rank,score,maxScore,support=0){
   const rel=maxScore?score/maxScore:0;
   const boosted=rel+(support>=3 ? .18 : support>=2 ? .1 : support>=1 ? .05 : 0)-(rank>10 ? .1 : 0);
-  if(boosted>=.82)return {label:'มั่นใจสูง',cls:'high'};
-  if(boosted>=.55)return {label:'น่าเฝ้า',cls:'mid'};
-  return {label:'เสี่ยงสูง',cls:'low'};
+  if(boosted>=.82)return {label:'ตัวเลือกเด่น',cls:'high'};
+  if(boosted>=.55)return {label:'ตัวเลือกกลาง',cls:'mid'};
+  return {label:'ตัวเลือกสำรอง',cls:'low'};
 }
 
 function predictionFormulaSupport(num){
@@ -2892,16 +3448,19 @@ function mixTrackHtml(rows){
   }).join('')}${list.length>1?'<button class="dc-mini-btn" onclick="mixClearSnapshots()">ลบประวัติทั้งหมด</button>':''}</div>`;
 }
 function mixDeleteSnapshot(date){
-  localStorage.setItem('lottery_mix_snapshots',JSON.stringify(mixSnapshots().filter(x=>x.date!==date)));
-  const el=document.getElementById('mix-track-list');
-  if(el)el.innerHTML=mixTrackHtml(_mixHistRows);
-  toast('ลบประวัติแล้ว','success');
+  return deleteWithUndo('lottery_mix_snapshots','ลบประวัติแล้ว',()=>{
+    localStorage.setItem('lottery_mix_snapshots',JSON.stringify(mixSnapshots().filter(x=>x.date!==date)));
+  },()=>{
+    const el=document.getElementById('mix-track-list');
+    if(el)el.innerHTML=mixTrackHtml(_mixHistRows);
+  });
 }
 function mixClearSnapshots(){
-  localStorage.removeItem('lottery_mix_snapshots');
-  const el=document.getElementById('mix-track-list');
-  if(el)el.innerHTML=mixTrackHtml(_mixHistRows);
-  toast('ลบประวัติทั้งหมดแล้ว','success');
+  if(!confirm('ลบประวัติ Mix ทั้งหมดหรือไม่?'))return false;
+  return deleteWithUndo('lottery_mix_snapshots','ลบประวัติทั้งหมดแล้ว',()=>localStorage.removeItem('lottery_mix_snapshots'),()=>{
+    const el=document.getElementById('mix-track-list');
+    if(el)el.innerHTML=mixTrackHtml(_mixHistRows);
+  });
 }
 // ปุ่มสุ่มหยิบ 1 ใบ — ถ่วงน้ำหนักตามอันดับ (ชุดที่ i จาก N ชุด มีน้ำหนัก N-i)
 function mixRandomPick(){
@@ -3712,9 +4271,7 @@ function bpSaveCurrentPlan(){
 }
 window.bpSaveCurrentPlan=bpSaveCurrentPlan;
 function bpDeletePlan(id){
-  if(!bpHistoryDelete(id))return;
-  bpPaint();
-  if(typeof toast==='function')toast('ลบชุดนี้แล้ว','success');
+  return deleteWithUndo(BP_HISTORY_KEY,'ลบชุดนี้แล้ว',()=>bpHistoryDelete(id),()=>bpPaint());
 }
 window.bpDeletePlan=bpDeletePlan;
 
@@ -4040,7 +4597,7 @@ function _renderBtTable(){
     return `<div class="bt-board">
       <div class="section-h" role="heading" aria-level="2">${board}</div>
       ${mini}
-      <div class="tbl-wrap"><table>${thead}<tbody>${rows.map(rowHtml).join('')}</tbody></table></div>
+      <div class="tbl-wrap" tabindex="0" role="region" aria-label="ตาราง Backtest ${escHtml(board)} เลื่อนแนวนอนเพื่อดูคอลัมน์เพิ่มเติม"><table><caption class="sr-only">ผล Backtest ${escHtml(board)}</caption>${thead}<tbody>${rows.map(rowHtml).join('')}</tbody></table></div>
     </div>`;
   }).join('');
   document.getElementById('formula-bt-table').innerHTML=`
@@ -4105,7 +4662,7 @@ function filterHistory(){
   const rows=q?_histData.filter(r=>Object.values(r).some(v=>String(v).toLowerCase().includes(q))):_histData;
   if(_histLoadError){
     announceStatus('โหลดผลย้อนหลังไม่สำเร็จ ลองใหม่อีกครั้ง');
-    tbody.innerHTML='<tr><td colspan="9"><div class="predict-empty">โหลดผลย้อนหลังไม่สำเร็จ ลองใหม่อีกครั้ง</div></td></tr>';
+    tbody.innerHTML='<tr><td colspan="9"><div class="predict-empty">โหลดผลย้อนหลังไม่สำเร็จ<button type="button" class="btn btn-secondary retry-inline" onclick="loadHistory()">ลองอีกครั้ง</button></div></td></tr>';
     return;
   }
   if(!rows.length){
