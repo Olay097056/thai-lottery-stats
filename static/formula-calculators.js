@@ -1306,10 +1306,13 @@ async function _runAllFormulas({userInitiated=false}={}){
     const targetMatches=_formulaResponseTargetMatches(response,predDateStr);
     const numbersOk=Array.isArray(response?.numbers)&&response.numbers.length===5&&response.numbers.every(n=>/^[0-9]{6}$/.test(String(n)));
     if(!response?.ok||response.status==='unavailable'||!numbersOk||!targetMatches){
+      // A missing route answers {detail:"Not Found"} in English; never show that raw to a user.
+      const detail=String(response?.detail||'');
+      const thaiDetail=/[฀-๿]/.test(detail)?detail:'';
       const message=response?.status==='unavailable'
         ?'งวดนี้ไม่มีเลข (โมเดลไม่ตอบ) — ไม่มีการเติมเลขสำรอง'
         :response?.ok&&!targetMatches?'ผล RLL ไม่ตรงกับงวดที่เลือก กรุณาคำนวณงวดนี้ใหม่'
-        :response?.detail||'คำนวณ RLL ไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองใหม่';
+        :thaiDetail||'เชื่อมต่อ endpoint RLL ไม่ได้ — ถ้าเพิ่งอัปเดตโค้ด ให้รีสตาร์ทเซิร์ฟเวอร์แล้วลองใหม่';
       rllHtml=_formulaEmptyStateHtml(message);
     }else{
       const card=_rllCards(response);
