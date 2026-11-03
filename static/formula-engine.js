@@ -822,6 +822,7 @@ function _formulaGroupKey(source,title=''){
 }
 
 function _formulaTargetLabel(title,source,highlights=[]){
+  if(title.startsWith('RLL'))return 'Target: รางวัลที่ 1 ตรง 6 หลัก';
   if(title.startsWith('D2')||title.startsWith('X2'))return 'Target: front 3';
   if(title.startsWith('D3')||title.startsWith('X3')||title.startsWith('C3'))return 'Target: back 3';
   if(title.startsWith('D4')||title.startsWith('X4')||title.includes('2530'))return 'Target: prize1 tail';
