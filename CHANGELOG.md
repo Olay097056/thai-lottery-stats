@@ -2,6 +2,26 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-11-03 — Reinforcement Learn LLM (RLL) · สูตร bandit ที่ใช้ LLM สด (ADR-0009)
+
+- เพิ่มสูตรใหม่ชื่อ **Reinforcement Learn LLM** — six-arm contextual bandit ที่ใช้ LLM สดหนึ่งครั้งต่องวด
+  reward = จำนวนหลักที่ตรงของชุดที่ใกล้ที่สุด (0–6) ไม่ใช่เงินรางวัล · ค่าสุ่ม exact mean 1.495846, sd 0.717875
+- Thompson sampling ด้วย σ ของ null และ prior `n0=48` ต่อ arm · อัปเดตเฉพาะ arm ที่ถูกเล่น · seed ของการเลือก
+  arm มาจาก `SHA-256(target_date+protocol)` เพื่อให้ *การเลือก* reproducible แม้ผลจากโมเดลจะไม่
+- protocol `rll-v1`: คำนวณครั้งแรกเมื่อมีคนอ่าน `GET /api/rll/formula?date=` (ไม่คำนวณตอนเปิดหน้า), prompt
+  ลำดับตายตัวพร้อม no-reuse list, parse เข้ม 5 ตัวไม่ซ้ำ, retry ได้ครั้งเดียวเฉพาะ 429/5xx/timeout/parse,
+  `INSERT OR IGNORE` → **ไม่มีทางสุ่มใหม่**, ล้มเหลวถูกเก็บเป็น `unavailable`
+- เข้า Picks ผ่าน allowlist เฉพาะกลุ่ม RLL (edge 0, weight 1.0) พร้อม badge ทดลอง + ป้าย "ไม่มีหลักฐาน" ·
+  เลขแนะนำยังไม่เกิดเพราะต้องมี ≥2 กลุ่มใน field เดียวกัน (ADR-0001) และ UI บอกตรง ๆ
+- Backtest แสดงแถวเดียวแบบ prospective ("—" ทั้งอัตราถูกและ edge, expected = งวดหลังเปิดตัว × 5/10⁶)
+- กำลังการทดลอง (simulated 1,200 reps): +100% ต้อง 120 งวด · +50% ต้อง 480 งวด (~20 ปี) · +25% ต้อง 960 งวด ·
+  payout +100% ต้อง 1.57M งวด (~65,407 ปี) — สูตรนี้จึงเป็นทดลองถาวร
+- ทดสอบแล้วจริง: call สด 4 ครั้ง HTTP 200 (17.4–23.9 วิ), `response_raw` 5,321 B ที่ sha256 ตรงกับที่บันทึก,
+  อ่านซ้ำได้ record เดิมใน 3 วิโดยไม่เรียกโมเดล · `scripts/test_rll.py` 11/11 ·
+  `scripts/test_rll_frontend_contract.js` 14/14 · suite อื่นคงเดิม
+- เอกสาร: `docs/adr/0009-rll-live-llm-formula.md`, `PRD-rll-formula.md`, CLAUDE.md, README ทั้งสองภาษา ·
+  ลบส่วน Luna ที่ค้างใน CLAUDE.md (โค้ดถูกลบไปแล้ว) และ bump cache token เป็น `rll2-20261103`
+
 ## 2026-11-03 — แก้ baseline ของ `dcFormulaBaseP` สำหรับ field รางวัลที่ 1 / pool
 
 - `dcFormulaBaseP` ไม่มี case ของ `prize1_exact`, `pool6`, `pool6_14`, `pool_tail3`
