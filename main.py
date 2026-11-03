@@ -92,6 +92,33 @@ def api_fano_backtest(
         raise HTTPException(503, detail='อ่านประวัติรางวัลจากแคชเดิมไม่ได้')
 
 
+@app.get('/api/rll/formula')
+def api_rll_formula(date: str = Query(...)):
+    import astra
+    import rll
+    try:
+        return rll.formula_forecast(date)
+    except (ValueError, astra.AstraInputError):
+        raise HTTPException(422, detail='สูตร RLL ต้องมีข้อมูลรางวัลที่ 1 ก่อนวันเป้าหมายอย่างน้อย 20 งวด')
+    except astra.AstraCacheError:
+        raise HTTPException(503, detail='อ่านประวัติรางวัลจากแคชเดิมไม่ได้')
+
+
+@app.get('/api/rll/state')
+def api_rll_state():
+    import rll
+    return rll.state()
+
+
+@app.post('/api/rll/resolve')
+def api_rll_resolve(date: str = Query(...), prize1: str = Query(...)):
+    import rll
+    try:
+        return rll.resolve(date, prize1)
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc))
+
+
 @app.get('/api/first-prize')
 def api_first_prize_board():
     import first_prize
