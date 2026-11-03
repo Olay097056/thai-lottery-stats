@@ -4,7 +4,8 @@ Status: implemented 2026-11-03 · governing ADR: [0009](docs/adr/0009-rll-live-l
 
 ## Hypothesis
 
-A small reinforcement-learning loop — a six-arm contextual bandit — can be made **real and auditable** on top
+A small reinforcement-learning loop — a six-arm multi-armed bandit (the allocation is not conditioned on
+per-draw features; context enters the prompt, not the policy) — can be made **real and auditable** on top
 of a live LLM policy, and its honest outcome on an i.i.d. lottery is "no arm is better". The product value is
 the loop's transparency, not an edge: every draw's prompt, model, response hash and reward sit in one stored
 record that anyone can re-derive.

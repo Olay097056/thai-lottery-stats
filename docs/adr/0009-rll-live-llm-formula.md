@@ -15,7 +15,8 @@ ADR-0007 / ADR-0006 still govern badges, prospective evidence and frontend owner
 
 ## Decision
 
-**The formula is a six-arm contextual bandit, and the LLM is the policy that maps an arm to five tickets.**
+**The formula is a six-arm multi-armed bandit — the allocation sees no per-draw features, so it is not a
+contextual bandit — and the LLM is the policy that maps an arm to five tickets.**
 
 - **Reward** `r = max` over the five candidates of the number of matching digit positions (0–6). It is *not*
   the payout. Under uniform draws the null is exact: pmf `[0.042391, 0.502763, 0.378069, 0.070443, 0.006059,

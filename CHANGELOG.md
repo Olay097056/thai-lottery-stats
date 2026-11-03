@@ -4,7 +4,7 @@
 
 ## 2026-11-03 — Reinforcement Learn LLM (RLL) · สูตร bandit ที่ใช้ LLM สด (ADR-0009)
 
-- เพิ่มสูตรใหม่ชื่อ **Reinforcement Learn LLM** — six-arm contextual bandit ที่ใช้ LLM สดหนึ่งครั้งต่องวด
+- เพิ่มสูตรใหม่ชื่อ **Reinforcement Learn LLM** — six-arm multi-armed bandit ที่ใช้ LLM สดหนึ่งครั้งต่องวด (การเลือก arm ไม่ขึ้นกับ feature ของงวด)
   reward = จำนวนหลักที่ตรงของชุดที่ใกล้ที่สุด (0–6) ไม่ใช่เงินรางวัล · ค่าสุ่ม exact mean 1.495846, sd 0.717875
 - Thompson sampling ด้วย σ ของ null และ prior `n0=48` ต่อ arm · อัปเดตเฉพาะ arm ที่ถูกเล่น · seed ของการเลือก
   arm มาจาก `SHA-256(target_date+protocol)` เพื่อให้ *การเลือก* reproducible แม้ผลจากโมเดลจะไม่
