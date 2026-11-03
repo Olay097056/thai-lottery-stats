@@ -1,5 +1,5 @@
-// Drift-guard (backlog M2, PRD-buy-plan-explainability): static/app.js's BP_GROUP_MAP is a MANUAL
-// mirror of static/formula-engine.js's function-local _GRP (app.js has no build step and cannot
+// Drift-guard (backlog M2, PRD-buy-plan-explainability): static/buyplan-ui.js's BP_GROUP_MAP is a MANUAL
+// mirror of static/formula-evaluation.js's function-local _GRP (there is no build step and it cannot
 // import a function-local const, so it copies the group letter → [label, color] map by hand). If a
 // formula group is ever added, removed, relabeled, or recolored in _GRP without the same change to
 // BP_GROUP_MAP, the จัดชุดซื้อ explainability dots silently render with wrong/missing colors. This
@@ -14,8 +14,8 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const engineSrc = fs.readFileSync(path.join(ROOT, 'static', 'formula-engine.js'), 'utf8');
-const appSrc = fs.readFileSync(path.join(ROOT, 'static', 'app.js'), 'utf8');
+const formulaSrc = require('./frontend_source').readFrontend('formula-evaluation.js');
+const buyPlanSrc = fs.readFileSync(path.join(ROOT, 'static/buyplan-ui.js'), 'utf8');
 
 // Extract `NAME = { ... }` (values are [label,color] arrays — no nested braces, so [^}]* is safe;
 // the negated class also spans newlines, so BP_GROUP_MAP's multi-line literal is matched whole).
@@ -24,13 +24,13 @@ function extractObject(src, name) {
   const m = re.exec(src);
   if (!m) throw new Error('FAIL: ' + name + ' object literal not found in source');
   const sandbox = {};
-  vm.createContext(sandbox);
+  require('./frontend_source').prepareContext(sandbox);
   vm.runInContext('this.__v = ' + m[1], sandbox);
   return sandbox.__v;
 }
 
-const grp = extractObject(engineSrc, 'const _GRP');
-const bpMap = extractObject(appSrc, 'const BP_GROUP_MAP');
+const grp = extractObject(formulaSrc, 'const _GRP');
+const bpMap = extractObject(buyPlanSrc, 'const BP_GROUP_MAP');
 
 let passed = 0;
 function check(label, cond) {
@@ -55,4 +55,14 @@ gk.forEach(k => {
 const norm = o => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
 check('_GRP and BP_GROUP_MAP are deep-equal (order-normalized)', norm(grp) === norm(bpMap));
 
-console.log(`OK: BP_GROUP_MAP in sync with formula-engine _GRP (${passed} checks, ${gk.length} groups)`);
+const groupSandbox = { BP_GROUP_MAP: bpMap };
+require('./frontend_source').prepareContext(groupSandbox);
+const groupFunction = buyPlanSrc.match(/function bpGroupsForSources\(sources\)\{[\s\S]*?\n\}/)?.[0];
+if (!groupFunction) throw new Error('FAIL: bpGroupsForSources function not found');
+vm.runInContext(groupFunction, groupSandbox);
+check('Fano source labels retain their full Buy Plan group mapping',
+  groupSandbox.bpGroupsForSources(['ระนาบฟาโน v4'])[0]?.letter === 'FANO');
+check('Fano source labels retain their full Buy Plan group mapping',
+  groupSandbox.bpGroupsForSources(['ระนาบฟาโน v5 · รางวัลที่ 1'])[0]?.letter === 'FANO');
+
+console.log(`OK: BP_GROUP_MAP in sync with formula-evaluation _GRP (${passed} checks, ${gk.length} groups)`);

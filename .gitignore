@@ -56,3 +56,5 @@ target/
 # Agent/tooling working dirs
 .superpowers/
 .scratch/
+.arena/
+.impeccable/

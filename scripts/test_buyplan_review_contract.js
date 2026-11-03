@@ -4,11 +4,11 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT=path.join(__dirname,'..');
-const raw=fs.readFileSync(path.join(ROOT,'static','app.js'),'utf8');
+const raw=require('./frontend_source').readFrontend('app.js');
 const src=raw.replace(/^startCountdown\(\);\s*$/m,'').replace(/^init\(\);\s*$/m,'');
-const engine=fs.readFileSync(path.join(ROOT,'static','formula-engine.js'),'utf8');
+const engine=require('./frontend_source').readFrontend('formula-engine.js');
 const sandbox={console,document:{getElementById:()=>null,querySelector:()=>null,querySelectorAll:()=>[],createElement:()=>({}),addEventListener:()=>{}},localStorage:{getItem:()=>null,setItem:()=>{},removeItem:()=>{}}};
-sandbox.window=sandbox;sandbox.addEventListener=()=>{};vm.createContext(sandbox);vm.runInContext(engine,sandbox);vm.runInContext(src,sandbox);
+sandbox.window=sandbox;sandbox.addEventListener=()=>{};require('./frontend_source').prepareContext(sandbox);vm.runInContext(engine,sandbox);vm.runInContext(src,sandbox);
 let passed=0;function check(name,ok){if(!ok)throw Error('FAIL '+name);passed++;}
 const full={date:'16/07/2026',prize1:'123456',front3_1:'789',front3_2:'012',back3_1:'456',back3_2:'111',bottom2:'56',near1_1:'123455',near1_2:'123457',prize2_1:'222222',prize2_2:'222223',prize2_3:'222224',prize2_4:'222225',prize2_5:'222226',prize3_1:'333333',prize3_2:'333334',prize3_3:'333335',prize3_4:'333336',prize3_5:'333337',prize3_6:'333338',prize3_7:'333339',prize3_8:'333340',prize3_9:'333341',prize3_10:'333310',prize4:Array.from({length:50},(_,i)=>String(400000+i)).join(' '),prize5:Array.from({length:100},(_,i)=>String(500000+i)).join(' ')};
 const plan=(rows,mode='ticket')=>({mode,date:'2026-07-16',budget:100,config:{ticketPrice:80,pay2:95,pay3:950},rows});
@@ -32,9 +32,9 @@ const numericQty=sandbox.bpResolvePlan(plan([{num:'123456',field:'ticket',qty:1,
 check('integer numeric-string quantity resolves identically to integer quantity',numericStringQty.status===numericQty.status&&numericStringQty.rows[0].hit===numericQty.rows[0].hit&&numericStringQty.rows[0].returned===numericQty.rows[0].returned&&numericStringQty.spent===numericQty.spent&&numericStringQty.net===numericQty.net);
 const negativeQtyNoPurchase=sandbox.bpResolvePlan(plan([{num:'123456',field:'ticket',qty:-1,stake:0}]),full);
 check('explicit negative quantity still normalizes to zero no-purchase',negativeQtyNoPurchase.status==='resolved'&&negativeQtyNoPurchase.rows[0].hit===false&&negativeQtyNoPurchase.net===0);
-let blob='[]';sandbox.localStorage={getItem:()=>blob,setItem:(k,v)=>{blob=v;}};for(let i=0;i<201;i++)sandbox.bpHistoryAdd({id:`p${i}`});const hist=JSON.parse(blob);check('history retains 201st entry and oldest',hist.length===201&&hist.some(x=>x.id==='p0'));
-const messages=[];sandbox.toast=(m,t)=>messages.push({m,t});sandbox.localStorage={getItem:()=>null,setItem:()=>{throw Error('quota');}};vm.runInContext('_bpMixIntent=true;_bpMixIntentPending=true;',sandbox);let thrown=false;try{sandbox.bpSetBudget(500);sandbox.bpFromMix();}catch{thrown=true;}check('preference storage errors do not escape',!thrown);check('failed Mix preference write clears pending intent',!sandbox._bpMixIntentPending);check('failed Mix preference write clears active intent',!sandbox._bpMixIntent);check('preference failure reported',messages.some(x=>x.t==='error'));
-let saveMsgs=[];sandbox.toast=(m,t)=>saveMsgs.push({m,t});vm.runInContext(`_bpWorkingPlan={mode:'perNumber',date:'2026-07-16',budget:20,risk:'mid',config:{pay2:95,pay3:950},rows:[{num:'15',field:'bottom2',stake:20}],ev:{theoretical:{},adjusted:{},warning:false},totalStake:20}`,sandbox);try{sandbox.bpSaveCurrentPlan();}catch{thrown=true;}check('failed save shows only error, no success',saveMsgs.some(x=>x.t==='error')&&!saveMsgs.some(x=>x.t==='success'));
+let blob='[]';sandbox.localStorage={getItem:()=>blob,setItem:(k,v)=>{blob=v;}};for(let i=0;i<201;i++)sandbox.bpHistoryAdd({id:`p${i}`,date:'2026-07-16',rows:[]});const hist=JSON.parse(blob);check('history retains 201st entry and oldest',hist.length===201&&hist.some(x=>x.id==='p0'));
+const messages=[];sandbox.toast=(m,t)=>messages.push({m,t});sandbox.localStorage={getItem:()=>null,setItem:()=>{throw Error('quota');}};vm.runInContext('LotteryUiState.buyplan.mixIntent=true;LotteryUiState.buyplan.mixIntentPending=true;',sandbox);let thrown=false;try{sandbox.bpSetBudget(500);sandbox.bpFromMix();}catch{thrown=true;}check('preference storage errors do not escape',!thrown);check('failed Mix preference write clears pending intent',!sandbox.LotteryUiState.buyplan.mixIntentPending);check('failed Mix preference write clears active intent',!sandbox.LotteryUiState.buyplan.mixIntent);check('preference failure reported',messages.some(x=>x.t==='error'));
+let saveMsgs=[];sandbox.toast=(m,t)=>saveMsgs.push({m,t});vm.runInContext(`LotteryUiState.buyplan.workingPlan={mode:'perNumber',date:'2026-07-16',budget:20,risk:'mid',config:{pay2:95,pay3:950},rows:[{num:'15',field:'bottom2',stake:20}],ev:{theoretical:{},adjusted:{},warning:false},totalStake:20}`,sandbox);try{sandbox.bpSaveCurrentPlan();}catch{thrown=true;}check('failed save shows only error, no success',saveMsgs.some(x=>x.t==='error')&&!saveMsgs.some(x=>x.t==='success'));
 const missingStakePlans=[null,'',' '].map(stake=>plan([{num:'123456',field:'ticket',qty:0,stake}]));
 for(const missingStakePlan of missingStakePlans){
  const missingStakeResult=sandbox.bpResolvePlan(missingStakePlan,full);

@@ -9,8 +9,8 @@
 //      เต็ม 6 → ท้าย 3 → ท้าย 2 ladder; plan sums to ticketCount × price.
 //   3. Risk presets reshape distribution: เซฟ spreads across distinct ท้าย 2 endings, ใจถึง stacks
 //      tickets on the top candidate, กลาง sits in between.
-//   4. bpComputeTicketEv: theoretical ~ −40% per 80฿ ticket (expected govt payout 48฿); a large
-//      supporting Edge pushes the adjusted line positive and trips the same noise warning as ISSUE-17.
+//   4. bpComputeTicketEv: theoretical return from the govt prize table (expected payout 48฿); a
+//      candidate-set Edge never changes ticket-level probability or monetary EV.
 //   5. bpResolvePlan ticket rows: ที่ 1 / ข้างเคียง / ที่ 2–5 / หน้า 3 / ท้าย 3 / ท้าย 2 each pay the
 //      correct government amount and stack; qty multiplies; a draw missing sanook columns marks those
 //      checks unverifiable (not missed); แก้เอง survives; the ledger stays mode-aware.
@@ -19,8 +19,8 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const engineSrc = fs.readFileSync(path.join(ROOT, 'static', 'formula-engine.js'), 'utf8');
-const appSrcRaw = fs.readFileSync(path.join(ROOT, 'static', 'app.js'), 'utf8');
+const engineSrc = require('./frontend_source').readFrontend('formula-engine.js');
+const appSrcRaw = require('./frontend_source').readFrontend('app.js');
 const appSrc = appSrcRaw.replace(/^startCountdown\(\);\s*$/m, '').replace(/^init\(\);\s*$/m, '');
 const stubEl = new Proxy({}, { get: () => () => stubEl, set: () => true });
 const sandbox = {
@@ -31,7 +31,7 @@ const sandbox = {
 };
 sandbox.window = sandbox;
 sandbox.addEventListener = () => {};
-vm.createContext(sandbox);
+require('./frontend_source').prepareContext(sandbox);
 vm.runInContext(engineSrc, sandbox);
 vm.runInContext(appSrc, sandbox);
 
@@ -103,9 +103,11 @@ const ev = pSafe.ev;
 check('theoretical expected govt payout is 48฿/ticket', ev.theoretical.expectedReturn === 48);
 check('theoretical EV ≈ −32฿/ticket at 80฿', ev.theoretical.perTicket === 48 - 80);
 check('theoretical EV ≈ −40% per baht (≈ 8× แทงรายเลข\'s −5%)', Math.abs(ev.theoretical.per100 - (-40)) < 1e-9);
-check('zero supporting Edge → no noise warning', bpComputeTicketEv(pSafe.rows, CFG, 0).warning === false);
-const evEdge = bpComputeTicketEv(pSafe.rows, CFG, 5); // +5pp on the ท้าย2 ending
-check('a large supporting Edge pushes adjusted EV positive → warning fires', evEdge.adjusted.positive === true && evEdge.warning === true);
+check('zero supporting Edge leaves theoretical ticket EV and warning unchanged', bpComputeTicketEv(pSafe.rows, CFG, 0).warning === false);
+const evEdge = bpComputeTicketEv(pSafe.rows, CFG, 50); // legacy argument is ignored; Edge is not ticket p
+check('large candidate-set Edge does not alter ticket EV or create a profit warning', evEdge.adjusted.perTicket === evEdge.theoretical.perTicket && evEdge.warning === false);
+const cheaperTicket = bpComputeTicketEv(pSafe.rows, { ...CFG, ticketPrice: 60 }, 50);
+check('configured ticket price changes theoretical net dynamically', cheaperTicket.theoretical.perTicket === -12 && Math.abs(cheaperTicket.theoretical.per100 - (-20)) < 1e-9);
 
 // ── 5. resolution against the full government prize table ───────────────────────────
 const prize4Values=Array.from({length:50},(_,i)=>String(400000+i).padStart(6,'0'));
@@ -173,5 +175,13 @@ check('ticket explain shows a group dot for group I', tEx.includes('bp-group-dot
 const ticketHtml = bpEditableTicketHtml(pT);
 check('ticket card renders a why-toggle', ticketHtml.includes('bp-why-toggle'));
 check('ticket card renders a hidden detail block with matching id', ticketHtml.includes('id="bp-tdetail-'));
+const overBudgetTicketPlan = { ...pT, budget: pT.totalStake - 10 };
+const overBudgetTicketHtml = bpEditableTicketHtml(overBudgetTicketPlan);
+check('ticket plan shows the exact budget overrun alongside actual spend and budget', overBudgetTicketHtml.includes(`${pT.ticketCount} ใบ = ${pT.totalStake}฿`) && overBudgetTicketHtml.includes(`จากงบ ${pT.totalStake - 10}฿`) && overBudgetTicketHtml.includes('เกินงบ 10฿'));
+check('ticket plan omits overrun status when actual spend is within budget', !ticketHtml.includes('bp-budget-overrun'));
+const commonUnderBudgetTicket = bpBuildPlan({ mode: 'ticket', budget: 500, risk: 'mid', config: CFGT, ticketSources: [{ num: '123456', label: 'Predict', kind: 'predict' }] });
+const commonUnderBudgetTicketHtml = bpEditableTicketHtml(commonUnderBudgetTicket);
+check('a 500฿ budget at 80฿ per ticket explicitly shows the 20฿ remainder', commonUnderBudgetTicket.totalStake === 480 && commonUnderBudgetTicketHtml.includes('เหลืองบ 20฿'));
+check('ticket plan shows no remaining or overrun status when spend exactly matches budget', !ticketHtml.includes('bp-budget-remaining') && !ticketHtml.includes('bp-budget-overrun'));
 
 console.log(`OK: ${passed} checks passed`);

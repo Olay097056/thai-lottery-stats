@@ -66,9 +66,42 @@ Then open <http://localhost:8509>. The draw cache (`lottery_cache.csv`) is safe 
 | `scraper.py` / `sanook_scraper.py` | Data acquisition for the two sources |
 | `ml_predictor.py` | GBM training/prediction |
 | `static/formula-engine.js` | All formula calculators plus the backtest engine |
-| `static/app.js` / `app.css` | SPA logic and the macOS-dark design system |
+| `data_status.py` | Read-only cache health and report provenance |
+| `static/scripts.json` | Ordered frontend modules; classic scripts with no build step |
+| `static/app.js` / `app.css` | SPA navigation and HyperUI light/dark theme; page scripts listed in `static/scripts.json` |
 | `docs/adr/` | Architecture decision records |
 
 ## A disclaimer worth stating plainly
 
 Lottery draws are random. Nothing in this repository predicts them, and the backtests are here precisely to demonstrate that. This is a data-analysis and statistical-rigor project that happens to use lottery data as its subject — treat any number it produces as entertainment, not advice.
+
+
+## Reading and keeping reports
+
+Every page shares a read-only data status panel showing the latest cached draw,
+coverage by prize category, and the time the cache was checked. Expand the method
+guide on Predict to choose statistical prediction, formulas, Astra, Sigma,
+Decision Center, or Mix. Select the target draw before calculating.
+
+New browser snapshots keep independent copies with generation time and available
+method/settings/input provenance. Recalculating a draw preserves earlier saved
+reports; the Decision Center keeps its first report for each target. Old snapshots
+are readable and labelled when provenance is missing. Use **Export browser reports**
+to keep a JSON backup before clearing browser storage. This exports browser records,
+not Astra's backend SQLite reports. API failures display errors rather than treating
+failed calculations as successful empty results.
+
+Frontend infrastructure now lives in `static/shared/`: one API client, response
+queries, separate source-data/UI state surfaces, charts and saved reports. Public
+module contracts retain the no-build runtime. See
+[`ADR-0006`](docs/adr/0006-frontend-state-and-public-contracts.md) for ownership rules.
+
+### Prospective first-prize experiment
+
+The prediction page now registers five distinct six-digit candidates per method before a future draw. Compare exact prize1 outcomes against a matched uniform baseline, plus normalized Astra v1 log loss. Astra/Sigma component ablations, formula/Mix lists and JSON export are explicit actions. Records live in ignored `astra_runtime/first_prize.sqlite3`; historical holdouts are not re-evaluated. Fano v4 adapts pair-covering to the six ordered Thai digit positions: historical weights cover all 15 position pairs, then deterministic variable-neighborhood search refines all five candidates together with single-digit, multi-digit and whole-number moves. Fano v1's incidence codebook, v2's greedy portfolio, and v3's coordinate-ascent portfolio remain separately visible for future comparisons. The paper's UK Lotto 6/59 construction is not used as a Thai-lottery guarantee. See [ADR 0007](docs/adr/0007-prospective-first-prize.md).
+
+Backtest theme refinement: themed sort controls, gold navigation states, readable status tokens, collapsible diagnostics, board-local summaries and target jump links. Statistical calculations are unchanged.
+
+Astra v1/Sigma prospective records are now visible in both formula Backtest and sidebar Backtest, separately from historical evaluations. Opening these views reads the registry only; registration stays an explicit action on the prediction page.
+
+Frontend audit fixes: failed/partial Decision requests do not create snapshots; date provenance is normalized before comparison; hardcoded Dashboard lift removed. Theme-aware buttons/charts, readable mobile navigation, advanced settings and labeled disclosure controls are in place. Historical saved reports are preserved with legacy metadata caveats. See [verification](docs/design/frontend-audit-fixes-2026-10-14.md).

@@ -7,6 +7,7 @@ from itertools import product
 import math
 import sys
 import unittest
+from unittest.mock import patch
 
 ROOT = __import__("pathlib").Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -48,6 +49,38 @@ class SigmaContractTests(unittest.TestCase):
         for target in ("2026-10-08", "2026-10-07", "20261016", "2026-02-30"):
             with self.subTest(target=target), self.assertRaises(astra.AstraInputError):
                 sigma.build_astra_sigma_report([], target, generated_at=GENERATED)
+
+    def test_report_uses_all_eligible_history_above_200_draws(self):
+        rows = [
+            {
+                "date": (GENERATED.date() - timedelta(days=age)).isoformat(),
+                "prize1": f"{age:06d}",
+                "bottom2": f"{age % 100:02d}",
+            }
+            for age in range(205)
+        ]
+        report = sigma.build_astra_sigma_report(rows, TARGET, generated_at=GENERATED)
+        self.assertEqual(report["settings"]["max_draws"], None)
+        self.assertEqual(report["window_draws"], 205)
+        self.assertEqual(report["training_cutoff_date"], GENERATED.date().isoformat())
+        self.assertEqual(report["categories"]["prize1"]["valid_draws"], 205)
+        self.assertEqual(report["categories"]["bottom2"]["valid_draws"], 205)
+        self.assertEqual(report["categories"]["prize4"]["invalid_draws"], 205)
+
+    def test_full_report_matches_previous_searchsorted_percentile_path_exactly(self):
+        from scripts.astra_auto_fixtures import history
+
+        def previous_percentiles(scores):
+            unique_scores, score_counts = sigma.np.unique(scores, return_counts=True)
+            cumulative_counts = sigma.np.cumsum(score_counts, dtype=sigma.np.int64)
+            positions = sigma.np.searchsorted(unique_scores, scores, side="right") - 1
+            return cumulative_counts[positions].astype(sigma.np.float64) / scores.size
+
+        rows = history()
+        with patch.object(sigma, "_base_percentile_component", side_effect=previous_percentiles):
+            previous = sigma.build_astra_sigma_report(rows, TARGET, generated_at=GENERATED)
+        optimized = sigma.build_astra_sigma_report(rows, TARGET, generated_at=GENERATED)
+        self.assertEqual(optimized, previous)
 
     def test_minimum_valid_draws_and_leading_zero_strings(self):
         draws = [(age, (f"{age % 100:02d}",)) for age in range(19)]

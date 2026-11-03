@@ -1,6 +1,6 @@
 # แผนพัฒนา — Thai Lottery Intelligence Dashboard
 
-> อัปเดตล่าสุด: 2026-10-08 · astra-v1 + automation อยู่ในหัวข้อแยกด้านล่าง · Phase 1–3.7 เสร็จสมบูรณ์ · Phase 4 (FABLE) ถูกยกเลิก · Phase 5 (จักรพรรดิ/จักรพรรดิทองคำ) เสร็จสมบูรณ์ (รวม candidate diversity fix รอบ 2 — round-robin ต่อหลัก) · Phase 6 (เจ้าสัว J1/J2 + ป้ายทดลองบน Picks/เลขแนะนำ) เสร็จสมบูรณ์ · **Phase 7 (จัดชุดซื้อ/Buy Plan — 2 โหมด, EV คู่, ledger บาทจริง) เสร็จสมบูรณ์** · **Phase 8 (Hermes Pool 1-4 — สูตรทายเลขเต็ม 6 หลัก เป้า pool รางวัล 1-4 ถ่วงน้ำหนักมูลค่าเงิน 5:2:1, ทดลองถาวรตาม ADR-0003) เสร็จสมบูรณ์** · **Phase 9 (Hermes ท้าย3 ×2 — HM2 ใต้ดิน ท้าย 3 ของ pool 1-4 + HM3 ทางการ เลขท้าย 3 ตัว 4,000฿, ทดลองถาวรตาม ADR-0003) เสร็จสมบูรณ์** · frontend แยกไฟล์ + จัดระเบียบ path เสร็จ · หน้า "สรุปงวดนี้" (Decision Center) ปรับปรุงใหม่ (ตัดซ้ำซ้อน + track record + edge badge) เสร็จสมบูรณ์ — ดู [CHANGELOG.md](CHANGELOG.md) สำหรับประวัติละเอียด
+> อัปเดตล่าสุด: 2026-10-16 · astra-v1 + automation อยู่ในหัวข้อแยกด้านล่าง · Phase 1–3.7 เสร็จสมบูรณ์ · Phase 4 (FABLE) ถูกยกเลิก · Phase 5 (จักรพรรดิ/จักรพรรดิทองคำ) เสร็จสมบูรณ์ (รวม candidate diversity fix รอบ 2 — round-robin ต่อหลัก) · Phase 6 (เจ้าสัว J1/J2 + ป้ายทดลองบน Picks/เลขแนะนำ) เสร็จสมบูรณ์ · **Phase 7 (จัดชุดซื้อ/Buy Plan — 2 โหมด, EV คู่, ledger บาทจริง) เสร็จสมบูรณ์** · **Phase 8 (Hermes Pool 1-4 — สูตรทายเลขเต็ม 6 หลัก เป้า pool รางวัล 1-4 ถ่วงน้ำหนักมูลค่าเงิน 5:2:1, ทดลองถาวรตาม ADR-0003) เสร็จสมบูรณ์** · **Phase 9 (Hermes ท้าย3 ×2 — HM2 ใต้ดิน ท้าย 3 ของ pool 1-4 + HM3 ทางการ เลขท้าย 3 ตัว 4,000฿, ทดลองถาวรตาม ADR-0003) เสร็จสมบูรณ์** · frontend แยกไฟล์ + จัดระเบียบ path เสร็จ · หน้า "สรุปงวดนี้" (Decision Center) ปรับปรุงใหม่ (ตัดซ้ำซ้อน + track record + edge badge) เสร็จสมบูรณ์ — ดู [CHANGELOG.md](CHANGELOG.md) สำหรับประวัติละเอียด
 
 ## astra automation — ส่งมอบในเครื่องแล้ว (2026-10-08)
 
@@ -21,6 +21,7 @@
 - **ตรวจแล้ว:** Python 126 tests ใน 8 suites ผ่าน; astra engine 38, API/CLI 10; UI 448 synthetic cases; Node 29/30 ไฟล์ผ่าน โดยไฟล์ที่ไม่ผ่านเป็น docs contract เดิม 2 ข้อใน `CLAUDE.md` ที่ยังไม่มีสิทธิ์แก้
 - **รีวิว:** แก้ numeric tie-collapse ตาม independent review โดยพิสูจน์ RED→GREEN กับ exhaustive 6 หลัก; ไม่เปลี่ยนสูตร/ค่าคงที่/กติกาเรียงคะแนน และ focused re-review อนุมัติแล้ว
 - **คำนวณแล้ว:** รันครั้งเดียวสำหรับงวดเป้าหมายที่ล็อกใน PRD ได้ครบ 25 เลข ทุกหมวดใช้ cutoff 1 กันยายน 2569; หน้าต่าง 200 งวด หมวดท้าย3 ใช้ได้ 199 งวด/ข้าม 1 งวด ส่วนหมวดอื่นใช้ได้ 200 งวด มีคำเตือนข้อมูลเก่าเกิน 35 วัน รายงานและ audit อยู่ `.scratch/astra-2026-10-08/`; cache hash ก่อน/หลังตรงกัน ไม่ refresh/backtest/tune และรอเจ้าของตรวจผลก่อน commit/push/deploy
+- **อัปเดต 2026-10-16:** รายงานที่ล็อกไว้ด้านบนยังเป็น snapshot ประวัติศาสตร์ 200 งวดและไม่ถูกเขียนทับ; การคำนวณ Astra v1 / Astra-Σ ปัจจุบันใช้แคชครบ 784 แถว โดยรายงานระบุขอบเขตเต็มและจำนวนที่ใช้จริงแยกตามหมวด ผ่าน API GET แบบอ่านอย่างเดียวบนแคชปัจจุบันใช้ประมาณ 120 ms สำหรับ v1 และ 2.04 วินาทีสำหรับ Sigma; รายละเอียดและ regressions อยู่ `.scratch/three-tabs-ux-2026-10-16/issues/43-use-all-local-history-in-astra.md`.
 - **แยกจากงานเก่า:** T04 ปิดเพราะหลักฐานไม่พอ/ไม่ promote; T07 prospective evidence และ T05 sealed holdout ไม่ใช่เงื่อนไขให้ astra ได้ป้ายแนะนำ และไม่ได้ถูกเปิดใหม่
 
 ## สถานะปัจจุบัน
@@ -28,7 +29,7 @@
 | ส่วน | สถานะ |
 |---|---|
 | Database | prize1–3 ครบ 777 งวด (myhora) · prize4/5 + near1/2/3 ครบ 456 งวด (sanook, ~2549–ปัจจุบัน) |
-| UI | macOS dark skin · 7 หน้า: Dashboard / ตารางความถี่ / ทำนาย-สูตร / ไม่รู้ซื้ออะไรดี (Mix) / จัดชุดซื้อ (Buy Plan) / ผลย้อนหลัง / Backtest |
+| UI | HyperUI light-first + dark · 7 หน้า: Dashboard / ตารางความถี่ / ทำนาย-สูตร / ไม่รู้ซื้ออะไรดี (Mix) / จัดชุดซื้อ (Buy Plan) / ผลย้อนหลัง / Backtest |
 | สูตร | A–H + สายมู (ใช้ผลงวดก่อน 1 งวด) + **I จักรพรรดิ/จักรพรรดิทองคำ** (ไม่มี promotion gate) + **J เจ้าสัว J1/J2** (ค้นหาระบบ, ทั้งคู่ติดป้ายทดลองถาวรตาม ADR-0003) |
 
 ## กติกาคงที่ (ห้ามละเมิด)
@@ -93,6 +94,25 @@ FABLE (สูตรที่ใช้ rolling history หลายงวด + po
 แตกเป้าท้าย 3 ตัวจากผลจริงของ HM (PRD: `PRD-hm2-hermes-tail3.md`, grilling ครบ 12 ข้อ) — HM ถูก 2/457 (6.6× chance) แต่เป้าเต็ม 6 หลักโหดเกินไป → เป้าซอฟต์ลง 1,000 เท่า 2 สนาม
 
 - **HM2 (ใต้ดิน):** `_hermesTail3Formula` — weighted digit freq เฉพาะตำแหน่งท้าย (3,4,5) ของ pool 1-4 (65 เลข, 5:2:1) → ประกอบ 3 หลัก 10 ชุด (K=8) · field ใหม่ `pool14_tail3` (board "Pool 1-4", baseline ~48.3%/งวด — คาด ~221 hits/457) · mark "ใต้ดิน" ติดชื่อตามเจ้าของสั่ง (การ์ด note "สำหรับหวยใต้ดิน (ท้าย 3 ตัว)")
-- **HM3 (ทางการ):** `_hermesOfficialTail3Formula` — กระจกเงา (ตำแหน่งหน้า 0,1,2) → ยิง field `back3` เดิม (board ที่ C3 อยู่ — ไม่สร้าง field ใหม่) · เลขท้าย 3 ตัวทางการออกรางวัลแยกอิสระ uniform → ungateable by construction
+- **HM3 (ทางการ):** `_hermesOfficialTail3Formula` — กระจกเงา (ตำแหน่งหน้า 0,1,2) → วัดด้วย field `back3exact` และ baseline สองผลรางวัล (≈1.99% สำหรับ 10 ชุด) · เลขท้าย 3 ตัวทางการออกรางวัลแยกอิสระ uniform → ungateable by construction
 - **ผลจริง (457 งวด):** HM2 203 hits (คาด 220.9) = 0.92×, edge −3.9pts (noise) · HM3 9 hits (คาด 9.1) = 0.99× เป๊ะ — ยืนยันฟิสิกส์; โน้มว่า 6.6× ของ HM คือโชค
 - **เทส:** `scripts/test_hermes_tail3.js` ใหม่ (49 checks) + อัปเดต `test_hermes_pool14.js` (การ์ด 3 ใบ) · suite 17 ไฟล์เขียว · browser verify ครบ · bump `?v=hermes2 → hermes3`
+
+
+## Project usability and maintenance — 2026-10-14
+
+- Shared read-only cache/category status and method selection guide across the SPA.
+- Independent browser report snapshots, first-per-target Decision Center record,
+  available generation/settings/input provenance, explicit legacy gaps and JSON export.
+- Frontend separated into ordered classic-script modules with `scripts.json` and
+  test source reader; boot last, shared cache-bust version for every asset.
+- Safe structured whole-endpoint API errors and explicit partial Predict reports.
+- README English/Thai and CLAUDE architecture documentation updated to match runtime.
+- Scoring, formula constants, existing historical evaluations and holdout rules are unchanged.
+
+
+## Frontend architecture ownership — 2026-10-14
+
+Shared transport/charts/reports, separate server/UI stores, private Astra state,
+Decision Center domain entry point and source/runtime ownership checks implemented.
+Contracts and classic-script compatibility are recorded in ADR-0006.

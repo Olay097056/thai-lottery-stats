@@ -12,7 +12,7 @@ const path = require('path');
 const vm = require('vm');
 
 const ENGINE_PATH = path.join(__dirname, '..', 'static', 'formula-engine.js');
-const src = fs.readFileSync(ENGINE_PATH, 'utf8');
+const src = require('./frontend_source').readFrontend('formula-engine.js');
 
 function extract(name) {
   const re = new RegExp('function ' + name + '\\([^)]*\\)\\{', 'm');
@@ -34,7 +34,7 @@ const code = [
 ].join('\n\n');
 
 const sandbox = {};
-vm.createContext(sandbox);
+require('./frontend_source').prepareContext(sandbox);
 vm.runInContext(code, sandbox);
 const { _dsumValue, _claudeFormulas, _tycoonBottom2Formula } = sandbox;
 
@@ -165,7 +165,7 @@ if (cardNoTrust.includes('trust-badge')) {
 console.log('OK: _mkFormulaCard renders a ทดลอง badge only when a trust value is explicitly passed');
 
 // --- 8. _renderBtTable (app.js) renders the trust badge for a ทดลอง row and not for others ---
-const appSrc = fs.readFileSync(path.join(__dirname, '..', 'static', 'app.js'), 'utf8');
+const appSrc = require('./frontend_source').readFrontend('app.js');
 function extractFrom(fileSrc, name) {
   const re = new RegExp('function ' + name + '\\([^)]*\\)\\{', 'm');
   const m = re.exec(fileSrc);
@@ -189,17 +189,17 @@ const btSandbox = {
 };
 btSandbox.window = btSandbox;
 vmFull.createContext(btSandbox);
-vmFull.runInContext(src, btSandbox); // full formula-engine.js: globals _btRowData etc, _formulaBtSummaryHtml, _formulaMappingBannerHtml
+vmFull.runInContext(src, btSandbox); // full formula-engine.js: globals LotteryServerData.formula.backtestRows etc, _formulaBtSummaryHtml, _formulaMappingBannerHtml
 vmFull.runInContext(extractFrom(appSrc, 'escHtml'), btSandbox);
 vmFull.runInContext(extractFrom(appSrc, '_renderBtTable'), btSandbox);
-// _btRowData etc are `let`-declared module globals inside the vm's lexical scope, not own
+// LotteryServerData.formula.backtestRows etc are `let`-declared module globals inside the vm's lexical scope, not own
 // properties of the sandbox object — must assign via vm-executed code, not host-side property sets.
 const fixtureRows = [
   { name: 'J1 เจ้าสัว · ท้าย2', group: 'J · เจ้าสัว', groupColor: '#10b981', field: 'bottom2', typeLabel: 'เต็ม 2หลัก', board: '2-digit exact', total: 100, hits: 1, pct: 1, baseP: 1, baseLabel: '1/100', edge: 0, ciLow: 0, ciHigh: 2, subHits: 0, subTotal: 0, subPct: null, rolling: {}, edge50: null, edge100: null, edge200: null, degraded: false, trust: 'ทดลอง' },
   { name: 'D1 สายธาร · ท้าย2', group: 'D · Claude', groupColor: '#22d3ee', field: 'bottom2', typeLabel: 'เต็ม 2หลัก', board: '2-digit exact', total: 100, hits: 5, pct: 5, baseP: 10, baseLabel: '10/100', edge: -5, ciLow: 1, ciHigh: 9, subHits: 0, subTotal: 0, subPct: null, rolling: {}, edge50: null, edge100: null, edge200: null, degraded: false, trust: null },
 ];
 vmFull.runInContext(
-  `_btRowData=${JSON.stringify(fixtureRows)};_btSortKey='edge';_btSortAsc=false;_btTested=100;_btFieldCheck=null;_renderBtTable();`,
+  `LotteryServerData.formula.backtestRows=${JSON.stringify(fixtureRows)};LotteryUiState.formula.sortKey='edge';LotteryUiState.formula.sortAsc=false;LotteryServerData.formula.testedDraws=100;LotteryServerData.formula.backtestFieldCheck=null;_renderBtTable();`,
   btSandbox
 );
 capturedHtml = btStubEl.innerHTML;

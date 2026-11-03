@@ -118,6 +118,11 @@ def _validate_snapshot(snapshot):
                 'schema_version', 'formula', 'version', 'trust', 'target_date', 'generated_at',
                 'training_cutoff_date', 'source', 'window_draws', 'settings', 'warnings', 'categories'}:
             raise ValueError
+        settings = report['settings']
+        current_settings = dict(astra._SETTINGS)
+        legacy_settings = {**current_settings, 'max_draws': 200}
+        legacy_window = settings == legacy_settings and type(settings.get('max_draws')) is int
+        current_window = settings == current_settings and settings.get('max_draws') is None
         if (snapshot['formula_version'] != 'astra-v1' or snapshot['source'] != 'sanook'
                 or snapshot['calendar_source'] != 'glo' or not source <= generated.date() < target
                 or any(not isinstance(snapshot[k], str) or not re.fullmatch(r'[0-9a-f]{64}', snapshot[k])
@@ -127,9 +132,10 @@ def _validate_snapshot(snapshot):
                 or report['target_date'] != snapshot['target_date']
                 or report['generated_at'] != snapshot['captured_at']
                 or report['training_cutoff_date'] != snapshot['source_draw_date']
-                or report['source'] != 'existing_local_cache' or report['settings'] != dict(astra._SETTINGS)
-                or any(type(v) not in (int, float) for v in report['settings'].values())
-                or type(report['window_draws']) is not int or not 1 <= report['window_draws'] <= 200
+                or report['source'] != 'existing_local_cache' or not (current_window or legacy_window)
+                or any(type(v) not in (int, float) for k, v in settings.items() if k != 'max_draws')
+                or type(report['window_draws']) is not int or report['window_draws'] < 1
+                or (settings['max_draws'] is not None and report['window_draws'] > settings['max_draws'])
                 or not isinstance(report['warnings'], list)
                 or any(not isinstance(w, str) or not w.strip() for w in report['warnings'])
                 or set(report['categories']) != {c[0] for c in astra._CATEGORIES}):

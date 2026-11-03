@@ -41,7 +41,7 @@ check('CLAUDE launch instructions match the checked-in launch configuration', ()
 
 check('CLAUDE page count matches the pages in the SPA shell', () => {
   const html = read('static/index.html');
-  const actual = [...html.matchAll(/id=["']page-[^"']+["']/g)].length;
+  const actual = [...html.matchAll(/<div\b[^>]*class="page(?: active)?"[^>]*id="page-[^"]+"/g)].length;
   const shellRow = read('CLAUDE.md').split(/\r?\n/).find((line) => /^\|\s*`static\/index\.html`\s*\|/.test(line)) || '';
   const match = shellRow.match(/(\d+)\s+pages?/i);
   if (!match) throw new Error('CLAUDE.md Key Files row does not state a page count for static/index.html');

@@ -19,7 +19,9 @@ HM · Hermes Pool 1-4 (เลขเต็ม 6 หลัก, PRD-hermes-pool-1-4
 - HM2: pool 1–4 = 66 เลข → ท้าย 3 ตัวไม่ซ้ำที่คาดหวัง ≈ 1000×(1−0.999^66) ≈ **~64/1000** ต่องวด → ต่อ candidate p1 ≈ 0.0639 → 10 ชุด **baseP ≈ 48.3%/งวด** → คาด ~221 ครั้ง · SE ≈ 2.3% ที่ 457 งวด (2σ ≈ ±4.6pts) → **edge จะอยู่ใน noise — ไม่ควรคาดหวัง edge ชัด**; จุดขายคือความถี่ (ถูกบ่อยกว่า HM ~700 เท่า)
 - HM3: เลขท้าย 3 ตัวทางการ = **การออกรางวัลแยกอิสระ uniform 000–999** (ไม่ใช่ท้ายของรางวัลที่ 1 — เช็คจากข้อมูล: `back3_1`/`back3_2` เป็นคอลัมน์แยก) → **ไม่มีสัญญาณใดเอาชนะ chance ได้โดยโครงสร้าง** — คาดถูก ~9 ครั้ง/457 งวด (2/1000 ต่อ candidate); "gate" ใดๆ = ละคร (ADR-0003 verdict แรงสุด) → สูตรนี้คือ **สลากบนสลาก**: เลขที่ Hermes เลือกให้ ยิงรางวัล 4,000฿ จริงได้ แต่โอกาส = chance ล้วน — ต้องรายงานแบบนี้ใน CHANGELOG เสมอ
 
-**หมายเหตุ baseline board back3 เดิม (ไม่แก้ — กติกาคงที่ข้อ 1):** `FORMULA_BT_FIELD_META.back3` ให้ baseP = k/10 (k=10 → 1.0%) ซึ่ง**ต่ำกว่าความจริง** 2k/1000 = 2.0% (รางวัลมี 2 ตัว) — edge ของ HM3 ในตารางจะดูบวม ~1pt; รับรู้ไว้ในรายงาน อย่าไปแก้ของเดิม
+**หมายเหตุ metric backtest (แก้แล้ว 2026-10-14):** HM3 ใช้ field `back3exact` ซึ่งเทียบเลข 3 หลักตรงกับผลทางการ 2 เลข และใช้ baseline โอกาสถูกอย่างน้อยหนึ่งเลข `1-(1-k/1000)^2` (ประมาณ 1.99% เมื่อ k=10) ส่วน C3 แยกเลข 3 หลักตรงกับเลข 2 หลักท้ายของรางวัลเป็นคนละแถวและคนละ baseline แล้ว ห้ามใช้ legacy field `back3` แบบผสมความยาวเพื่อคำนวณ Edge ต่อ
+
+ข้อกำหนดเดิมใน PRD ด้านล่างบันทึกการตัดสินใจตอนเริ่มพัฒนา; ข้อกำหนด metric ปัจจุบันอยู่ในหมายเหตุนี้และ supersede การใช้ baseline `back3` แบบเดิม
 
 ## Solution
 
@@ -35,11 +37,11 @@ HM · Hermes Pool 1-4 (เลขเต็ม 6 หลัก, PRD-hermes-pool-1-4
 ### HM3 · Hermes ท้าย3 ทางการ (✅ เป้าอนุมัติ — 🔶 D8/D9 กลไกตาม rec)
 1. **เป้า = เลขท้าย 3 ตัวทางการ**: field **`back3` เดิม** (board '3-digit exact' — C3 ยิง board นี้อยู่แล้ว) → **ไม่ต้องสร้าง field/board ใหม่** (กติกาคงที่ข้อ 1 ไม่ถูกรบกวน: ใช้ hit logic เดิมเป๊ะ)
 2. **`_hermesOfficialTail3Formula(prevRow, topN=10)`** (🔶 D9 rec) — กลไก Hermes signature เดิม แต่**ส่องตำแหน่งหน้า (0,1,2)** ของ pool 1-4 (กระจกเงาของ HM2 ที่ส่องท้าย): weighted freq 5:2:1 → จัดอันดับ → `_imperialRoundRobin` ประกอบ 3 หลัก — เหตุผล: (a) ต่างจาก HM2 จริง (คนละตำแหน่ง → คนละ ranking → คนละ candidate — user story 6) (b) คงลายเซ็น "อินพุต 1 งวด + freq ล้วน ไม่เลขคณิต" ของตระกูล (c) อธิบายการ์ดได้: "หลักหน้าของรางวัลใหญ่ (2/3) คือน้ำหนักที่ Hermes ตาม — ฝั่งกระจกของ HM2" — **ย้ำอีกครั้ง: เป้าเป็น uniform draw → กลไกคือ branding/consistency ไม่ใช่ edge จริง** (PRD นี้พูดตรงๆ ไว้แล้ว)
-3. **`baseline` = ของ board back3 เดิม (k/10)** — ไม่แก้ meta เดิม; รายงาน edge ตามจริงโดยรับรู้ bias ~1pt
+3. **ประวัติการตัดสินใจเดิม:** ตอนเริ่มพัฒนาใช้ baseline `back3` เดิม (k/10); ถูก supersede แล้วโดยการแยก field ตามเป้าหมายและใช้สอง-slot baseline ในหมายเหตุด้านบน
 4. **ชื่อ 'HM3 · Hermes ท้าย3 ทางการ'** — ต่างกับ HM2 ชัดเจนที่ชื่อ (ทางการ vs ใต้ดิน)
 
 ### ร่วมกัน
-- **Batch push** ทั้งคู่: `{name:'HM2 · Hermes ท้าย3 ใต้ดิน'|'HM3 · Hermes ท้าย3 ทางการ', group:'HM', preds:<formula>(prev,10), field:'pool14_tail3'|'back3', baseline:10, trust:'ทดลอง'}` — push เฉพาะ preds ไม่ว่าง (งวดก่อนมี pool 1–4 ครบ) เหมือน HM
+- **Batch push** ทั้งคู่: `{name:'HM2 · Hermes ท้าย3 ใต้ดิน'|'HM3 · Hermes ท้าย3 ทางการ', group:'HM', preds:<formula>(prev,10), field:'pool14_tail3'|'back3', baseline:10, trust:'ทดลอง'}` — สูตร batch ยังคง interface เดิม; evaluator แปลง HM3 `back3` เป็น `back3exact` ก่อนวัดผล
 - **UI**: การ์ดทำนาย tab (กลไกเดิม) + **การ์ดอธิบายวิธีคิด tab สูตรคำนวณ** (เข้า `hermesCards` — data-group=\"HM\" มาจาก `_formulaGroupKey` ที่ `startsWith('HM')→'HM'` อยู่แล้ว) + แถว backtest (HM2 board 'Pool 1-4' typeLabel 'ท้าย3 ใต้ดิน' / HM3 board '3-digit exact') + สรุป 'สูตร Hermes (pool 1-4)' รวม HM+HM2+HM3
 - **`_formulaTargetLabel`**: เพิ่ม pattern เรียงลำดับ — `if(/ท้าย3.*ทางการ/.test(title))return 'Target: เลขท้าย 3 ตัวทางการ (2 รางวัล · 4,000฿)';` → `if(/ท้าย3/.test(title))return 'Target: ท้าย 3 ตัว pool 1-4 (ใต้ดิน · ~64/1000)';` → (เดิม `/Pool 1-4/` สำหรับ HM) — กัน label หลุด
 - **Badge**: ใช้ `_GRP['HM']` เดิม — **ไม่เพิ่ม group ใหม่** → `test_bp_group_map_sync.js` เขียวโดยไม่แก้
@@ -50,7 +52,7 @@ HM · Hermes Pool 1-4 (เลขเต็ม 6 หลัก, PRD-hermes-pool-1-4
 2. ในฐานะเจ้าของ ฉันต้องการให้ HM2 **mark ชัดว่าเป็นเกมใต้ดิน** (ในชื่อสูตร + การ์ดอธิบาย) เพื่อไม่ให้คนใช้เข้าใจผิดว่าเป็นรางวัลทางการ
 3. ในฐานะเจ้าของ ฉันต้องการให้ HM3 ผลิตเลขท้าย 3 ตัว 10 ชุดต่องวด (กลไก Hermes เดิม ส่องหลักหน้า) เพื่อยิง **รางวัลเลขท้าย 3 ตัวทางการ (4,000฿)** จริง — "สู้ไปเลย" บนสนามทางการ
 4. ในฐานะเจ้าของ ฉันต้องการเห็นการ์ดทั้งคู่บนหน้า ทำนาย + tab สูตรคำนวณ (steps ไทย) + ป้าย ทดลอง + กลุ่มสี HM เดียวกัน
-5. ในฐานะเจ้าของ ฉันต้องการแถว backtest: HM2 ใต้ board 'Pool 1-4' (field ใหม่ `pool14_tail3`, baseline ~64/1000), HM3 บน board '3-digit exact' เดิม (field `back3`) — ไม่แตะ metrics เดิม (กติกาคงที่ข้อ 1)
+5. ในฐานะเจ้าของ ฉันต้องการแถว backtest: HM2 ใต้ board 'Pool 1-4' (field ใหม่ `pool14_tail3`, baseline ~64/1000), HM3 เป็น exact-3 match ที่เทียบผลทางการสองเลข (`back3exact` หลัง normalize) และเลขท้ายสองหลักแยกอีก field — ไม่รวมเป้าคนละชนิดใน Edge เดียวกัน
 6. ในฐานะเจ้าของ ฉันต้องการให้ candidate HM2/HM3 ต่างจากกันและจาก HM/I1/I2/J2/Mix จริง (เทส fixture บังคับ) — HM3 ไม่ใช่แค่ HM2 copy
 7. ในฐานะเจ้าของ ฉันต้องการให้ทั้งคู่มีส่วนร่วมใน Picks/เลขแนะนำ ระดับ J2 (badge ทดลอง propagate ผ่าน group 'HM'; ไม่แสดงการ์ด เลขแนะนำ — pool6-family exclusion เดิม) และ **ไม่**ปน 'H' ของมิสเตอร์ซี
 8. ในฐานะเจ้าของ ฉันต้องการให้ตารางเปรียบเทียบ Board Pool 1-4 เดิม (hit-set 66 เลขเต็ม 6 หลัก) **ข้ามแถว preds 3 หลัก** (HM2/HM3 เทียบไม่เข้าเกณฑ์) เพื่อไม่ให้โชว์ 0/457 หลอกตา
@@ -68,7 +70,7 @@ HM · Hermes Pool 1-4 (เลขเต็ม 6 หลัก, PRD-hermes-pool-1-4
 **🔶 rec รออนุมัติ (คำถามเดียวสุดท้าย):** — ✅ **อนุมัติครบ 2026-08-11 (เจ้าของ: "ลุย")**
 - D3: HM2 ใช้เฉพาะตำแหน่งท้าย (3,4,5) — ✅ ใช่ (ตำแหน่งหน้าเป็น noise สำหรับเป้าท้าย)
 - D5: topN = 10 ทั้งคู่ — ✅ ใช่ (เท่ากันทั้งตระกูล — เปรียบเทียบแฟร์)
-- D8: HM3 ใช้ field `back3` เดิม (ไม่สร้าง field ใหม่) — ✅ ใช่ (กติกาคงที่ข้อ 1 + C3 อยู่ board นี้แล้ว)
+- D8: การตัดสินใจเดิมให้ใช้ field `back3` สำหรับ backtest — superseded: สูตร batch เดิมยังคงส่ง `back3`, แต่ evaluator แปลงเลข 3 หลักเป็น `back3exact` และเลข 2 หลักท้ายเป็น `back3_suffix2` ก่อนวัดผล
 - D9: HM3 กลไก = weighted freq ตำแหน่งหน้า (0,1,2) — ✅ ใช่ (กระจกเงา HM2, candidate ต่างจริง)
 - D10: ใต้ดิน marker เพิ่มเติมนอกชื่อ: การ์ดอธิบาย note 'สำหรับหวยใต้ดิน (ท้าย 3 ตัว)' + CHANGELOG — ✅ ใช่
 
@@ -78,7 +80,7 @@ HM · Hermes Pool 1-4 (เลขเต็ม 6 หลัก, PRD-hermes-pool-1-4
 - `_hermesTail3Formula(prevRow, topN=10)`: pool = `_buildPrize1to4Pool(prevRow)`; `counts[3..5][digit] += w`; ranked → `_imperialRoundRobin(ranked.map(r=>r.map(e=>e.digit)), topN, 8)`
 - `_hermesOfficialTail3Formula(prevRow, topN=10)`: เดียวกันแต่ `counts[0..2][digit] += w`
 - `FORMULA_BT_FIELD_META.pool14_tail3` (ตาม D1): p1 คงที่ **0.06390** (1−0.999^66) ประกาศล่วงหน้า
-- `_formulaHitForField`: branch `pool14_tail3` → `pools.pool14Tail3Set?.has(n)`; HM3 ใช้ branch `back3` เดิม (ไม่แตะ)
+- `_formulaHitForField`: branch `pool14_tail3` → `pools.pool14Tail3Set?.has(n)`; HM3 ใช้ exact-match branch `back3exact` หลัง normalize
 - backtest loop: `const pool14Tail3Set=new Set([...pool14Set].map(v=>v.slice(-3)));` + bucket `s.pool14t3={hits,total}` (วัดซ้ำทุก producer — แยกจาก s.pool14)
 - **ตารางเปรียบเทียบ s.pool14 เดิม: guard `p.length===6`** ก่อน `pool14Set.has(p)` — preds 3 หลัก (HM2/HM3/C3 ฯลฯ) ถูกข้าม ไม่โชว์ 0/457 หลอกตา (User Story 8)
 - `_formulaTargetLabel`: 3 pattern ใหม่เรียงก่อนหน้า (ทางการ → ท้าย3 → Pool 1-4 เดิม)
@@ -94,10 +96,10 @@ HM · Hermes Pool 1-4 (เลขเต็ม 6 หลัก, PRD-hermes-pool-1-4
 - `_hermesOfficialTail3Formula`: 10 ชุด, K=8; **เปลี่ยน digit ตำแหน่ง 3–5 → output ไม่เปลี่ยน** (พิสูจน์ว่าใช้เฉพาะหน้า); weighted ranking ตรงมือคำนวณ
 - Distinctness: HM3 (front) ต่างจาก HM2/HM/I1/I2/J2/Mix เต็มชุด (fixture เดียวกัน); **HM2 ซ้อนกับ tail3(HM) ได้ ≤ 8 ชุด (lap=0 — ตามหมายเหตุคณิตศาสตร์) แต่ ≠ HM3 และ ≠ I1/I2/J2/Mix**
 - Skip: pool ว่าง → `[]` ทั้งคู่ (ไม่มี fallback)
-- Backtest integration: แถว HM2 field `pool14_tail3` (typeLabel 'ท้าย3 ใต้ดิน', board 'Pool 1-4') + แถว HM3 field `back3`; group:'HM', trust ทดลอง; hit ตรง fixture (HM2 vs pool14Tail3Set, HM3 vs back3_1/back3_2)
+- Backtest integration: แถว HM2 field `pool14_tail3` (typeLabel 'ท้าย3 ใต้ดิน', board 'Pool 1-4') + แถว HM3 normalized เป็น `back3exact`; group:'HM', trust ทดลอง; hit ตรงผลทางการ `back3_1/back3_2`
 - Target label: HM2 → 'Target: ท้าย 3 ตัว pool 1-4 (ใต้ดิน · ~64/1000)'; HM3 → 'Target: เลขท้าย 3 ตัวทางการ (2 รางวัล · 4,000฿)'; HM เดิม → label เดิมไม่เปลี่ยน
 - Comparison-column guard: fixture preds 3 หลัก → ไม่ถูกนับใน s.pool14 (ไม่โชว์ 0/457)
-- Regression: suite เดิมเขียวทั้งหมด — `test_hermes_pool14.js`, `test_bp_group_map_sync.js` (ไม่แตะ _GRP), `test_experimental_badge_propagation.js`, `test_reco_producer_groups.js`, `test_tycoon_formula.js` (C3/back3 เดิมไม่เปลี่ยน)
+- Regression: เดิมรักษาสูตร C3 และ prediction output ไว้; evaluator ปัจจุบันแยก C3 ตามความยาวก่อนคำนวณ baseline เพื่อไม่ผสม exact-3 กับ suffix-2
 - Browser verify (workflow โปรเจกต์): การ์ด HM2 (note ใต้ดิน) + HM3 บน ทำนาย; dropdown กลุ่ม HM มี 3 สูตร; การ์ดอธิบายวิธีคิด tab สูตรคำนวณ (steps ครบ, data-group=\"HM\"); แถว backtest 2 แถวใหม่ + คอลัมน์เปรียบเทียบเดิมไม่โชว์ 0/457 หลอกตา; ไม่มี console error; cache-bust มีผล
 
 ## Out of Scope

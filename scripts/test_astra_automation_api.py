@@ -132,6 +132,21 @@ class AutomationApiTests(unittest.TestCase):
             self.assertIs(main.get_df(), second)
             self.assertEqual(loader.call_count, 2)
 
+    def test_dataframe_cache_loads_when_file_appears_after_missing_cache_error(self):
+        import pandas as pd
+        available = pd.DataFrame([{'prize1': '000003'}])
+        cache = self.root / 'lottery_cache.csv'
+        with patch.object(main, 'BASE_DIR', self.root), patch.object(main, '_df_cache', None), \
+             patch.object(main, '_df_signature', None, create=True), \
+             patch.object(main, 'load_data', return_value=available) as loader:
+            with self.assertRaises(main.ResultCacheMissing):
+                main.get_df()
+            self.assertIsNone(main._df_signature)
+            loader.assert_not_called()
+            write_cache(cache, history())
+            self.assertIs(main.get_df(), available)
+            loader.assert_called_once_with(allow_scrape=False)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -17,8 +17,8 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const engineSrc = fs.readFileSync(path.join(ROOT, 'static', 'formula-engine.js'), 'utf8');
-const appSrcRaw = fs.readFileSync(path.join(ROOT, 'static', 'app.js'), 'utf8');
+const engineSrc = require('./frontend_source').readFrontend('formula-engine.js');
+const appSrcRaw = require('./frontend_source').readFrontend('app.js');
 const appSrc = appSrcRaw.replace(/^startCountdown\(\);\s*$/m, '').replace(/^init\(\);\s*$/m, '');
 
 const stubEl = new Proxy({}, { get: () => () => stubEl, set: () => true });
@@ -30,7 +30,7 @@ const sandbox = {
 };
 sandbox.window = sandbox;
 sandbox.addEventListener = () => {};
-vm.createContext(sandbox);
+require('./frontend_source').prepareContext(sandbox);
 vm.runInContext(engineSrc, sandbox);
 vm.runInContext(appSrc, sandbox);
 

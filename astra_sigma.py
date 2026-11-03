@@ -25,7 +25,7 @@ WEIGHTS = {
     "B": 0.10,
 }
 SETTINGS = {
-    "max_draws": 200,
+    "max_draws": None,
     "min_valid_draws": 20,
     "signal_window_valid_draws": 24,
     "overdue_cap_valid_draws": 24,
@@ -127,18 +127,29 @@ def _composite(components: dict[str, float]) -> float:
     return sum(WEIGHTS[key] * components[key] for key in WEIGHTS)
 
 
+def _base_percentile_component(base_scores: np.ndarray) -> np.ndarray:
+    """Map every domain score to its inclusive empirical percentile."""
+    _, score_positions, score_counts = np.unique(
+        base_scores, return_inverse=True, return_counts=True
+    )
+    cumulative_counts = np.cumsum(score_counts, dtype=np.int64)
+    return cumulative_counts[score_positions].astype(np.float64) / base_scores.size
+
+
 def rank_category(
     category_key: str,
     draws: list[tuple[int, tuple[str, ...]]],
     target_date: str,
     *,
     count: int | None = None,
+    omitted_component: str | None = None,
 ) -> tuple[list[dict], str]:
     """Rank a category's full fixed-width domain using only supplied valid draws.
 
-    `draws` must contain `(age, validated_result_strings)` in the same age
-    convention as astra-v1: zero is the newest row in the selected 200-draw
-    date window. This function has no file or network access.
+    `draws` must contain `(age, validated_result_strings)` with zero as the
+    newest prior row in the caller-selected date window. The prospective
+    registry supplies every accessible prior cache draw. This function has no
+    file or network access.
     """
     definition = _CATEGORY_BY_KEY.get(category_key)
     if definition is None:
@@ -173,11 +184,8 @@ def rank_category(
             digit_columns[:, position - 1], digit_columns[:, position]
         ]
 
-    unique_scores, score_counts = np.unique(base_scores, return_counts=True)
-    cumulative_counts = np.cumsum(score_counts, dtype=np.int64)
-    score_positions = np.searchsorted(unique_scores, base_scores, side="right") - 1
     components_by_name = {
-        "A": cumulative_counts[score_positions].astype(np.float64) / domain_size,
+        "A": _base_percentile_component(base_scores),
     }
 
     hot_total = np.zeros(domain_size, dtype=np.float64)
@@ -216,8 +224,12 @@ def rank_category(
            for values in components_by_name.values()):
         raise astra.AstraInputError("องค์ประกอบคะแนน Astra-Σ อยู่นอกช่วงที่กำหนด")
     composite = np.zeros(domain_size, dtype=np.float64)
+    if omitted_component is not None and omitted_component not in WEIGHTS:
+        raise astra.AstraInputError("unknown ablation component")
+    denominator = 1.0 - WEIGHTS.get(omitted_component, 0.0)
     for component, weight in WEIGHTS.items():
-        composite += weight * components_by_name[component]
+        if component != omitted_component:
+            composite += weight / denominator * components_by_name[component]
 
     # Include every score tied at the kth threshold, then sort by the exact raw
     # binary64 score and fixed-width lexical number order (numeric order here).

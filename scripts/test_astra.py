@@ -93,7 +93,7 @@ CATEGORY_CONTRACT = (
     ("prize4", "รางวัลที่ 4", 6, 5),
 )
 LOCKED_SETTINGS = {
-    "max_draws": 200, "min_valid_draws": 20, "half_life_draws": 24,
+    "max_draws": None, "min_valid_draws": 20, "half_life_draws": 24,
     "weight_floor": 0.5, "positional_prior": 1, "pair_backoff_strength": 10,
     "positional_log_weight": 0.5, "conditional_log_weight": 0.5, "stale_days": 35,
 }
@@ -189,17 +189,17 @@ class HistoryDateTests(unittest.TestCase):
                 with self.assertRaises(astra.AstraInputError):
                     astra.build_astra_report([{"date": value}], TARGET, generated_at=NOW)
 
-    def test_window_is_newest_200_sorted_without_mutation(self):
+    def test_window_uses_all_eligible_draws_sorted_without_mutation(self):
         rows = [{"date": (NOW.date() - timedelta(days=i)).isoformat()}
                 for i in range(205)]
         rows = rows[100:] + rows[:100]
         before = [dict(row) for row in rows]
         report = astra.build_astra_report(rows, TARGET, generated_at=NOW)
-        self.assertEqual(report["window_draws"], 200)
+        self.assertEqual(report["window_draws"], 205)
         self.assertEqual(report["training_cutoff_date"], NOW.date().isoformat())
         self.assertEqual(rows, before)
         for category in report["categories"].values():
-            self.assertEqual(category["invalid_draws"], 200)
+            self.assertEqual(category["invalid_draws"], 205)
             self.assertEqual(category["valid_draws"], 0)
 
     def test_stale_warning_uses_generation_day_and_strict_35_day_threshold(self):
@@ -544,19 +544,25 @@ class RankedReportTests(unittest.TestCase):
         self.assertNotEqual(expected[1], compressed[1], "fixture must detect category-local re-aging")
         self.assertEqual(category["training_cutoff_date"], rows[1]["date"])
 
-    def test_newest_200_window_is_global_and_does_not_backfill_category_invalids(self):
+    def test_all_available_draws_preserve_category_invalid_counts_without_a_200_cap(self):
         rows = [synthetic_row(i) for i in range(205)]
         for row in rows[:181]:
             row["prize1"] = None
         report = astra.build_astra_report(rows, TARGET, generated_at=NOW)
-        self.assertEqual(report["window_draws"], 200)
-        self.assertEqual(report["categories"]["prize1"]["valid_draws"], 19)
-        self.assertEqual(report["categories"]["prize1"]["status"], "insufficient_data")
-        self.assertEqual(report["categories"]["prize1"]["numbers"], [])
+        self.assertEqual(report["window_draws"], 205)
+        self.assertEqual(report["categories"]["prize1"]["valid_draws"], 24)
+        self.assertEqual(report["categories"]["prize1"]["invalid_draws"], 181)
+        self.assertEqual(report["categories"]["prize1"]["status"], "ok")
+        self.assertEqual(len(report["categories"]["prize1"]["numbers"]), 5)
         self.assertEqual(len(report["categories"]["prize4"]["numbers"]), 5)
-        for row in rows[200:]:
-            row.update({key: "999999" for key in row if key != "date"})
-        self.assertEqual(astra.build_astra_report(rows, TARGET, generated_at=NOW), report)
+        excluded = deepcopy(rows)
+        for row in excluded[200:]:
+            row["prize1"] = None
+        excluded_report = astra.build_astra_report(excluded, TARGET, generated_at=NOW)
+        self.assertEqual(excluded_report["window_draws"], 205)
+        self.assertEqual(excluded_report["categories"]["prize1"]["valid_draws"], 19)
+        self.assertEqual(excluded_report["categories"]["prize1"]["invalid_draws"], 186)
+        self.assertEqual(excluded_report["categories"]["prize1"]["status"], "insufficient_data")
 
     def test_categories_use_own_sources_without_cross_category_diversity(self):
         rows = [synthetic_row(i) for i in range(20)]

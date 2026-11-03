@@ -4,8 +4,8 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const index = fs.readFileSync(path.join(root, 'static', 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'static', 'app.css'), 'utf8');
-const app = fs.readFileSync(path.join(root, 'static', 'app.js'), 'utf8');
-const formula = fs.readFileSync(path.join(root, 'static', 'formula-engine.js'), 'utf8');
+const app = require('./frontend_source').readFrontend('app.js');
+const formula = require('./frontend_source').readFrontend('formula-engine.js');
 
 let checks = 0;
 const failures = [];
@@ -49,14 +49,16 @@ for (const name of ['dcClearSnapshots', 'clearPageSnapshots', 'dcClearSnapshotsO
 check(functionBody(app, 'deleteWithUndo').includes('showUndoToast') && functionBody(app, 'deleteWithUndo').includes('localStorage.getItem'), 'undo retains and restores the exact prior localStorage value');
 check(functionBody(app, 'showUndoToast').includes('aria-label') && functionBody(app, 'showUndoToast').includes("textContent='เลิกทำ'"), 'undo toast exposes a clear accessible action');
 
-for (const selector of ['.dc-status.good', '.dc-status.warn', '.trust-badge', '.pred-pill.high', '.pred-pill.mid', '.formula-quality.good', '.formula-quality.single', '.dash-formula-edge', '.dc-score', '.dc-source-chip.formula', '.dc-lotto-formula-title', '.dc-bt-hit', '.dc-compare-strip.agree .dc-compare-mid', '.num-badge.agree', '.ftab-btn[data-color="green"].active', '.consensus-badge.strong', '.consensus-chip.type-top3 .consensus-num', '.consensus-source[data-group="H"]', '.consensus-heat', '.bp-why-warn']) {
+for (const selector of ['.dc-status.good', '.dc-status.warn', '.trust-badge', '.pred-pill.high', '.pred-pill.mid', '.formula-quality.good', '.formula-quality.single', '.dash-formula-edge', '.dc-score', '.dc-source-chip.formula', '.dc-lotto-formula-title', '.dc-bt-hit', '.dc-compare-strip.agree .dc-compare-mid', '.num-badge.agree', '.consensus-badge.strong', '.consensus-chip.type-top3 .consensus-num', '.consensus-source[data-group="H"]', '.consensus-heat', '.bp-why-warn']) {
   const block = rule(selector);
   check(block.includes('var(--green-text)') || block.includes('var(--orange-text)'), `${selector} uses theme-aware readable semantic text tokens`);
 }
-check(css.includes('.dc-status,.trust-badge,.pred-pill,.formula-quality,.consensus-badge,.consensus-source{font-size:.7rem;'), 'small status badges use a readable minimum type size');
+check(Number(css.match(/\.dc-status,\.trust-badge,\.pred-pill,\.formula-quality,\.consensus-badge,\.consensus-source\{font-size:([\d.]+)rem/)?.[1])>=.8, 'small status badges use a readable minimum type size');
 
 check(index.includes('id="nav-scroll-control"') && functionBody(app, 'scrollSidebarNav').includes('scrollBy'), 'mobile page navigation has a visible, operable horizontal-scroll control');
 check(functionBody(app, 'showPage').includes('focusPageHeading') && functionBody(app, 'focusPageHeading').includes('document.title') && functionBody(app, 'showPage').includes('syncPageLocation'), 'SPA navigation focuses the new page heading, updates its title, and syncs its URL');
+const headingFocusRule = rule('.page-title:focus-visible');
+check(headingFocusRule.includes('width:fit-content') && headingFocusRule.includes('max-width:100%') && headingFocusRule.includes('outline-offset:3px') && headingFocusRule.includes('border-radius:var(--radius-btn)'), 'focused page headings retain a compact rounded visible focus ring');
 check(functionBody(app, 'syncPageLocation').includes('history.pushState') && functionBody(app, 'syncPredTabLocation').includes('syncPageLocation') && functionBody(app, 'restorePageLocation').includes("window.location.hash"), 'page and subview changes support browser history and restore from the URL');
 check(index.includes('<nav id="sidebar" aria-label="เมนูหลัก">') && !index.includes('class="nav" role="navigation"'), 'sidebar exposes exactly one named navigation landmark');
 
@@ -76,10 +78,13 @@ check(index.includes('id="formula-input-status"') && index.includes('role="alert
 check(functionBody(app, 'loadFreq').includes('onclick="loadFreq()"') && functionBody(app, 'filterHistory').includes('onclick="loadHistory()"'), 'frequency and history error states provide direct retry buttons');
 check(!index.includes('id="shared-workflow"') && !index.includes('onclick="loadPredict()"') && !index.includes('onclick="showPage(\'decision\')"'), 'Predict offers one view selector and one primary run action');
 const predMainButtons = [...index.matchAll(/<button[^>]*id="pred-main-btn-[^"]+"[^>]*>/g)].map(match => match[0]);
-check(index.includes('class="pred-page-tabs" role="group"') && predMainButtons.length === 4 && !index.includes('id="pred-main-btn-astra"') && /id="ftab-btn-ASTRA"[^>]*aria-pressed="false"/.test(index) && functionBody(app, 'switchPredTab').includes("setAttribute('aria-pressed'"), 'Predict exposes four synchronized subviews and Astra is an accessible Formula subview');
-check(functionBody(app, 'syncPrimaryRunAction').includes("button.hidden=tab==='formula'") && functionBody(app, 'runSharedPrimaryAction').includes("_formulaActiveTab==='ASTRA'") && index.includes('id="astra-run"') && index.includes('id="astra-sigma-run"'), 'Astra has formula-local run actions without a duplicate shared action');
+check(index.includes('class="pred-page-tabs" role="group"') && predMainButtons.length === 4 && !index.includes('id="pred-main-btn-astra"') && /<option value="ASTRA">Astra · ทดลอง<\/option>/.test(index) && !index.includes('id="ftab-btn-ASTRA"') && functionBody(app, 'switchPredTab').includes("setAttribute('aria-pressed'"), 'Predict exposes four synchronized subviews and Astra is a standard Formula group option');
+check(functionBody(app, 'syncPrimaryRunAction').includes("button.hidden=tab==='formula'") && functionBody(formula, '_runAllFormulas').includes("LotteryUiState.formula.activeTab==='ASTRA'") && !index.includes('id="astra-run"') && !index.includes('id="astra-sigma-run"') && index.includes('id="f-run-formulas"'), 'Astra uses the standard Formula calculate action without a separate run button');
 check(!rule('.bp-mode-btn').includes('cursor:default') && rule('.bp-mode-btn').includes('cursor:pointer') && css.includes('.bp-mode-btn:focus-visible'), 'Buy Plan mode choices look and behave like interactive buttons');
 check(css.includes('min-height:44px') && css.includes('.nav-scroll-control'), 'touch controls meet the mobile target size and have clear navigation affordance');
+check(!rule('.first-prize-overview').includes('border-left:3px') && rule('.first-prize-overview').includes('border:1px solid var(--border2)'), 'the Predict experiment overview uses the shared restrained panel border');
+check(!rule('#first-prize-status').includes('border-left:3px') && rule('#first-prize-status').includes('color:var(--text2)'), 'the Predict experiment status avoids the thick side stripe and keeps readable secondary text');
+check(!rule('.progress-fill').includes('transition:width'), 'candidate score bars avoid layout-triggering width animation');
 check(rule('button,[role="button"]').includes('min-height:44px') && rule('button,[role="button"]').includes('min-width:44px'), 'button targets meet the 44px minimum touch size');
 check(rule('select,input[type=text],input[type=number],input[type=search]').includes('min-height:44px'), 'form controls meet the 44px minimum touch height');
 check(css.includes('scrollbar-width:thin') && css.includes('.pred-page-tabs::-webkit-scrollbar{display:block;'), 'narrow-screen prediction tabs expose a visible horizontal-scroll affordance');

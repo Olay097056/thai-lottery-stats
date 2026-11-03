@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'static', 'app.js'), 'utf8');
+const source = require('./frontend_source').readFrontend('app.js');
 
 function extractFunction(name) {
   const start = new RegExp('(?:async\\s+)?function\\s+' + name + '\\s*\\([^)]*\\)\\s*\\{').exec(source);
@@ -33,7 +33,7 @@ const sandbox = {
   escHtml: value => String(value ?? ''),
   Math,
 };
-vm.createContext(sandbox);
+require('./frontend_source').prepareContext(sandbox);
 vm.runInContext([
   extractFunction('predScoreKey'),
   extractFunction('predScore'),

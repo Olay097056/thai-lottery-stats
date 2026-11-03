@@ -6,8 +6,8 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const engineSrc = fs.readFileSync(path.join(ROOT, 'static', 'formula-engine.js'), 'utf8');
-const appSrc = fs.readFileSync(path.join(ROOT, 'static', 'app.js'), 'utf8');
+const engineSrc = require('./frontend_source').readFrontend('formula-engine.js');
+const appSrc = require('./frontend_source').readFrontend('app.js');
 
 function check(label, condition) {
   if (!condition) throw new Error('FAIL: ' + label);
@@ -23,15 +23,22 @@ function draw(date, overrides = {}) {
   };
 }
 
-function makeHarness(rows, formulaFactory, n = 1) {
+function makeHarness(rows, formulaFactory, n = 1, apiImpl = null) {
   const elements = new Map();
   const button = { disabled: false, textContent: '' };
+  function element(){
+    return {
+      style: {}, innerHTML: '', value: '', textContent: '', dataset: {}, attributes: {},
+      setAttribute(name,value){this.attributes[name]=String(value);if(name==='data-state')this.dataset.state=String(value);},
+      removeAttribute(name){delete this.attributes[name];},
+    };
+  }
   elements.set('bt-formula-n', { value: String(n) });
-  elements.set('formula-bt-loading', { style: {} });
-  elements.set('formula-bt-table', { innerHTML: '' });
+  elements.set('formula-bt-loading', element());
+  elements.set('formula-bt-table', element());
   const document = {
     getElementById(id) {
-      if (!elements.has(id)) elements.set(id, { style: {}, innerHTML: '', value: '' });
+      if (!elements.has(id)) elements.set(id, element());
       return elements.get(id);
     },
     querySelector: () => button,
@@ -45,11 +52,14 @@ function makeHarness(rows, formulaFactory, n = 1) {
     escHtml: value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])),
     localStorage: { getItem: () => null, setItem: () => {} },
     fetch: () => Promise.reject(new Error('network is disabled in this test')),
+    setInterval(callback){this.__intervalCallback=callback;return 1;},
+    clearInterval(){this.__intervalCallback=null;},
   };
   sandbox.window = sandbox;
-  vm.createContext(sandbox);
+  require('./frontend_source').prepareContext(sandbox);
   vm.runInContext(engineSrc, sandbox);
-  sandbox.api = async () => ({ data: rows });
+  sandbox.setPageStatus=(id,message)=>{document.getElementById(id).textContent=String(message);};
+  sandbox.api = async path => apiImpl ? apiImpl(path,sandbox) : ({ data: rows });
   sandbox.__formulaFactory = formulaFactory;
   sandbox.__noMappingCheck = () => null;
   sandbox.__noRender = () => {};
@@ -63,15 +73,66 @@ function makeHarness(rows, formulaFactory, n = 1) {
     async run() {
       await sandbox.runFormulaBacktest();
       return {
-        rows: vm.runInContext('_btRowData', sandbox),
-        tested: vm.runInContext('_btTested', sandbox),
+        rows: vm.runInContext('LotteryServerData.formula.backtestRows', sandbox),
+        tested: vm.runInContext('LotteryServerData.formula.testedDraws', sandbox),
       };
     },
   };
 }
 
+async function testBacktestProgressShowsStagesAndRetryOnPartialFailure() {
+  const rows=[draw('01/02/2569'),draw('16/01/2569')];
+  const observedStages=[];
+  const harness=makeHarness(rows,()=>[{name:'T contract',preds:['78'],field:'bottom2',baseline:1}],1,async(path,sandbox)=>{
+    observedStages.push([path,sandbox.document.getElementById('formula-bt-status').textContent,sandbox.document.getElementById('formula-bt-progress-detail').textContent]);
+    if(path.startsWith('prize-history'))return {data:rows};
+    return {ok:false,error:'temporary failure',retryable:true};
+  });
+  await harness.run();
+  const {sandbox}=harness;
+  const status=sandbox.document.getElementById('formula-bt-status').textContent;
+  const isPartial=vm.runInContext('LotteryServerData.formula.backtestPartial',sandbox);
+  const retry=sandbox.document.getElementById('formula-bt-retry');
+  const panel=sandbox.document.getElementById('formula-bt-loading');
+  check('Backtest announces history, Fano v4, and Fano v5 stages in order',
+    observedStages.map(([,stage])=>stage).join('|').includes('ขั้น 1/4')&&
+    observedStages.some(([path,stage])=>path.startsWith('fano/backtest?')&&!path.includes('version=')&&stage.includes('ขั้น 2/4'))&&
+    observedStages.some(([path,stage])=>path.includes('version=fano-v5-adaptive-rank-codebook')&&stage.includes('ขั้น 3/4')));
+  check('forecast scope explains rolling-window calculations against the selected sample',observedStages.some(([path,,detail])=>path.startsWith('fano/backtest')&&detail.includes('Rolling edge สูงสุด 200 งวด')&&detail.includes('ตัวเลือกหลัก 1 งวด')));
+  check('optional formula API failures are explicitly reported as a partial result',status.includes('ได้ผลบางส่วน')&&isPartial===true);
+  check('retry is available after a retryable stage failure and busy state settles',retry.style.display==='inline-flex'&&panel.attributes['aria-busy']==='false');
+  check('failed formula stages remain visibly identified',sandbox.document.getElementById('formula-bt-step-fano-v4-state').textContent==='ไม่สำเร็จ');
+}
+
+async function testSuccessfulBacktestWithAllTargetsSkippedIsNotAnError() {
+  const rows=[draw('01/02/2569'),draw('16/01/2569')];
+  const targetDate='2569-02-01';
+  const harness=makeHarness(rows,()=>[{name:'T contract',preds:['78'],field:'bottom2',baseline:1}],1,async path=>{
+    if(path.startsWith('prize-history'))return {data:rows};
+    return {ok:true,forecasts:[],skipped_targets:[targetDate]};
+  });
+  await harness.run();
+  check('successful empty forecast batches with explicit skipped targets do not create an API failure',
+    vm.runInContext('LotteryServerData.formula.backtestPartial',harness.sandbox)===false&&
+    harness.sandbox.document.getElementById('formula-bt-retry').style.display==='none'&&
+    harness.sandbox.document.getElementById('formula-bt-step-fano-v4-state').textContent==='เสร็จ');
+}
+
 function onlyFormula(result) {
   return result.rows.find(row => row.name === 'T contract') || result.rows[0];
+}
+
+function extractFunction(source, name) {
+  const match = new RegExp('function ' + name + '\\([^)]*\\)\\{', 'm').exec(source);
+  if (!match) throw new Error('not found: ' + name);
+  let i = match.index + match[0].length;
+  let depth = 1;
+  while (depth > 0) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}') depth--;
+    i++;
+  }
+  return source.slice(match.index, i);
 }
 
 function exactValues(start, count) {
@@ -180,7 +241,20 @@ async function testRollingEdgeUsesBaselineWhenSelectedPeriodHasNoSample() {
   const row = onlyFormula(await harness.run());
   check('selected period stays unavailable when its only actual target is invalid', row.total === 0 && row.pct === null && row.baseP === null && row.edge === null);
   check('rolling edge still subtracts the 1% field baseline when older valid samples exist',
-    row.rolling[50].total === 1 && row.rolling[50].pct === 100 && Math.abs(row.rolling[50].edge - 99) < 1e-9);
+    Object.values(row.rolling).every(window => window.total === 1 && window.pct === 100 && Math.abs(window.edge - 99) < 1e-9));
+  vm.runInContext(extractFunction(appSrc, '_renderBtTable'), harness.sandbox);
+  vm.runInContext('_renderBtTable()', harness.sandbox);
+  const html = harness.sandbox.document.getElementById('formula-bt-table').innerHTML;
+  check('rolling edge remains visible even while the selected-period Edge is unavailable',
+    html.includes('W50: +99.0 pp') && html.includes('W100: +99.0 pp') && html.includes('W200: +99.0 pp'));
+}
+
+async function testRollingEdgeUnavailableWithoutRollingSample() {
+  const rows = [draw('01/02/2569', { bottom2: '' }), draw('16/01/2569', { bottom2: '' })];
+  const harness = makeHarness(rows, () => [{ name: 'T contract', preds: ['00'], field: 'bottom2', baseline: 1 }], 1);
+  const row = onlyFormula(await harness.run());
+  check('rolling rate and edge stay unavailable when no valid rolling targets exist',
+    row.total === 0 && row.rolling[50].total === 0 && row.rolling[50].pct === null && row.rolling[50].edge === null);
 }
 
 async function testFinalPicksRankOnlyMeasuredBacktestRows() {
@@ -188,7 +262,7 @@ async function testFinalPicksRankOnlyMeasuredBacktestRows() {
   const el = harness.sandbox.document.getElementById('formula-final');
   el.classList = { add: () => {}, remove: () => {} };
   vm.runInContext(`
-    _btRowData=[{name:'N',edge:null},{name:'L',edge:-2}];
+    LotteryServerData.formula.backtestRows=[{name:'N',edge:null},{name:'L',edge:-2}];
     _collectFormulaConsensus=()=>[{num:'00',typeKey:'bottom2',formulaCount:2}];
     _formulaConsensusChip=()=>'<span>00</span>';
     bindFormulaConsensusDetails=()=>{};
@@ -203,7 +277,7 @@ async function testFinalPicksShowUnavailableWhenNoEdgesAreMeasured() {
   const el = harness.sandbox.document.getElementById('formula-final');
   el.classList = { add: () => {}, remove: () => {} };
   vm.runInContext(`
-    _btRowData=[{name:'N',edge:null}];
+    LotteryServerData.formula.backtestRows=[{name:'N',edge:null}];
     _collectFormulaConsensus=()=>[{num:'00',typeKey:'bottom2',formulaCount:2}];
     _formulaConsensusChip=()=>'<span>00</span>';
     bindFormulaConsensusDetails=()=>{};
@@ -223,32 +297,22 @@ async function testNoDataRendererUsesUnavailableState() {
     },
   };
   sandbox.window = sandbox;
-  vm.createContext(sandbox);
+  require('./frontend_source').prepareContext(sandbox);
   vm.runInContext(engineSrc, sandbox);
-  function extract(source, name) {
-    const match = new RegExp('function ' + name + '\\([^)]*\\)\\{', 'm').exec(source);
-    if (!match) throw new Error('not found: ' + name);
-    let i = match.index + match[0].length;
-    let depth = 1;
-    while (depth > 0) {
-      if (source[i] === '{') depth++;
-      else if (source[i] === '}') depth--;
-      i++;
-    }
-    return source.slice(match.index, i);
-  }
-  vm.runInContext(extract(appSrc, 'escHtml'), sandbox);
-  vm.runInContext(extract(appSrc, '_renderBtTable'), sandbox);
-  vm.runInContext(`_btRowData=[{
+  vm.runInContext(extractFunction(appSrc, 'escHtml'), sandbox);
+  vm.runInContext(extractFunction(appSrc, '_renderBtTable'), sandbox);
+  vm.runInContext(`LotteryServerData.formula.backtestRows=[{
     name:'T contract',group:'T',groupColor:'#aaa',field:'bottom2',typeLabel:'เต็ม 2หลัก',board:'2-digit exact',
     total:0,hits:0,pct:null,baseP:null,baseLabel:'—',edge:null,ciLow:null,ciHigh:null,
     subHits:0,subTotal:0,subPct:null,rolling:{},edge50:null,edge100:null,edge200:null,degraded:false,trust:null,preds_n:1,pool14Hits:0,pool14Total:0
-  }];_btTested=0;_btFieldCheck=null;_renderBtTable();`, sandbox);
+  }];LotteryServerData.formula.testedDraws=0;LotteryServerData.formula.backtestFieldCheck=null;_renderBtTable();`, sandbox);
   const html = sandbox.document.getElementById('formula-bt-table').innerHTML;
   check('zero-sample renderer shows unavailable instead of 0.0%', html.includes('—') && !html.includes('0.0%'));
 }
 
 const tests = [
+  ['progress-retry', testBacktestProgressShowsStagesAndRetryOnPartialFailure],
+  ['skipped-targets-success', testSuccessfulBacktestWithAllTargetsSkippedIsNotAnError],
   ['invalid-target', testInvalidTargetFieldIsUnavailable],
   ['malformed-prize1', testMalformedPrize1PairIsSkipped],
   ['secondary-prize4', testSecondaryMetricExcludesPrize4AndPrize5],
@@ -258,6 +322,7 @@ const tests = [
   ['incomplete-pool', testIncompletePrizePoolsAreNotScoredAsMisses],
   ['complete-pool', testCompletePrizePoolsRemainScorable],
   ['rolling-baseline-no-sample', testRollingEdgeUsesBaselineWhenSelectedPeriodHasNoSample],
+  ['rolling-empty-sample', testRollingEdgeUnavailableWithoutRollingSample],
   ['final-picks-null-edge', testFinalPicksRankOnlyMeasuredBacktestRows],
   ['final-picks-no-edge', testFinalPicksShowUnavailableWhenNoEdgesAreMeasured],
   ['no-data-renderer', testNoDataRendererUsesUnavailableState],

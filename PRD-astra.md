@@ -32,7 +32,7 @@ This is a proposed engineering heuristic, not a claim of a new statistical disco
 
 ### Constants declared before reading outcomes
 
-- At most 200 most recent dated draws strictly before the target; filter by date before selecting the window.
+- Every validly dated draw available in the existing local cache strictly before the target and no later than the report generation day; filter by date before ranking the full history. There is no fixed 200-draw cap.
 - Minimum 20 valid draws for each category; otherwise return an explicit insufficient-data category with an empty number list.
 - Draw weight at age `a` (zero at the latest eligible draw): `w(a) = 0.5 + 0.5 * 2**(-a/24)`.
 - Positional additive prior: 1 per digit (total prior mass 10).
@@ -90,6 +90,7 @@ Find the exact top-k strings under this fixed first-order score using k-best dyn
 
 - Add a separate **astra** subtab within the existing ทำนาย-สูตร page, with the seven category cards in the order above, experiment badge, target/cutoff metadata, explicit missing/stale-data states, and expandable Thai method explanation.
 - Use the existing app theme and shared draw selector; changing target invalidates old results and stale in-flight responses.
+- If the shared target is today or earlier in Thailand, a manual Astra calculation uses the next future draw target for Astra only and labels that date clearly. Keep the shared selector unchanged and keep the backend's future-only validation intact.
 - astra loads only when its tab/action requests it, not during dashboard startup.
 - Do not put astra into `_computeFormulasBatch`, automatic historical scoring, Mix, Picks/Buy Plan, or existing backtest tables in this version. Existing code computes retrospective rows eagerly in several of these paths; wiring astra there would exceed the no-backtest permission and misattribute prize2/3/4 results to prize1.
 - No new spending recommendations, fake accuracy badges, or percentages presented as winning probabilities.

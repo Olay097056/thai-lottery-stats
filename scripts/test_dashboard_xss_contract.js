@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const source = fs.readFileSync(path.join(__dirname, '..', 'static', 'app.js'), 'utf8');
+const source = require('./frontend_source').readFrontend('app.js');
 function extractFunction(name) {
   const start = new RegExp('(?:async\\s+)?function\\s+' + name + '\\s*\\([^)]*\\)\\s*\\{').exec(source);
   if (!start) throw new Error('missing function: ' + name);
@@ -38,7 +38,7 @@ const sandbox = {
   loadP1Widget() {},
   toast() {},
 };
-vm.createContext(sandbox);
+require('./frontend_source').prepareContext(sandbox);
 vm.runInContext(['setPageStatus', 'escHtml', 'dashNum', 'dashCount', 'renderLatestItem', 'loadDashboard'].map(extractFunction).join('\n'), sandbox);
 (async () => {
   const item = sandbox.renderLatestItem('fixture', unsafe);

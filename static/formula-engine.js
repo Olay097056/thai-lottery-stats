@@ -1,14 +1,5 @@
 // ─── Formula Calculators ──────────────────────────────────────────────────────
-let _formulaFilled=false;
-let _formulaAutoFillRequestId=0;
-let _formulaAutoFillPending=false;
-let _formulaActiveTab='A';
-let _formulaHasRun=false;
-let _formulaConsensusFilter='all';
 
-let _formulaHistory=[];
-let _btRowData=[],_btSortKey='edge',_btSortAsc=false,_btTested=0;
-let _btFieldCheck=null;
 const FORMULA_BT_WINDOWS=[50,100,200];
 
 const FORMULA_REQUIRED_COLUMNS=[
@@ -23,15 +14,17 @@ const FORMULA_BT_FIELD_META={
   front3_unit:{typeLabel:'หลักหน่วย',board:'Run / digit',widths:[1],base:(k)=>({baseP:k*10,baseLabel:`${k}/10 = ${k*10}%`})},
   back3_unit:{typeLabel:'หลักหน่วย',board:'Run / digit',widths:[1],base:(k)=>({baseP:k*10,baseLabel:`${k}/10 = ${k*10}%`})},
   prize1_unit:{typeLabel:'หลักหน่วย',board:'Run / digit',widths:[1],base:(k)=>({baseP:k*10,baseLabel:`${k}/10 = ${k*10}%`})},
-  back3:{typeLabel:'3หลัก(ต่อ)',board:'3-digit exact',widths:[2,3],base:(k)=>({baseP:k/10,baseLabel:`${k}/1000`})},
+  // Legacy mixed-width target; split it before scoring because one scalar baseline is invalid.
+  back3:{typeLabel:'3หลัก/ท้าย2 (legacy)',board:'Legacy mixed target',widths:[2,3],base:()=>({baseP:null,baseLabel:'แยกเป้าก่อนคำนวณ Edge'})},
   top3:{typeLabel:'3ตัวบนตรง',board:'3-digit exact',widths:[3],base:(k)=>({baseP:k/1000*100,baseLabel:`${k}/1000`})},
-  front3:{typeLabel:'เต็ม 3หลัก',board:'3-digit exact',widths:[3],base:(k)=>({baseP:k/1000*2*100,baseLabel:`${k}/1000×2`})},
-  back3exact:{typeLabel:'เต็ม 3หลัก',board:'3-digit exact',widths:[3],base:(k)=>({baseP:k/1000*2*100,baseLabel:`${k}/1000×2`})},
+  prize1_exact:{typeLabel:'รางวัลที่ 1 ตรง 6 หลัก',board:'รางวัลที่ 1 · ตรง 6 หลัก',widths:[6],base:(k)=>({baseP:k/1e6*100,baseLabel:`${k}/1,000,000`})},
+  front3:{typeLabel:'เต็ม 3หลัก',board:'3-digit exact',widths:[3],base:(k)=>({baseP:(1-Math.pow(1-Math.min(k,1000)/1000,2))*100,baseLabel:`1-(1-${Math.min(k,1000)}/1000)²`})},
+  back3exact:{typeLabel:'เต็ม 3หลัก',board:'3-digit exact',widths:[3],base:(k)=>({baseP:(1-Math.pow(1-Math.min(k,1000)/1000,2))*100,baseLabel:`1-(1-${Math.min(k,1000)}/1000)²`})},
+  back3_suffix2:{typeLabel:'2หลักท้าย 3 ตัวทางการ',board:'Official back3 suffix · 2-digit',widths:[2],base:(k)=>({baseP:(1-Math.pow(1-Math.min(k,100)/100,2))*100,baseLabel:`1-(1-${Math.min(k,100)}/100)²`})},
   prize1_last4_digits:{typeLabel:'4หลักรางวัล',board:'Prize1 tail',widths:[1],base:()=>({baseP:(1-Math.pow(0.9,4))*100,baseLabel:'1-(0.9)^4≈34.4%'})},
   pool6:{typeLabel:'Pool 6หลัก',board:'Pool 1-5',widths:[6],base:(k)=>({baseP:(1-Math.pow(1-168/1e6,k))*100,baseLabel:`${k} vs pool168/10⁶`})},
   pool_tail3:{typeLabel:'Pool ท้าย3',board:'Pool 1-5',widths:[3],base:(k)=>{const p1=1000*(1-Math.pow(0.999,168))/1000;return {baseP:(1-Math.pow(1-p1,k))*100,baseLabel:`${k} vs ~155/1000`};}},
   pool6_14:{typeLabel:'Pool 1-4',board:'Pool 1-4',widths:[6],base:(k)=>({baseP:(1-Math.pow(1-66/1e6,k))*100,baseLabel:`${k} vs pool66/10⁶`})},
-  pool14_tail3:{typeLabel:'ท้าย3 ใต้ดิน',board:'Pool 1-4',widths:[3],base:(k)=>{const p1=1-Math.pow(0.999,66);return {baseP:(1-Math.pow(1-p1,k))*100,baseLabel:`${k} vs ~64/1000`};}},
 };
 
 function _formulaBtFieldMeta(field){
@@ -81,10 +74,11 @@ function _formulaHitForField(fr,actual,pools={}){
     if(field==='bottom2_unit')return preds.includes(bottom2.slice(-1));
     return preds.some(d=>bottom2.includes(d));
   }
-  if(field==='back3'||field==='back3exact'||field==='back3_unit'||field==='run_back3'){
+  if(field==='back3'||field==='back3exact'||field==='back3_suffix2'||field==='back3_unit'||field==='run_back3'){
     if(!back1||!back2)return null;
     if(field==='back3')return preds.some(n=>n===back1||n===back2||n===back1.slice(-2)||n===back2.slice(-2));
     if(field==='back3exact')return preds.includes(back1)||preds.includes(back2);
+    if(field==='back3_suffix2')return preds.some(n=>/^\d{2}$/.test(n)&&(n===back1.slice(-2)||n===back2.slice(-2)));
     if(field==='back3_unit')return preds.includes(back1.slice(-1))||preds.includes(back2.slice(-1));
     return preds.some(d=>(back1+back2).includes(d));
   }
@@ -108,8 +102,9 @@ function _formulaHitForField(fr,actual,pools={}){
     const top3=_formulaActualDigits(actual,'top3',3);
     return top3?preds.includes(top3):null;
   }
-  if(field==='pool6'||field==='pool_tail3'||field==='pool6_14'||field==='pool14_tail3'){
-    const pool=field==='pool6'?pools.pool6Set:field==='pool_tail3'?pools.poolTail3Set:field==='pool6_14'?pools.pool14Set:pools.pool14Tail3Set;
+  if(field==='prize1_exact')return p1?preds.includes(p1):null;
+  if(field==='pool6'||field==='pool_tail3'||field==='pool6_14'){
+    const pool=field==='pool6'?pools.pool6Set:field==='pool_tail3'?pools.poolTail3Set:pools.pool14Set;
     if(!pool||typeof pool.has!=='function'||!pool.size)return null;
     return preds.some(n=>pool.has(n));
   }
@@ -163,15 +158,13 @@ function _formulaFieldMappingCheck(rows=[]){
 
 function _formulaMappingBannerHtml(check){
   if(!check)return '';
-  const cls=check.ok?'good':'bad';
-  const msg=check.ok
-    ? `Field mapping OK · ตรวจ ${check.checked} สูตร · กลุ่ม ${check.groups.join(', ')}`
-    : `Field mapping มีปัญหา ${check.errors.length} จุด`;
   const details=[...(check.errors||[]),...(check.warnings||[]).slice(0,8)];
-  return `<div class="bt-check ${cls}">
-    <div><b>${_formulaEsc(msg)}</b>${check.warnings?.length?` <span>· warnings ${check.warnings.length}</span>`:''}</div>
-    ${details.length?`<details><summary>ดูรายละเอียด check</summary><div>${details.map(x=>`<div>${_formulaEsc(x)}</div>`).join('')}</div></details>`:''}
-  </div>`;
+  const message=check.ok?'การตรวจโครงสร้างสูตรผ่าน':'พบปัญหาโครงสร้างสูตร '+check.errors.length+' จุด';
+  return `<details class="bt-check ${check.ok?'good':'bad'}"${check.ok?'':' open'}>
+    <summary>${_formulaEsc(message)}${check.warnings?.length?' · มีคำเตือน '+check.warnings.length+' จุด':''}</summary>
+    <p>ตรวจ ${check.checked} สูตร · กลุ่ม ${_formulaEsc(check.groups.join(', '))}</p>
+    ${details.map(x=>`<p>${_formulaEsc(x)}</p>`).join('')}
+  </details>`;
 }
 window.formulaFieldMappingCheck=_formulaFieldMappingCheck;
 
@@ -269,8 +262,80 @@ function _validateFormulaInputs(){
   return ok;
 }
 
+function syncFormulaSnapshotButton(){
+  const button=document.getElementById('f-save-snapshot');
+  if(!button)return false;
+  const state=LotteryUiState.formula;
+  const tab=state.activeTab||'A';
+  const calculationPending=typeof window!=='undefined'&&!!window._formulaCalculationPending;
+  const selector=tab==='FANO'?'#formula-results-FANO .num-badge':'#formula-final .num-badge,#formula-results-ALL .num-badge';
+  const nodes=typeof document.querySelectorAll==='function'?[...document.querySelectorAll(selector)]:[];
+  const candidatePattern=tab==='FANO'?/^[0-9]{6}$/:/^[0-9]{1,6}$/;
+  const candidateValues=nodes.map(node=>String(node.textContent||'').trim().replace(/\s+/g,''));
+  const hasCandidates=candidateValues.some(value=>candidatePattern.test(value));
+  let reason='';
+  if(tab==='ASTRA')reason='Astra มี Snapshot รายงานแยก';
+  else if(state.sourceStale)reason='ข้อมูลย้อนหลังอัปเดตแล้ว · โหลดข้อมูลล่าสุดและคำนวณใหม่ก่อนบันทึก';
+  else if(state.autoFillPending)reason='กำลังโหลดข้อมูลงวดก่อน';
+  else if(calculationPending)reason='กำลังคำนวณสูตร';
+  else if(!state.hasRun)reason='คำนวณสูตรก่อนจึงจะบันทึก Snapshot ได้';
+  else if(!hasCandidates)reason='ยังไม่มีเลขผลลัพธ์ที่บันทึกได้ในมุมมองนี้';
+  button.disabled=Boolean(reason);
+  button.title=reason||'บันทึกผลสูตรที่คำนวณแล้ว';
+  const hint=document.getElementById('formula-snapshot-help');
+  if(hint)hint.textContent=reason||'บันทึกผลสูตรที่คำนวณแล้วลงในประวัติ Snapshot';
+  const run=document.getElementById('f-run-formulas');
+  if(run&&tab!=='ASTRA'){
+    run.disabled=Boolean(state.sourceStale||state.autoFillPending||calculationPending);
+    run.title=state.sourceStale?'ข้อมูลย้อนหลังเปลี่ยนแล้ว · ใช้ปุ่มโหลดข้อมูลล่าสุดในข้อความเตือนด้านบน':'คำนวณผลจากข้อมูลในช่องและประวัติที่โหลดไว้';
+  }
+  return !reason;
+}
+
+function markFormulaDataStale(message){
+  const state=LotteryUiState.formula;
+  const hasCachedHistory=Array.isArray(LotteryServerData.formula.history)&&LotteryServerData.formula.history.length>0;
+  if(!state.hasRun&&!state.autoFillPending&&!window._formulaCalculationPending&&!hasCachedHistory)return;
+  state.sourceStale=true;
+  state.autoFillRequestId++;
+  state.autoFillPending=false;
+  window._formulaCalculationRequestId=(Number(window._formulaCalculationRequestId)||0)+1;
+  window._formulaCalculationPending=false;
+  _setFormulaAutoFillPending(false);
+  const origin=document.getElementById('formula-report-origin');
+  if(origin){
+    origin.classList.add('is-stale');
+    origin.innerHTML=`<strong>ผลสูตรอาจใช้ข้อมูลเก่า</strong><br>${escHtml(message)} · การคำนวณใหม่จะเติมช่องเลขจากงวดก่อนล่าสุดแทนค่าปัจจุบัน <button type="button" class="btn btn-secondary" onclick="recomputeFormulaAfterCacheRefresh()">โหลดข้อมูลล่าสุดและคำนวณสูตร</button>`;
+  }
+  setPageStatus('formula-status',`${message} · โหลดข้อมูลล่าสุดและคำนวณสูตรใหม่ก่อนใช้งาน`);
+  syncFormulaSnapshotButton();
+}
+window.markFormulaDataStale=markFormulaDataStale;
+async function recomputeFormulaAfterCacheRefresh(){
+  const state=LotteryUiState.formula;
+  if(state.activeTab==='ASTRA')return loadSelectedAstraFormula({recompute:true});
+  if(typeof window.confirm==='function'&&!window.confirm('โหลดข้อมูลล่าสุดและแทนเลขในช่องด้วยผลรางวัลของงวดก่อนล่าสุด แล้วคำนวณสูตรใหม่หรือไม่?'))return false;
+  const epoch=Number(LotteryUiState.health.dataEpoch)||0;
+  state.hasRun=false;
+  if(!await autoFillFormula(true))return false;
+  if(epoch!==(Number(LotteryUiState.health.dataEpoch)||0)){
+    markFormulaDataStale('แคชเปลี่ยนระหว่างโหลดข้อมูลสูตร');
+    return false;
+  }
+  state.sourceStale=false;
+  const origin=document.getElementById('formula-report-origin');
+  if(origin)origin.classList.remove('is-stale');
+  _setFormulaAutoFillPending(false);
+  return runAllFormulas();
+}
+window.recomputeFormulaAfterCacheRefresh=recomputeFormulaAfterCacheRefresh;
+
 function _clearFormulaResults(msg=''){
-  ['A','B','C','D','F','G','H','E','ALL'].forEach(k=>{
+  if(typeof window!=='undefined'){
+    window._formulaCalculationRequestId=(Number(window._formulaCalculationRequestId)||0)+1;
+    window._formulaCalculationPending=false;
+  }
+  ['A','B','C','D','F','G','H','E','ALL','FANO'].forEach(k=>{
     const el=document.getElementById('formula-results-'+k);
     if(el)el.innerHTML='';
   });
@@ -286,8 +351,9 @@ function _clearFormulaResults(msg=''){
   if(tools)tools.classList.remove('active');
   const count=document.getElementById('formula-filter-count');
   if(count)count.textContent='';
-  _formulaHasRun=false;
+  LotteryUiState.formula.hasRun=false;
   if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-status',msg||'ไม่มีผลสูตรให้แสดง');
+  syncFormulaSnapshotButton();
 }
 
 function setFormulaLoading(msg='กำลังโหลดข้อมูลสูตร...'){
@@ -298,30 +364,35 @@ function setFormulaLoading(msg='กำลังโหลดข้อมูลส
     if(el){el.classList.remove('active');el.innerHTML='';}
   });
   if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-status',msg);
+  syncFormulaSnapshotButton();
 }
 
 async function initFormulaPage(){
+  updateFormulaTargetDisplay();
+  if(LotteryUiState.formula.activeTab==='ASTRA'){switchFormulaTab('ASTRA');return;}
   _bindFormulaInputSanitizers();
   // populate f-target-date from history
   const sel=document.getElementById('f-target-date');
   if(!sel)return;
+  let prefetchedHistoryRows=null;
+  let initialHistoryFailed=false;
   if(!sel.options.length){
     setFormulaLoading('กำลังเตรียมรายการงวดสำหรับสูตร...');
-    try{
-      const h=await api('history?n=500',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
-      const rows=Array.isArray(h.data)?h.data:[];
-      // build future/upcoming dates from pred-date select if available, else show last draws
-      const predSel=document.getElementById('pred-date');
-      let opts=[];
-      if(predSel && predSel.options.length){
-        for(const o of predSel.options){
-          const opt=document.createElement('option');
-          opt.value=o.value; opt.textContent=o.textContent;
-          opts.push(opt);
-        }
+    const predSel=document.getElementById('pred-date');
+    let opts=[];
+    if(predSel && predSel.options.length){
+      for(const o of predSel.options){
+        const opt=document.createElement('option');
+        opt.value=o.value; opt.textContent=o.textContent;
+        opts.push(opt);
       }
+    }
+    try{
+      const h=await api('prize-history?n=500',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
+      if(h?.error||h?.detail)throw new Error('formula history unavailable');
+      prefetchedHistoryRows=Array.isArray(h.data)?h.data:[];
       // also add recent past draws as reference targets (past 6)
-      const recent=rows.slice(0,6);
+      const recent=prefetchedHistoryRows.slice(0,6);
       for(const r of recent){
         if(!r.date) continue;
         const [d,m,y]=r.date.split('/').map(Number);
@@ -330,20 +401,37 @@ async function initFormulaPage(){
         opt.value=iso; opt.textContent=r.date;
         opts.push(opt);
       }
-      if(opts.length)opts.forEach(o=>sel.appendChild(o));
-      else _clearFormulaResults('ยังโหลดรายการงวดไม่ได้ ลองกดรีเฟรชข้อมูลหรือกรอกเลขเอง');
     }catch(e){
+      initialHistoryFailed=true;
       _clearFormulaResults('โหลดข้อมูลงวดไม่สำเร็จ ลองใหม่อีกครั้ง');
+      showFormulaManualInput();
     }
+    if(opts.length)opts.forEach(o=>sel.appendChild(o));
+    else if(!initialHistoryFailed)_clearFormulaResults('ยังโหลดรายการงวดไม่ได้ ลองกดรีเฟรชข้อมูลหรือกรอกเลขเอง');
   }
-  if(!_formulaFilled && sel.value){
-    await autoFillFormula();
+  if(!LotteryUiState.formula.filled && sel.value && !initialHistoryFailed){
+    await autoFillFormula(false,prefetchedHistoryRows);
   }
-  switchFormulaTab(_formulaActiveTab);
+  updateFormulaTargetDisplay();
+  switchFormulaTab(LotteryUiState.formula.activeTab);
+}
+
+function updateFormulaTargetDisplay(){
+  const target=document.getElementById('f-target-date')?.value||document.getElementById('shared-draw-date')?.value||'';
+  const label=document.getElementById('formula-target-display');
+  if(label)label.textContent=target?fmtDate(target):'ตามงวดหลัก';
+}
+window.updateFormulaTargetDisplay=updateFormulaTargetDisplay;
+
+function showFormulaManualInput(){
+  const details=document.getElementById('formula-manual-input');
+  if(details)details.open=true;
 }
 
 function switchFormulaTab(tab){
-  _formulaActiveTab=tab;
+  const mainPanel=document.getElementById('pred-main-tab-formula');
+  if(mainPanel)mainPanel.classList.toggle('astra-selected',tab==='ASTRA');
+  LotteryUiState.formula.activeTab=tab;
   document.querySelectorAll('.ftab-btn').forEach(btn=>{
     const on=btn.dataset.ftab===tab;
     btn.classList.toggle('active',on);
@@ -351,8 +439,10 @@ function switchFormulaTab(tab){
   });
   // sync the native group selector with the currently exposed result group.
   const groupSel=document.getElementById('ftab-group-select');
+  const astraVersionControl=document.getElementById('astra-version-control');
+  if(astraVersionControl)astraVersionControl.hidden=tab!=='ASTRA';
   if(groupSel){
-    const isGroup=['A','B','C','D','F','G','H','E','I','J','HM'].includes(tab);
+    const isGroup=['A','B','C','D','F','G','H','E','I','J','HM','ASTRA','FANO'].includes(tab);
     groupSel.value=isGroup?tab:'';
     groupSel.classList.toggle('ftab-select-active',isGroup);
     if(isGroup)groupSel.setAttribute('aria-controls','formula-results-'+tab);
@@ -365,13 +455,18 @@ function switchFormulaTab(tab){
   const panel=document.getElementById('formula-results-'+tab);
   if(panel){
     if(tab!=='BT'&&!panel.innerHTML.trim()){
-      panel.innerHTML=`<div class="formula-tab-empty" style="display:block;grid-column:1/-1">กดคำนวณทุกสูตรเพื่อดูผลในหมวดนี้</div>`;
+      panel.innerHTML=LotteryUiState.formula.hasRun
+        ?`<div class="formula-tab-empty" style="display:block;grid-column:1/-1">ไม่มีผลสูตรในหมวดนี้</div>`
+        :'';
     }
     panel.classList.add('active');
   }
   const tools=document.getElementById('formula-tools');
-  if(tools)tools.classList.toggle('active',_formulaHasRun&&tab!=='BT'&&tab!=='ASTRA');
+  if(tools)tools.classList.toggle('active',LotteryUiState.formula.hasRun&&tab!=='BT'&&tab!=='ASTRA');
+  if(tab==='BT'&&typeof FirstPrizeFeature!=='undefined')FirstPrizeFeature.board('formula-astra-prospective-board');
   if(tab!=='BT'&&tab!=='ASTRA')filterFormulaCards();
+  if(typeof window!=='undefined'&&typeof window.syncAstraRunButton==='function')window.syncAstraRunButton();
+  syncFormulaSnapshotButton();
 }
 
 
@@ -382,17 +477,26 @@ function _parseThai(dateStr){
 }
 
 function _setFormulaAutoFillPending(pending){
-  _formulaAutoFillPending=!!pending;
+  LotteryUiState.formula.autoFillPending=!!pending;
+  if(pending&&typeof window!=='undefined'){
+    window._formulaCalculationRequestId=(Number(window._formulaCalculationRequestId)||0)+1;
+    window._formulaCalculationPending=false;
+  }
+  const astraSelected=LotteryUiState.navigation.predictionTab==='formula'&&LotteryUiState.formula.activeTab==='ASTRA';
   ['f-run-formulas','f-save-snapshot','f-load-formula','f-prize1','f-top3','f-bottom2','f-front3-1','f-front3-2','f-back3-1','f-back3-2','f-drawday'].forEach(id=>{
     const el=document.getElementById(id);
-    if(el)el.disabled=_formulaAutoFillPending;
+    if(el&&!(id==='f-run-formulas'&&astraSelected))el.disabled=LotteryUiState.formula.autoFillPending||
+      (LotteryUiState.formula.sourceStale&&id!=='f-load-formula');
   });
+  if(typeof window!=='undefined'&&typeof window.syncAstraRunButton==='function')window.syncAstraRunButton();
+  syncFormulaSnapshotButton();
 }
 
-async function autoFillFormula(clearStaleInputs=false){
-  const requestId=++_formulaAutoFillRequestId;
-  _formulaFilled=false;
+async function autoFillFormula(clearStaleInputs=false,prefetchedHistoryRows=null){
+  const requestId=++LotteryUiState.formula.autoFillRequestId;
+  LotteryUiState.formula.filled=false;
   const targetDateStr=document.getElementById('f-target-date')?.value||''; // YYYY-MM-DD
+  updateFormulaTargetDisplay();
   _setFormulaAutoFillPending(true);
   if(clearStaleInputs){
     ['f-prize1','f-top3','f-bottom2','f-front3-1','f-front3-2','f-back3-1','f-back3-2'].forEach(id=>{
@@ -405,29 +509,36 @@ async function autoFillFormula(clearStaleInputs=false){
   }
   let rows=[];
   setFormulaLoading('กำลังโหลดข้อมูลงวดก่อน...');
-  try{
-    // prize-history (ไม่ใช่ history) เพราะมีคอลัมน์เดียวกันครบ + near1/prize2-5
-    // เพิ่มเติม (จำเป็นสำหรับจักรพรรดิ กลุ่ม I ที่ใช้ pool รางวัล 1-5)
-    const h=await api('prize-history?n=500',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
-    if(requestId!==_formulaAutoFillRequestId)return false;
-    if(h?.error||h?.detail){
+  if(Array.isArray(prefetchedHistoryRows)){
+    rows=prefetchedHistoryRows;
+  }else{
+    try{
+      // prize-history (ไม่ใช่ history) เพราะมีคอลัมน์เดียวกันครบ + near1/prize2-5
+      // เพิ่มเติม (จำเป็นสำหรับจักรพรรดิ กลุ่ม I ที่ใช้ pool รางวัล 1-5)
+      const h=await api('prize-history?n=500',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
+      if(requestId!==LotteryUiState.formula.autoFillRequestId)return false;
+      if(h?.error||h?.detail){
+        _setFormulaAutoFillPending(false);
+        _clearFormulaResults('โหลดข้อมูลงวดไม่สำเร็จ ลองใหม่อีกครั้ง');
+        showFormulaManualInput();
+        return false;
+      }
+      rows=Array.isArray(h.data)?h.data:[];
+    }catch(e){
+      if(requestId!==LotteryUiState.formula.autoFillRequestId)return false;
       _setFormulaAutoFillPending(false);
       _clearFormulaResults('โหลดข้อมูลงวดไม่สำเร็จ ลองใหม่อีกครั้ง');
+      showFormulaManualInput();
       return false;
     }
-    rows=Array.isArray(h.data)?h.data:[];
-  }catch(e){
-    if(requestId!==_formulaAutoFillRequestId)return false;
-    _setFormulaAutoFillPending(false);
-    _clearFormulaResults('โหลดข้อมูลงวดไม่สำเร็จ ลองใหม่อีกครั้ง');
-    return false;
   }
   if(!rows.length){
     _setFormulaAutoFillPending(false);
     _clearFormulaResults('ยังไม่มีประวัติงวดให้เติมอัตโนมัติ สามารถกรอกเลขเองแล้วคำนวณได้');
+    showFormulaManualInput();
     return false;
   }
-  _formulaHistory=rows; // cache for Claude/Codex/จักรพรรดิ formulas
+  LotteryServerData.formula.history=rows; // cache for Claude/Codex/จักรพรรดิ formulas
 
   let prev=null;
   if(targetDateStr){
@@ -442,6 +553,7 @@ async function autoFillFormula(clearStaleInputs=false){
   if(!prev){
     _setFormulaAutoFillPending(false);
     _clearFormulaResults('ไม่พบงวดก่อนหน้าสำหรับวันที่เป้าหมาย สามารถกรอกเลขเองแล้วคำนวณได้');
+    showFormulaManualInput();
     return false;
   }
 
@@ -464,9 +576,10 @@ async function autoFillFormula(clearStaleInputs=false){
 
   const info=document.getElementById('f-prev-info');
   if(info) info.textContent=`งวด: ${prev.date||''} | รางวัลที่1: ${prev.prize1||''}`;
-  _formulaFilled=true;
+  updateFormulaTargetDisplay();
+  LotteryUiState.formula.filled=true;
   _setFormulaAutoFillPending(false);
-  if(_formulaHasRun){
+  if(LotteryUiState.formula.hasRun){
     if(document.getElementById('f-auto-run')?.checked)runAllFormulas();
     else _clearFormulaResults('เปลี่ยนงวดเป้าหมายแล้ว กดคำนวณอีกครั้งเพื่ออัปเดตผล');
   }else{
@@ -662,16 +775,17 @@ function _mkFormulaCard(title, source, steps, highlights, note='', trust=null){
   const target=_formulaTargetLabel(title,source,highlights);
   const count=highlights.length?`${highlights.length} ชุด`:'ชุดคำนวณเฉพาะ';
   const quality=_formulaQualityBadges(title,source,highlights);
+  const stepsLabel=String(source||"").startsWith("HM")?"วิธีคำนวณและข้อจำกัด":"ดูวิธีคำนวณ";
   const noteHtml=(badges&&note)?`<div style="font-size:.72rem;color:var(--text3);font-style:italic;margin-top:6px">${note}</div>`:'';
   const trustHtml=trust?`<span class="trust-badge">${trust}</span>`:'';
   return `<div class="card formula-card" data-group="${group}">
-    <div class="card-title">${title}${trustHtml}</div>
+    <h2 class="card-title">${title}${trustHtml}</h2>
     <div style="font-size:.7rem;color:var(--text3);margin-top:3px">${source}</div>
     <div class="formula-meta"><span class="formula-chip target">${target}</span><span class="formula-chip">${count}</span>${quality}</div>
     <div class="formula-result-row">${resultHtml}</div>
     ${noteHtml}
     <details class="formula-steps">
-      <summary>ดูวิธีคำนวณ</summary>
+      <summary>${stepsLabel}</summary>
       <div style="margin-top:7px">${stepHtml||'<div class="formula-step">ไม่มีขั้นตอนเพิ่มเติม</div>'}</div>
     </details>
   </div>`;
@@ -692,6 +806,7 @@ function _formulaQualityBadges(title,source,highlights=[]){
 
 function _formulaGroupKey(source,title=''){
   const s=String(source||title||'').trim();
+  if(s.startsWith('FANO.'))return 'FANO';
   if(s.startsWith('A.'))return 'A';
   if(s.startsWith('B.'))return 'B';
   if(s.startsWith('C.'))return 'C';
@@ -732,7 +847,7 @@ function _groupFormulaCards(cards){
   return groups;
 }
 
-function _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,tycoonCards,hermesCards,targetDate}){
+function _renderFormulaSummary({grouped,codexCards,patternCards=[],eCards,imperialCards,tycoonCards,hermesCards,fanoCards=0,targetDate}){
   const el=document.getElementById('formula-summary');
   if(!el)return;
   const counts={
@@ -742,11 +857,12 @@ function _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,tycoonCa
     D:grouped.D.length,
     G:grouped.G.length,
     H:grouped.H.length,
-    F:codexCards.length,
+    F:codexCards.length+patternCards.length,
     E:eCards.length,
     I:(imperialCards||[]).length,
     J:(tycoonCards||[]).length,
     HM:(hermesCards||[]).length,
+    FANO:fanoCards,
   };
   const total=Object.values(counts).reduce((a,b)=>a+b,0);
   const targetLabel=targetDate?(()=>{
@@ -757,1838 +873,14 @@ function _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,tycoonCa
     ['งวดเป้าหมาย',targetLabel,'อ้างอิงจากงวดก่อนหน้า'],
     ['สูตรทั้งหมด',total,'รวมทุกหมวดที่คำนวณแล้ว'],
     ['สูตร 2 ตัว',counts.A+counts.B+counts.E,'พื้นบ้าน · Lottery+ · สายมู'],
-    ['สูตร 3 ตัว/รางวัล',counts.C+counts.D+counts.F+counts.G+counts.H,'พิชิตโชค · Arithmetic · Rolling · แม่นขั้นเทพ · มิสเตอร์ซี'],
+    ['สูตร 3 ตัว/รางวัล',counts.C+counts.D+counts.F+counts.G+counts.H,'พิชิตโชค · Arithmetic · Rolling Stats · Pattern Link · แม่นขั้นเทพ · มิสเตอร์ซี'],
     ['สูตร 6 ตัว (pool 1-5)',counts.I,'จักรพรรดิ'],
     ['สูตร Hermes (pool 1-4)',counts.HM,'Hermes · ทดลอง'],
+    ['รางวัลที่ 1 · สมมติฐาน',counts.FANO,'ระนาบฟาโน v4 + v5 · แยกจาก Picks · เลือก 2 เลขจากโมเดลย้อนหลัง'],
   ].map(([label,value,sub])=>`<div class="formula-summary-item"><div class="formula-summary-label">${label}</div><div class="formula-summary-value">${value}</div><div class="formula-summary-sub">${sub}</div></div>`).join('');
   el.classList.add('active');
 }
 
 function _formulaPanelHtml(html,tabName){
   return html&&html.trim()?html:`<div class="formula-tab-empty" style="display:block;grid-column:1/-1">ยังไม่มีผลในหมวด ${tabName}</div>`;
-}
-
-// ─── E. สายมู/ความเชื่อ (อ้างอิงวันที่งวด + โหราศาสตร์ไทย) ───────────────────────
-// คืน array ของ object สูตรความเชื่อ ใช้ร่วมกันทั้งหน้าคำนวณและ backtest
-function _formulaEsc(v){
-  return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-}
-
-function _formulaGroupLabel(group){
-  return ({
-    A:'A · พื้นบ้าน',B:'B · ล็อตเตอรี่พลัส',C:'C · พิชิตโชค',D:'D · Arithmetic',
-    E:'E · สายมู',F:'F · Rolling',G:'G · แม่นขั้นเทพ',H:'H · มิสเตอร์ซี',I:'I · จักรพรรดิ',J:'J · เจ้าสัว',HM:'HM · Hermes Pool 1-4'
-  })[group]||group||'-';
-}
-
-function _formulaConsensusType(num,target){
-  const n=String(num);
-  const t=String(target||'').toLowerCase();
-  if(n.length===1)return {key:'digit',label:'เลขวิ่ง'};
-  if(t.includes('front'))return {key:'front3',label:'หน้า 3'};
-  if(t.includes('back')||t.includes('ท้าย'))return {key:'back3',label:'ท้าย 3'};
-  if(t.includes('prize1'))return {key:'prize1',label:'รางวัลที่ 1'};
-  if(n.length===3)return {key:'top3',label:'3 ตัวบน'};
-  if(n.length===2)return {key:'bottom2',label:'2 ตัว'};
-  return {key:'other',label:'อื่น ๆ'};
-}
-
-function _formulaBacktestEdgeByName(){
-  const map=new Map();
-  for(const row of _btRowData||[]){
-    const clean=String(row.name||'').replace(/\s+/g,' ').trim();
-    if(clean)map.set(clean,row.edge||0);
-    const code=clean.match(/^([A-Z]\d+)/)?.[1];
-    if(code)map.set(code,row.edge||0);
-  }
-  return map;
-}
-
-function _formulaBacktestRowsByName(){
-  const map=new Map();
-  for(const row of _btRowData||[]){
-    const clean=String(row.name||'').replace(/\s+/g,' ').trim();
-    if(clean)map.set(clean,row);
-    const code=clean.match(/^([A-Z]+\d+)/)?.[1];
-    if(code)map.set(code,row);
-  }
-  return map;
-}
-
-function _formulaTitleCode(title,source){
-  const group=String(source||'').trim()[0]||'';
-  const t=String(title||'');
-  const direct=t.match(/^([DX]\d+)/)?.[1];
-  if(direct)return direct;
-  const n=t.match(/(?:แม่นขั้นเทพ|มิสเตอร์ซี)\s*(\d+)/)?.[1];
-  if(group&&n)return `${group}${n}`;
-  return '';
-}
-
-function _formulaBacktestProfileForTitle(title,source){
-  const map=_formulaBacktestRowsByName();
-  const clean=String(title||'').replace(/\s+/g,' ').trim();
-  const code=_formulaTitleCode(clean,source);
-  let row=(code&&map.get(code))||map.get(clean)||null;
-  if(!row){
-    const tokens=clean.split(/[\s·:()\-—]+/).filter(t=>t.length>1&&!/^\d+$/.test(t));
-    let bestScore=0;
-    for(const [name,candidate] of map.entries()){
-      const rowTokens=String(name).split(/[\s·:()\-—]+/).filter(t=>t.length>1&&!/^[A-Z]?\d+$/.test(t));
-      const overlap=tokens.filter(t=>rowTokens.includes(t)).length;
-      if(overlap>bestScore){bestScore=overlap;row=candidate;}
-    }
-    if(bestScore<2)row=null;
-  }
-  if(!row)return null;
-  const r200=row.rolling?.[200]||null;
-  const edge200=r200&&r200.total>=180?r200.edge:null;
-  return {...row,edge200,degraded:edge200!=null&&edge200<-5};
-}
-
-function _formulaBacktestEdgeForTitle(title,source,edgeMap){
-  const clean=String(title||'').replace(/\s+/g,' ').trim();
-  const code=_formulaTitleCode(clean,source);
-  if(code&&edgeMap.has(code))return edgeMap.get(code)||0;
-  if(edgeMap.has(clean))return edgeMap.get(clean)||0;
-  const tokens=clean.split(/[\s·:()\-—]+/).filter(t=>t.length>1&&!/^\d+$/.test(t));
-  let best=0,bestScore=0;
-  for(const [name,edge] of edgeMap.entries()){
-    const rowTokens=String(name).split(/[\s·:()\-—]+/).filter(t=>t.length>1&&!/^[A-Z]?\d+$/.test(t));
-    const overlap=tokens.filter(t=>rowTokens.includes(t)).length;
-    if(overlap>bestScore){bestScore=overlap;best=edge||0;}
-  }
-  return bestScore>=2?best:0;
-}
-
-function _collectFormulaConsensus(){
-  const root=document.getElementById('formula-results-ALL');
-  if(!root)return [];
-  const edgeMap=_formulaBacktestEdgeByName();
-  const byKey=new Map();
-  const cards=[...root.querySelectorAll('.formula-card')];
-  for(const card of cards){
-    const title=(card.querySelector('.card-title')?.textContent||'').trim();
-    const source=(card.querySelector('.card-title + div')?.textContent||'').trim();
-    const group=card.getAttribute('data-group')||'?';
-    const target=(card.querySelector('.formula-chip.target')?.textContent||'').trim();
-    const raw=[...card.querySelectorAll('.formula-result-row span')]
-      .map(el=>(el.textContent||'').trim())
-      .filter(v=>/^\d{1,6}$/.test(v));
-    const nums=[...new Set(raw)];
-    if(!nums.length)continue;
-    const widthPenalty=1/Math.sqrt(Math.max(nums.length,1));
-    const edge=_formulaBacktestEdgeForTitle(title,source,edgeMap);
-    for(const num of nums){
-      const type=_formulaConsensusType(num,target);
-      const key=`${type.key}:${num}`;
-      if(!byKey.has(key)){
-        byKey.set(key,{num,typeKey:type.key,typeLabel:type.label,formulaCount:0,groups:new Set(),sources:[],weighted:0,edgeBoost:0});
-      }
-      const rec=byKey.get(key);
-      rec.formulaCount++;
-      rec.groups.add(group);
-      rec.weighted+=widthPenalty;
-      if(edge>0)rec.edgeBoost+=Math.min(edge,20)/20;
-      rec.sources.push({title,source,group,target,count:nums.length,edge});
-    }
-  }
-  return [...byKey.values()].map(rec=>{
-    const groupCount=rec.groups.size;
-    const score=(rec.formulaCount*10)+(groupCount*9)+(rec.weighted*14)+(rec.edgeBoost*7);
-    const badges=[];
-    if(rec.formulaCount>=5)badges.push('HOT');
-    if(groupCount>=3)badges.push('STRONG');
-    if(rec.edgeBoost>0)badges.push('BACKTEST+');
-    if(rec.formulaCount===1)badges.push('NEW');
-    return {...rec,groupCount,score,badges};
-  }).sort((a,b)=>b.score-a.score||b.formulaCount-a.formulaCount||a.num.localeCompare(b.num));
-}
-
-function _formulaConsensusChip(item){
-  const sources=item.sources
-    .sort((a,b)=>a.count-b.count||a.title.localeCompare(b.title))
-    .slice(0,8);
-  const more=item.sources.length-sources.length;
-  const srcHtml=sources.map(s=>`<span class="consensus-source" data-group="${_formulaEsc(s.group)}" title="${_formulaEsc(s.source)}">${_formulaEsc(s.title)}${s.count>1?` <b>${s.count}ช.</b>`:''}</span>`).join('');
-  const badgeHtml=item.badges.map(b=>`<span class="consensus-badge ${b.toLowerCase().replace('+','plus')}">${b}</span>`).join('');
-  return `<details class="consensus-chip type-${_formulaEsc(item.typeKey)}">
-    <summary>
-      <span class="consensus-num">${_formulaEsc(item.num)}</span>
-      <span class="consensus-mini">x${item.formulaCount}</span>
-    </summary>
-    <div class="consensus-detail">
-      <div class="consensus-line"><span>${_formulaEsc(item.typeLabel)}</span><span>Score ${item.score.toFixed(1)}</span></div>
-      <div class="consensus-stats">${item.formulaCount} สูตร · ${item.groupCount} หมวด · น้ำหนัก ${item.weighted.toFixed(2)}</div>
-      <div class="consensus-badges">${badgeHtml||'<span class="consensus-badge soft">WATCH</span>'}</div>
-      <div class="consensus-sources">${srcHtml}${more>0?`<span class="consensus-source more">+${more}</span>`:''}</div>
-      <div class="consensus-note">สูตรที่ปล่อยเลขน้อยจะได้น้ำหนักมากกว่าสูตรชุดใหญ่ เพื่อลดเลขซ้ำหลอก</div>
-    </div>
-  </details>`;
-}
-
-function _renderFormulaConsensusHeatmap(items){
-  const digitStats=Array.from({length:10},(_,d)=>({d,count:0,score:0}));
-  for(const item of items){
-    for(const ch of item.num){
-      const d=parseInt(ch,10);
-      if(Number.isFinite(d)){
-        digitStats[d].count+=item.formulaCount;
-        digitStats[d].score+=item.score;
-      }
-    }
-  }
-  const max=Math.max(...digitStats.map(x=>x.score),1);
-  return `<div class="consensus-heatmap">
-    ${digitStats.map(x=>{
-      const alpha=.08+(x.score/max)*.34;
-      return `<div class="consensus-heat" style="background:rgba(245,158,11,${alpha.toFixed(3)})"><b>${x.d}</b><span>${x.count}</span></div>`;
-    }).join('')}
-  </div>`;
-}
-
-function _formulaFinalCopy(type){
-  const items=_collectFormulaConsensus().filter(x=>x.formulaCount>1);
-  const pick=(key,n)=>items.filter(x=>x.typeKey===key).slice(0,n).map(x=>x.num);
-  const nums=type==='top3'?pick('top3',10):type==='bottom2'?pick('bottom2',10):type==='digit'?pick('digit',5):[
-    ...pick('top3',6),...pick('bottom2',6),...pick('digit',4)
-  ];
-  const text=[...new Set(nums)].join(' ');
-  if(text&&typeof copyPredNumber==='function')copyPredNumber(text);
-}
-
-function _renderFormulaFinalPicks(){
-  const el=document.getElementById('formula-final');
-  if(!el)return;
-  const items=_collectFormulaConsensus().filter(x=>x.formulaCount>1);
-  if(!items.length){el.classList.remove('active');el.innerHTML='';return;}
-  const pick=(key,n)=>items.filter(x=>x.typeKey===key).slice(0,n);
-  const block=(label,arr)=>`<div class="formula-final-block"><div class="formula-final-label">${label}</div><div class="formula-final-row">${arr.length?arr.map(_formulaConsensusChip).join(''):'<span class="formula-insight-empty">ยังไม่มีเลขซ้ำเด่น</span>'}</div></div>`;
-  const btRows=Array.isArray(_btRowData)?_btRowData:[];
-  const bestFormula=btRows.filter(r=>Number.isFinite(r?.edge)).sort((a,b)=>b.edge-a.edge)[0];
-  const btEmpty=btRows.length
-    ? '<span class="formula-insight-empty">— · ไม่มีข้อมูลครบสำหรับจัดอันดับสูตร</span>'
-    : '<span class="formula-insight-empty">รัน Backtest เพื่อจัดอันดับสูตร</span>';
-  const btHtml=bestFormula
-    ? `<div class="formula-final-block"><div class="formula-final-label">สูตร Backtest เด่น</div><div class="formula-final-row"><span class="formula-quality bt">${_formulaEsc(bestFormula.edge>=0?'+':'')}${bestFormula.edge.toFixed(1)}%</span><span class="formula-insight-empty">${_formulaEsc(bestFormula.name)}</span></div></div>`
-    : `<div class="formula-final-block"><div class="formula-final-label">สูตร Backtest เด่น</div><div class="formula-final-row">${btEmpty}</div></div>`;
-  el.innerHTML=`<div class="formula-final-card">
-    <div class="formula-final-head">
-      <div class="formula-final-title">Formula Final Picks</div>
-      <div class="formula-final-actions">
-        <button class="dash-link" onclick="_formulaFinalCopy('top3')">copy 3 ตัวบน</button>
-        <button class="dash-link" onclick="_formulaFinalCopy('bottom2')">copy 2 ตัว</button>
-        <button class="dash-link" onclick="_formulaFinalCopy('all')">copy ชุดรวม</button>
-      </div>
-    </div>
-    <div class="formula-final-grid">
-      ${block('3 ตัวบนเด่นสุด',pick('top3',5))}
-      ${block('2 ตัวเด่นสุด',pick('bottom2',5))}
-      ${block('เลขวิ่งเด่นสุด',pick('digit',5))}
-      ${btHtml}
-    </div>
-  </div>`;
-  el.classList.add('active');
-  bindFormulaConsensusDetails();
-}
-
-function setFormulaConsensusFilter(type){
-  _formulaConsensusFilter=type||'all';
-  _renderFormulaInsights();
-}
-
-function bindFormulaConsensusDetails(){
-  document.querySelectorAll('#formula-insights .consensus-chip').forEach(detail=>{
-    detail.addEventListener('toggle',()=>{
-      if(!detail.open)return;
-      document.querySelectorAll('#formula-insights .consensus-chip[open]').forEach(other=>{
-        if(other!==detail)other.open=false;
-      });
-    });
-  });
-}
-
-function _renderFormulaInsights(){
-  const el=document.getElementById('formula-insights');
-  if(!el)return;
-  const allItems=_collectFormulaConsensus();
-  const filtered=allItems.filter(x=>x.formulaCount>1&&(_formulaConsensusFilter==='all'||x.typeKey===_formulaConsensusFilter));
-  const topPicks=[
-    ['3 ตัวบนเด่น',allItems.filter(x=>x.typeKey==='top3'&&x.formulaCount>1).slice(0,5)],
-    ['2 ตัวเด่น',allItems.filter(x=>x.typeKey==='bottom2'&&x.formulaCount>1).slice(0,5)],
-    ['เลขวิ่งเด่น',allItems.filter(x=>x.typeKey==='digit'&&x.formulaCount>1).slice(0,5)],
-  ];
-  const filters=[
-    ['all','ทั้งหมด'],['digit','เลขวิ่ง'],['bottom2','2 ตัว'],['top3','3 ตัวบน'],['front3','หน้า 3'],['back3','ท้าย 3'],['prize1','รางวัลที่ 1']
-  ];
-  const filterHtml=filters.map(([key,label])=>`<button class="consensus-filter ${_formulaConsensusFilter===key?'active':''}" onclick="setFormulaConsensusFilter('${key}')">${label}</button>`).join('');
-  const topHtml=topPicks.map(([title,items])=>`<div class="consensus-pick-card">
-    <div class="formula-insight-title">${title}</div>
-    <div class="consensus-chip-row">${items.length?items.map(_formulaConsensusChip).join(''):'<span class="formula-insight-empty">ยังไม่มีเลขซ้ำเด่น</span>'}</div>
-  </div>`).join('');
-  const listHtml=filtered.length
-    ? filtered.slice(0,24).map(_formulaConsensusChip).join('')
-    : '<div class="formula-tab-empty" style="display:block;grid-column:1/-1">ยังไม่มีเลขซ้ำในกลุ่มนี้</div>';
-  const showListOpen=_formulaConsensusFilter!=='all';
-  el.innerHTML=`<div class="consensus-board">
-    <div class="consensus-head">
-      <div>
-        <div class="consensus-title">Consensus Board</div>
-      </div>
-      <div class="consensus-filters">${filterHtml}</div>
-    </div>
-    <div class="consensus-top-grid">${topHtml}</div>
-    <details class="consensus-all-details" ${showListOpen?'open':''}>
-      <summary>${showListOpen?'ผลลัพธ์ตามตัวกรอง':'ดูเลขซ้ำทั้งหมด'}</summary>
-      <div class="consensus-list">${listHtml}</div>
-    </details>
-    <details class="consensus-heat-details">
-      <summary>ดู Digit Heatmap</summary>
-      ${_renderFormulaConsensusHeatmap(allItems)}
-    </details>
-  </div>`;
-  el.classList.add('active');
-  bindFormulaConsensusDetails();
-}
-
-function resetFormulaFilters(){
-  const q=document.getElementById('formula-search');
-  const t=document.getElementById('formula-target-filter');
-  if(q)q.value='';
-  if(t)t.value='';
-  filterFormulaCards();
-}
-
-function filterFormulaCards(){
-  const tools=document.getElementById('formula-tools');
-  const countEl=document.getElementById('formula-filter-count');
-  const active=document.querySelector('.formula-results-panel.active');
-  if(!active||_formulaActiveTab==='BT'||!_formulaHasRun){
-    if(tools)tools.classList.remove('active');
-    if(countEl)countEl.textContent='';
-    return;
-  }
-  if(tools)tools.classList.add('active');
-  const query=(_fv('formula-search')||'').toLowerCase();
-  const target=(_fv('formula-target-filter')||'').toLowerCase();
-  const cards=[...active.querySelectorAll('.formula-card')];
-  let visible=0;
-  cards.forEach(card=>{
-    const text=(card.textContent||'').toLowerCase();
-    const targetText=(card.querySelector('.formula-chip.target')?.textContent||'').toLowerCase();
-    const ok=(!query||text.includes(query))&&(!target||targetText.includes(target));
-    card.style.display=ok?'':'none';
-    if(ok)visible++;
-  });
-  let empty=active.querySelector('.formula-filter-empty');
-  if(!empty){
-    empty=document.createElement('div');
-    empty.className='formula-tab-empty formula-filter-empty';
-    empty.style.cssText='display:none;grid-column:1/-1';
-    empty.textContent='ไม่พบสูตรที่ตรงกับตัวกรอง';
-    active.appendChild(empty);
-  }
-  empty.style.display=(cards.length&&visible===0)?'block':'none';
-  if(countEl)countEl.textContent=cards.length?`แสดง ${visible}/${cards.length} สูตร`:'';
-}
-
-const _THAI_DAYS=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัสบดี','ศุกร์','เสาร์'];
-const _KAMLANG=[6,15,8,17,19,21,10]; // เลขกำลังวัน อา-ส
-function _beliefData(day,mon,year2,dateStr){
-  function uniq(a){return[...new Set(a)];}
-  function d2(n){n=((Math.round(n)%100)+100)%100;return String(n).padStart(2,'0');}
-  function digsOf(nums){return uniq(nums.join('').split(''));}
-  let wd=0;
-  if(dateStr){const[y,m,dd]=dateStr.split('-').map(Number);wd=new Date(y,m-1,dd).getDay();}
-  const out=[];
-
-  // E1 เลขวันที่หวยออก
-  const e1nums=uniq([d2(day),d2(mon),d2(day+mon),d2(day*mon),d2(year2),String(day%10)+String(mon%10)]);
-  out.push({name:'E1 เลขวันที่หวยออก',icon:'📅',
-    lines:[`งวดวันที่ ${day}/${mon}/${year2}`,`วัน=${day} เดือน=${mon} ปีพ.ศ.=${year2}`,`เลขวัน·เดือน·ผลรวม·ผลคูณ`],
-    nums:e1nums,digits:digsOf(e1nums)});
-
-  // E2 เลขกำลังวัน (โหราศาสตร์ไทย)
-  const k=_KAMLANG[wd];
-  const e2nums=uniq([d2(k),d2(k).split('').reverse().join(''),d2(k+day),d2(k+mon)]);
-  out.push({name:'E2 เลขกำลังวัน',icon:'🪐',
-    lines:[`งวดออกวัน${_THAI_DAYS[wd]}`,`กำลังวัน${_THAI_DAYS[wd]} = ${k}`,`เลขกำลัง·กลับเลข·บวกวัน/เดือน`],
-    nums:e2nums,digits:digsOf(e2nums)});
-
-  // E3 เลขมงคล พ.ศ.
-  const sumYMD=day+mon+year2;
-  const e3nums=uniq([d2(year2),d2(2500+year2),d2(sumYMD),d2(year2+day),d2(year2+mon)]);
-  out.push({name:'E3 เลขมงคล พ.ศ.',icon:'🔢',
-    lines:[`ปี พ.ศ. 25${String(year2).padStart(2,'0')}`,`ผลรวม วัน+เดือน+ปี = ${sumYMD}`,`เลขท้ายปี·ผลรวมมงคล`],
-    nums:e3nums,digits:digsOf(e3nums)});
-
-  // E4 เลขเด็ดยอดนิยม (เลขเบิ้ล/เลขตอง/9 มงคล) — แปรตามวันที่
-  const seed=(day*7+mon*3+year2)%10;
-  const e4nums=uniq([String(seed)+String(seed),String((seed+1)%10)+String((seed+1)%10),'99',d2(seed*11),d2(seed+90)]);
-  out.push({name:'E4 เลขเด็ดยอดนิยม',icon:'✨',
-    lines:[`สายมูยอดฮิต งวดนี้`,`เลขเบิ้ลเด่น = ${seed}${seed}`,`เลขเบิ้ล·เลข 9 มงคล (แปรตามวันที่งวด)`],
-    nums:e4nums,digits:digsOf(e4nums)});
-
-  return out;
-}
-// เปิดค้นข่าวเลขเด็ดงวดที่เลือก (เปิด Google ในแท็บใหม่ — ดึงความเชื่อจริง ณ งวดนั้น)
-function searchLuckyNews(extra){
-  const dateStr=document.getElementById('f-target-date').value||'';
-  let label='งวดล่าสุด';
-  if(dateStr){const[y,m,d]=dateStr.split('-').map(Number);label=`${d}/${m}/${y+543}`;}
-  const q=encodeURIComponent(`${extra} หวย งวด ${label}`);
-  window.open(`https://www.google.com/search?q=${q}`,'_blank');
-}
-function _computeBeliefCards(day,mon,year2,dateStr){
-  return _beliefData(day,mon,year2,dateStr).map(f=>{
-    const numHtml=`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${f.nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:1rem;background:rgba(236,72,153,.12);border:1px solid #ec489966;color:#ec4899;padding:4px 11px;border-radius:7px;font-weight:700">${n}</span>`).join('')}</div>`;
-    const runHtml=`<div style="margin-top:8px;font-size:.82rem;color:var(--text2)">เลขวิ่ง: <b style="color:#ec4899;font-family:'IBM Plex Mono',monospace">${f.digits.join(' ')}</b></div>`;
-    return _mkFormulaCard(`${f.icon} ${f.name}`,'E. สายมู/ความเชื่อ',f.lines,[],numHtml+runHtml);
-  });
-}
-
-
-// ─── สูตรเจ้าพ่อ Claude (หมวด D) — คำนวณเลขเต็มตรงๆ จากงวดก่อน ไม่ใช่พูลเลขเดี่ยว ───
-// ใช้ร่วมกันทั้งการ์ดและ backtest เพื่อให้ตรงกันเป๊ะ
-// DSUM (วัน+เดือน+ปี พ.ศ. 2 หลัก ของงวดถัดไป) ใช้ร่วมกับ Group J's bottom2 leg (ISSUE-13) —
-// แยกเป็นฟังก์ชันเดียวเพื่อไม่ให้มีสองจุดคำนวณค่าเดียวกัน
-function _dsumValue(nextDay,nextMonth,nextYear2){
-  return nextDay+nextMonth+nextYear2;
-}
-
-function _claudeFormulas(ctx){
-  const {p6,t3,b2,bk1,bk2,drawday,nextDay,nextMonth,nextYear2}=ctx;
-  const P=parseInt(p6)||0,B2=parseInt(b2)||0,BK1=parseInt(bk1)||0,BK2=parseInt(bk2)||0,T3=parseInt(t3)||0;
-  const pad2=n=>String(((Math.round(n)%100)+100)%100).padStart(2,'0');
-  const pad3=n=>String(((Math.round(n)%1000)+1000)%1000).padStart(3,'0');
-  const pad6=n=>String(((Math.round(n)%1000000)+1000000)%1000000).padStart(6,'0');
-  const rev=s=>s.split('').reverse().join('');
-  const uniq=a=>[...new Set(a)];
-  const DSUM=_dsumValue(nextDay,nextMonth,nextYear2);
-  const b2a=parseInt(b2[0]||'0'),b2b=parseInt(b2[1]||'0');
-
-  // D1 ท้าย 2 ตัว — 10 สูตรย่อย, แหล่งที่มาหลากหลาย ไม่ซ้ำกัน
-  const d1=uniq([
-    pad2(B2),                               // ①ท้าย2งวดก่อนซ้ำ
-    rev(pad2(B2)),                          // ②กลับเลขท้าย2
-    pad2(99 - B2),                          // ③เลขสลับขั้ว (99-ท้าย2)
-    pad2(P%100 + B2),                       // ④ท้าย2รางวัล + ท้าย2ล่าง
-    pad2(BK1%100 + BK2%100),               // ⑤ท้าย2ของท้าย3ทั้งคู่
-    pad2(P%100),                            // ⑥ท้าย2รางวัลที่1
-    pad2(BK1%100),                          // ⑦ท้าย2ของท้าย3ชุด1
-    pad2(DSUM + b2b),                       // ⑧วัน+เดือน+ปี+หน่วยล่าง
-    pad2(nextDay*nextMonth + b2a),          // ⑨วัน×เดือน+สิบล่าง
-    pad2(Math.floor(P/100)%100),            // ⑩หน้า2ของท้าย4รางวัล
-  ]);
-
-  // D2 หน้า 3 ตัว — 6 สูตรย่อย ให้ "เลข 3 หลักจริง"
-  const d2=uniq([
-    pad3(Math.floor(P/1000) + BK1),         // ①3หน้ารางวัล + ท้าย3ชุด1
-    pad3(P%1000 + nextDay*nextMonth),       // ②3ท้ายรางวัล + วัน×เดือน
-    pad3(BK1 + BK2 + T3),                   // ③ท้าย3ทั้งคู่ + 3ตัวบน
-    rev(pad3(Math.floor(P/1000))),          // ④กลับ3หน้ารางวัล
-    pad3(BK1 + nextDay*10 + nextMonth),    // ⑤ท้าย3ชุด1 + วันเดือน
-    pad3(P%1000 + B2),                      // ⑥3ท้ายรางวัล + ท้าย2
-  ]);
-
-  // D3 ท้าย 3 ตัว — 6 สูตรย่อย ให้ "เลข 3 หลักจริง"
-  const d3=uniq([
-    pad3(BK1 + BK2),                        // ①ท้าย3สองชุดบวกกัน
-    pad3(P%1000 + nextDay),                 // ②3ท้ายรางวัล + วัน
-    rev(pad3(BK1)),                         // ③กลับท้าย3ชุด1
-    pad3(BK2 + nextMonth*nextYear2),        // ④ท้าย3ชุด2 + เดือน×ปี
-    pad3(BK1 + B2*10),                      // ⑤ท้าย3ชุด1 + ท้าย2×10
-    pad3(Math.floor(P/1000) + BK2),        // ⑥3หน้ารางวัล + ท้าย3ชุด2
-  ]);
-
-  // D4 รางวัลที่ 1 — เลข 6 หลักเต็ม + ท้าย 2 ตัวสำหรับ backtest
-  const d4full=uniq([
-    pad6(P + BK1*BK2),                      // ①รางวัล + ท้าย3คูณ
-    pad6(P + nextDay*nextMonth*nextYear2),  // ②รางวัล + วัน×เดือน×ปี
-    rev(p6),                                // ③กลับเลขรางวัล
-  ]);
-  const d4two=uniq([
-    pad2(P + B2),                           // ①รางวัล + ท้าย2
-    pad2(Math.floor(P/100)%100 + T3),       // ②(พัน-ร้อย) + 3ตัวบน
-    pad2(P%100 + nextYear2),                // ③ท้าย2รางวัล + ปี
-  ]);
-
-  return {d1,d2,d3,d4full,d4two};
-}
-
-// ─── J. เจ้าสัว — bottom2 leg (ISSUE-13) ───────────────────────────────────────
-// Search finalist from the (closed) Group J promotion-gate search: pad2(|BK2 - DSUM|),
-// where BK2 = previous draw's back3_2 and DSUM reuses Group D's _dsumValue. Failed the
-// holdout gate (train +0.72%, validation +1.67%, holdout -0.21%) — ships anyway under
-// ทดลอง per ADR-0003 rather than being deleted. Skips (no fallback) when back3_2 or the
-// target date is missing, unlike Group D which defaults missing digits to 0.
-function _tycoonBottom2Formula(prevRow, nextDay, nextMonth, nextYear2){
-  const bk2raw=String(prevRow?.back3_2??'').trim();
-  if(!bk2raw)return [];
-  if(nextDay==null||nextMonth==null||nextYear2==null||isNaN(nextDay)||isNaN(nextMonth)||isNaN(nextYear2))return [];
-  const pad2=n=>String(((Math.round(n)%100)+100)%100).padStart(2,'0');
-  const BK2=parseInt(bk2raw)||0;
-  const DSUM=_dsumValue(nextDay,nextMonth,nextYear2);
-  return [pad2(Math.abs(BK2-DSUM))];
-}
-
-function _codexDateParts(row, fallbackIso=''){
-  if(row?.date){
-    const [d,m,y]=String(row.date).split('/').map(Number);
-    if(d&&m&&y) return {day:d, month:m, year:y};
-  }
-  if(fallbackIso){
-    const [y,m,d]=fallbackIso.split('-').map(Number);
-    if(d&&m&&y) return {day:d, month:m, year:y};
-  }
-  return {day:1, month:1, year:2568};
-}
-
-const CODEX_DEFAULT_COEFFS={sameDay:14,sameMonth:4,count:1.4,f80:4,f24:5,overdue:0.18,lastNumDecay:0.7};
-
-// Preset coefficient sets for backtest comparison only (ISSUE-4) — the live
-// "ทำนาย" tab / _codexCards always use CODEX_DEFAULT_COEFFS (baseline), never these.
-const CODEX_COEFF_PRESETS=[
-  {key:'baseline',label:'X1 Codex Sharp',coeffs:CODEX_DEFAULT_COEFFS},
-  {key:'recency_heavy',label:'X10 Codex Recency-heavy',coeffs:{sameDay:10,sameMonth:3,count:1.0,f80:8,f24:10,overdue:0.10,lastNumDecay:0.7}},
-  {key:'sameday_heavy',label:'X11 Codex Sameday-heavy',coeffs:{sameDay:24,sameMonth:8,count:1.0,f80:3,f24:3,overdue:0.12,lastNumDecay:0.7}},
-  {key:'overdue_heavy',label:'X12 Codex Overdue-heavy',coeffs:{sameDay:10,sameMonth:3,count:1.0,f80:3,f24:3,overdue:0.5,lastNumDecay:0.7}},
-  {key:'balanced',label:'X13 Codex Balanced',coeffs:{sameDay:6,sameMonth:6,count:2,f80:5,f24:5,overdue:0.3,lastNumDecay:0.85}},
-];
-
-// ─── I. จักรพรรดิ — digit-position frequency scorer (ISSUE-6) ─────────────────
-// Builds the previous draw's combined prize 1-5 pool (near1 + prize2 + prize3 +
-// prize4 + prize5 — same pool the pool6/pool_tail3 field types match against).
-// Excludes prize1 itself since จักรพรรดิ only looks at the "secondary" prizes.
-function _buildPrize1to5Pool(row){
-  const pool=[];
-  ['near1_1','near1_2','prize2_1','prize2_2','prize2_3','prize2_4','prize2_5',
-   'prize3_1','prize3_2','prize3_3','prize3_4','prize3_5','prize3_6','prize3_7','prize3_8','prize3_9','prize3_10'
-  ].forEach(k=>{
-    const raw=String(row?.[k]||'').trim();
-    if(!raw)return; // blank field → not real data, skip (don't let padStart manufacture "000000")
-    const v=raw.padStart(6,'0');
-    if(/^\d{6}$/.test(v))pool.push(v);
-  });
-  ['prize4','prize5'].forEach(k=>{
-    for(const tok of String(row?.[k]||'').trim().split(/\s+/)){if(/^\d{6}$/.test(tok))pool.push(tok);}
-  });
-  return pool; // near1+prize2-5 pool; excludes prize1 itself
-}
-
-// ─── HM. Hermes Pool 1-4 — value-weighted digit-position frequency (PRD-hermes-pool-1-4.md) ─
-// Builds the previous draw's prize 1-4 pool as [{num, w}]: prize2 (5 เลข) + prize3 (10 เลข) +
-// prize4 (50 เลข, string คั่น space) = 65 เลข — EXCLUDES near1/prize1/prize5 (เป้าเคร่งครัด
-// รางวัล 1–4 ตามเจ้าของ) โดยแต่ละตัวพกน้ำหนักถ่วงมูลค่าเงินจริง 5:2:1 (200k/80k/40k →
-// W2=1.0, W3=0.4, W4=0.2) — ค่าคงที่ design decision ประกาศล่วงหน้า ไม่ search (ADR-0003)
-// field ว่าง = ข้าม ไม่ padStart กลบ (convention เดียวกับ _buildPrize1to5Pool)
-const HERMES_POOL14_WEIGHTS = { prize2: 1.0, prize3: 0.4, prize4: 0.2 };
-function _buildPrize1to4Pool(row){
-  const pool=[];
-  const W=HERMES_POOL14_WEIGHTS;
-  [['prize2_1','prize2_2','prize2_3','prize2_4','prize2_5',W.prize2],
-   ['prize3_1','prize3_2','prize3_3','prize3_4','prize3_5','prize3_6','prize3_7','prize3_8','prize3_9','prize3_10',W.prize3]
-  ].forEach(cols=>{
-    const w=cols[cols.length-1];
-    cols.slice(0,-1).forEach(k=>{
-      const raw=String(row?.[k]||'').trim();
-      if(!raw)return;
-      const v=raw.padStart(6,'0');
-      if(/^\d{6}$/.test(v))pool.push({num:v,w});
-    });
-  });
-  for(const tok of String(row?.prize4||'').trim().split(/\s+/)){
-    if(/^\d{6}$/.test(tok))pool.push({num:tok,w:W.prize4});
-  }
-  return pool;
-}
-
-// Hermes Pool 1-4 — นับความถี่รายหลัก (ตำแหน่ง 0-5) ถ่วงน้ำหนักตามมูลค่ารางวัลของแต่ละเลขใน
-// pool 1-4 ของงวดก่อนหน้า จัดอันดับ 0-9 ต่อหลัก (tie-break digit น้อยก่อน เหมือน _digitPosFreq)
-// แล้วประกอบ topN ชุดผ่าน _imperialRoundRobin (K=8) — ลายเซ็น Hermes: เน้นสัญญาณจากรางวัลใหญ่
-// (prize2/3) ที่ freq ล้วนแบบ I1 กลบด้วย prize4 50 เลข; ต่างจาก I2/J2 ที่ blend เลขคณิต
-// (Hermes ไม่ใช้เลขคณิต/วันที่เลย — อินพุต = งวดก่อนหน้า 1 งวดเท่านั้น)
-function _hermesPool14Formula(prevRow, topN=10){
-  const pool=_buildPrize1to4Pool(prevRow);
-  if(pool.length===0)return [];
-  const counts=Array.from({length:6},()=>new Array(10).fill(0));
-  for(const e of pool){
-    for(let pos=0;pos<6;pos++)counts[pos][Number(e.num[pos])]+=e.w;
-  }
-  const ranked=counts.map(posCounts=>
-    posCounts.map((count,digit)=>({digit:String(digit),count}))
-      .sort((a,b)=>b.count-a.count || Number(a.digit)-Number(b.digit))
-  );
-  return _imperialRoundRobin(ranked.map(posRanked=>posRanked.map(e=>e.digit)),topN,8);
-}
-
-// Hermes ท้าย3 ใต้ดิน (HM2, PRD-hm2-hermes-tail3.md) — value-weighted digit freq เฉพาะตำแหน่งท้าย
-// (3,4,5) ของ pool รางวัล 1-4 (65 เลข, 5:2:1) → จัดอันดับ 0-9 ต่อหลัก → ประกอบ 3 หลัก 10 ชุด
-// round-robin (K=8) — เป้าท้าย 3 ตัวของรางวัล 1-4 (เกมใต้ดิน — mark ในชื่อ; ถูกบ่อยกว่า HM เต็ม
-// 6 หลัก ~700 เท่า แต่ edge อยู่ใน noise per ADR-0003) · หมายเหตุคณิตศาสตร์: candidate 0-7 (lap=0)
-// ซ้อนกับ tail3 ของ HM พอดี (ranking ตำแหน่งท้ายชุดเดียวกัน + round-robin lap=0) — ตามโครงสร้าง ไม่ใช่บั๊ก
-function _hermesTail3Formula(prevRow, topN=10){
-  const pool=_buildPrize1to4Pool(prevRow);
-  if(pool.length===0)return [];
-  const counts=Array.from({length:3},()=>new Array(10).fill(0));
-  for(const e of pool){
-    for(let p=0;p<3;p++)counts[p][Number(e.num[p+3])]+=e.w;
-  }
-  const ranked=counts.map(posCounts=>
-    posCounts.map((count,digit)=>({digit:String(digit),count}))
-      .sort((a,b)=>b.count-a.count || Number(a.digit)-Number(b.digit))
-  );
-  return _imperialRoundRobin(ranked.map(posRanked=>posRanked.map(e=>e.digit)),topN,8);
-}
-
-// Hermes ท้าย3 ทางการ (HM3, PRD-hm2-hermes-tail3.md) — กระจกเงา HM2: weighted freq เฉพาะตำแหน่ง
-// หน้า (0,1,2) → ประกอบ 3 หลัก ยิงเลขท้าย 3 ตัวทางการ (back3_1/back3_2 · 4,000฿) — ออกรางวัลแยก
-// อิสระ uniform 000-999 → ungateable by construction per ADR-0003 (ตัวเลข = chance ล้วน; รายงาน
-// ตามจริงเสมอ) — candidate ต่างจาก HM2/HM เต็มชุด (คนละตำแหน่ง → คนละ ranking)
-function _hermesOfficialTail3Formula(prevRow, topN=10){
-  const pool=_buildPrize1to4Pool(prevRow);
-  if(pool.length===0)return [];
-  const counts=Array.from({length:3},()=>new Array(10).fill(0));
-  for(const e of pool){
-    for(let p=0;p<3;p++)counts[p][Number(e.num[p])]+=e.w;
-  }
-  const ranked=counts.map(posCounts=>
-    posCounts.map((count,digit)=>({digit:String(digit),count}))
-      .sort((a,b)=>b.count-a.count || Number(a.digit)-Number(b.digit))
-  );
-  return _imperialRoundRobin(ranked.map(posRanked=>posRanked.map(e=>e.digit)),topN,8);
-}
-
-// Reusable digit-position frequency scorer — counts digit occurrences per
-// position (0-5) across a pool of 6-digit numbers, ranks digits per position
-// by frequency (ties broken by ascending digit value). Reused by จักรพรรดิ and
-// any future formula targeting the same pool (e.g. ISSUE-7's จักรพรรดิทองคำ).
-function _digitPosFreq(pool6){
-  if(!Array.isArray(pool6)||pool6.length===0)return null;
-  const counts=Array.from({length:6},()=>new Array(10).fill(0));
-  for(const num of pool6){
-    if(!/^\d{6}$/.test(num))continue;
-    for(let pos=0;pos<6;pos++)counts[pos][Number(num[pos])]++;
-  }
-  return counts.map(posCounts=>
-    posCounts.map((count,digit)=>({digit:String(digit),count}))
-      .sort((a,b)=>b.count-a.count || Number(a.digit)-Number(b.digit))
-  );
-}
-
-// สร้าง candidate สุดท้ายแบบ round-robin ต่อหลัก (candidate diversity fix รอบ 2 — เดิม
-// (round 1) สร้าง cartesian pool ใหญ่แล้วคัดด้วย Hamming distance ซึ่งวัดผิดมิติ: ระยะห่าง
-// รวมทั้งชุดขยับขึ้นจริงแต่ความหลากหลาย "ต่อหลัก" (ต่อคอลัมน์) ยังต่ำ แถมขยาย cap ต่อหลัก
-// เพื่อแก้ (top-8) จะทำให้ cartesian ระเบิดเป็น 8⁶=262,144 ชุดต่อการคำนวณ 1 ครั้ง — แก้ใหม่
-// โดยสร้างตรงจาก ranked list ต่อหลัก (ไม่ต้องมี cartesian pool เลย) การันตี K หลักไม่ซ้ำต่อ
-// ตำแหน่งแบบเป๊ะด้วยการสร้าง ไม่ใช่ fallback/relax:
-// - candidate i (0..topN-1), หลัก p ใช้ rankedPerPosition[p] อันดับที่ (r + lap*(p+1)) % K
-//   โดย lap=floor(i/K), r=i%K
-// - candidate 0 (lap=0,r=0) เป็นอันดับ 1 (เก่งสุด) ทุกตำแหน่งเสมอ — ตรงกับที่เคยรับประกันไว้
-// - candidate 0..K-1 (lap 0) แต่ละหลักใช้อันดับเดียวกันทุกตำแหน่ง (0,1,2,...,K-1 ตามลำดับ) —
-//   ครบ K หลักไม่ซ้ำต่อตำแหน่งอยู่แล้วจากแค่ K แถวแรกนี้
-// - candidate ที่เกิน K (lap>=1) หมุนอันดับแบบเยื้องต่อตำแหน่ง (offset (p+1)*lap) ไม่ให้ทั้งแถว
-//   ซ้ำกับแถวก่อนหน้าเป๊ะ (พิสูจน์ด้วยมือ+เทสกับกรณี worst-case ที่ทุกตำแหน่งมี ranking เดียวกัน)
-function _imperialRoundRobin(rankedPerPosition, topN=10, K=8){
-  const candidates=[];
-  for(let i=0;i<topN;i++){
-    const lap=Math.floor(i/K), r=i%K;
-    let digits='';
-    for(let p=0;p<rankedPerPosition.length;p++){
-      const idx=(r+lap*(p+1))%K;
-      digits+=rankedPerPosition[p][idx];
-    }
-    candidates.push(digits);
-  }
-  return candidates;
-}
-
-// จักรพรรดิ — จัดอันดับ 10 หลัก (0-9) ต่อตำแหน่งด้วยความถี่ล้วน (จาก _digitPosFreq) แล้วสร้าง
-// topN candidate ตรงผ่าน _imperialRoundRobin (K=8 ต่อหลัก) — ไม่มี cartesian pool อีกต่อไป
-function _imperialFormula(prevRow, topN=10){
-  const pool=_buildPrize1to5Pool(prevRow);
-  if(pool.length===0)return [];
-  const ranked=_digitPosFreq(pool);
-  if(!ranked)return [];
-  return _imperialRoundRobin(ranked.map(posRanked=>posRanked.map(e=>e.digit)),topN,8);
-}
-
-// จักรพรรดิทองคำ (ISSUE-7, ปรับ round 2) — เดิมผสม 80% freqScore + 20% ความใกล้เคียงเลขคณิต
-// ของ "ทั้งชุด 6 หลัก" ซึ่งใช้ไม่ได้กับสถาปัตยกรรม round-robin ที่สร้างทีละหลักอิสระต่อกัน —
-// ปรับเป็นผสม**ต่อหลัก**แทน: แต่ละหลัก จัดอันดับ 10 ตัวเลข (0-9) ใหม่ด้วย 0.8×(ความถี่ปรกติ
-// ด้วยความถี่สูงสุดของหลักนั้น) + 0.2×(ความใกล้เคียงกับหลักที่ตรงกันของเลขเป้าหมาย (รางวัลที่1
-// + วัน×เดือน×ปี ของงวดถัดไป) mod 1,000,000, normalize ด้วย 9) แล้วสร้าง candidate ผ่าน
-// _imperialRoundRobin เหมือนจักรพรรดิ — ยังคงให้ผลต่างจากจักรพรรดิจริง (จัดอันดับต่อหลักต่างกัน)
-// แค่เปลี่ยนหน่วยจาก "ทั้งชุด" เป็น "ต่อหลัก" ให้เข้ากับสถาปัตยกรรมใหม่
-function _imperialGoldFormula(prevRow, nextDay, nextMonth, nextYear2, topN=10){
-  const pool=_buildPrize1to5Pool(prevRow);
-  if(pool.length===0)return [];
-  const ranked=_digitPosFreq(pool);
-  if(!ranked)return [];
-  const P=parseInt(String(prevRow?.prize1||''))||0;
-  const target=String(((Math.round(P+nextDay*nextMonth*nextYear2)%1000000)+1000000)%1000000).padStart(6,'0');
-  const blendedRanked=ranked.map((posRanked,p)=>{
-    const maxCount=posRanked[0]?.count||1;
-    const targetDigit=Number(target[p]);
-    return [...posRanked]
-      .map(e=>({digit:e.digit,count:e.count,blended:0.8*(e.count/maxCount)+0.2*((9-Math.abs(Number(e.digit)-targetDigit))/9)}))
-      .sort((a,b)=>b.blended-a.blended || b.count-a.count || (a.digit<b.digit?-1:a.digit>b.digit?1:0))
-      .map(e=>e.digit);
-  });
-  return _imperialRoundRobin(blendedRanked,topN,8);
-}
-
-function _codexPool(rows, col, width, targetIso, topN, coeffs){
-  const c=coeffs||CODEX_DEFAULT_COEFFS;
-  const target=_codexDateParts(null,targetIso);
-  const clean=(rows||[])
-    .filter(r=>r && r[col] != null && String(r[col]).trim() !== '')
-    .map(r=>({num:String(r[col]).padStart(width,'0').slice(-width), date:_codexDateParts(r)}))
-    .reverse(); // oldest -> newest, so recency windows and lag are stable
-  const total=clean.length;
-  const all=Array.from({length:10**width},(_,i)=>String(i).padStart(width,'0'));
-  const pos={};
-  clean.forEach((r,i)=>{
-    if(!pos[r.num]) pos[r.num]=[];
-    pos[r.num].push(i);
-  });
-  const recent80=clean.slice(-80).map(r=>r.num);
-  const recent24=clean.slice(-24).map(r=>r.num);
-  const f80=_freqMap(recent80), f24=_freqMap(recent24);
-  const lastNum=clean.length ? clean[clean.length-1].num : '';
-  return all.map(num=>{
-    const hits=pos[num]||[];
-    const count=hits.length;
-    const overdue=count ? total-hits[hits.length-1]-1 : total;
-    let sameDay=0, sameMonth=0;
-    for(const i of hits){
-      if(clean[i].date.day===target.day) sameDay++;
-      if(clean[i].date.month===target.month) sameMonth++;
-    }
-    let score =
-      sameDay*c.sameDay +
-      sameMonth*c.sameMonth +
-      count*c.count +
-      (f80[num]||0)*c.f80 +
-      (f24[num]||0)*c.f24 +
-      Math.min(overdue,160)*c.overdue;
-    if(num===lastNum) score*=c.lastNumDecay;
-    return {num,score};
-  }).sort((a,b)=>b.score-a.score).slice(0,topN).map(x=>x.num);
-}
-
-function _codexUnion(parts, limit){
-  const out=[];
-  for(const arr of parts){
-    for(const n of arr||[]){
-      if(n && !out.includes(n)){
-        out.push(n);
-        if(out.length>=limit) return out;
-      }
-    }
-  }
-  return out;
-}
-
-function _codexHistoryForTarget(targetIso){
-  if(!_formulaHistory.length) return [];
-  if(!targetIso) return _formulaHistory.slice();
-  const target=new Date(targetIso);
-  return _formulaHistory.filter(r=>{
-    if(!r.date) return false;
-    return _parseThai(r.date)<target;
-  });
-}
-
-function _codexFormulas(rows, targetIso, coeffs){
-  const hist=(rows||[]).filter(Boolean);
-  const bottomSharp=_codexPool(hist,'bottom2',2,targetIso,10,coeffs);
-  const front3=_codexUnion([
-    _codexPool(hist,'front3_1',3,targetIso,3,coeffs),
-    _codexPool(hist,'front3_2',3,targetIso,3,coeffs),
-  ],6);
-  const back3=_codexUnion([
-    _codexPool(hist,'back3_1',3,targetIso,3,coeffs),
-    _codexPool(hist,'back3_2',3,targetIso,3,coeffs),
-  ],6);
-  const prize1Last2=_codexPool(hist,'top2',2,targetIso,3,coeffs);
-  return {bottomSharp,front3,back3,prize1Last2};
-}
-
-function _plDigits(row){
-  const val=(col,w)=>String(row?.[col]||'').padStart(w,'0').slice(-w);
-  const p=val('prize1',6),t=val('top3',3),b=val('bottom2',2),f1=val('front3_1',3),f2=val('front3_2',3),k1=val('back3_1',3),k2=val('back3_2',3);
-  const n=x=>Number.isFinite(parseInt(x,10))?parseInt(x,10):0;
-  const r={
-    'prize1[0]':n(p[0]),'prize1[1]':n(p[1]),'prize1[2]':n(p[2]),'prize1[3]':n(p[3]),'prize1[4]':n(p[4]),'prize1[5]':n(p[5]),
-    'top3[0]':n(t[0]),'top3[1]':n(t[1]),'top3[2]':n(t[2]),
-    'bottom2[0]':n(b[0]),'bottom2[1]':n(b[1]),
-    'front3_1[0]':n(f1[0]),'front3_1[1]':n(f1[1]),'front3_1[2]':n(f1[2]),
-    'front3_2[0]':n(f2[0]),'front3_2[1]':n(f2[1]),'front3_2[2]':n(f2[2]),
-    'back3_1[0]':n(k1[0]),'back3_1[1]':n(k1[1]),'back3_1[2]':n(k1[2]),
-    'back3_2[0]':n(k2[0]),'back3_2[1]':n(k2[1]),'back3_2[2]':n(k2[2]),
-  };
-  r.front_units=(r['front3_1[2]']+r['front3_2[2]'])%10;
-  r.back_units=(r['back3_1[2]']+r['back3_2[2]'])%10;
-  r.all_units=(r['front3_1[2]']+r['front3_2[2]']+r['back3_1[2]']+r['back3_2[2]'])%10;
-  r.p_front3=(r['prize1[0]']+r['prize1[1]']+r['prize1[2]'])%10;
-  return r;
-}
-
-function _plDateShift(row, targetIso, add=0){
-  let d=1,m=1;
-  if(targetIso){const parts=targetIso.split('-').map(Number);m=parts[1]||1;d=parts[2]||1;}
-  else if(row?.date){const dt=_parseThai(row.date);d=dt.getDate();m=dt.getMonth()+1;}
-  return (d+m+add)%10;
-}
-
-function _patternLinkFormulas(prev, targetIso){
-  const d=_plDigits(prev);
-  const v=(key,add=0)=>((d[key]||0)+add)%10;
-  const pairRules=[
-    ['prize1[1]',1,'prize1[2]',3],
-    ['back3_2[2]',4,'front_units',3],
-    ['front3_1[0]',8,'prize1[0]',3],
-    ['prize1[1]',1,'back3_1[1]',4],
-    ['top3[0]',8,'back3_1[0]',7],
-    ['prize1[3]',8,'back3_1[0]',7],
-    ['bottom2[0]',4,'front3_1[2]',2],
-    ['front3_2[2]',0,'prize1[0]',8],
-    ['back3_1[0]',9,'front3_2[1]',6],
-    ['prize1[1]',1,'front3_1[0]',2],
-    ['bottom2[0]',4,'top3[2]',0],
-    ['back3_2[0]',3,'prize1[5]',0],
-    ['back_units',8,'top3[1]',2],
-    ['bottom2',8,'front3_1[0]',2],
-    ['front_units',7,'front3_1[2]',2],
-  ];
-  const bottom2=[...new Set(pairRules.map(([a,aa,b,bb])=>`${v(a,aa)}${v(b,bb)}`))];
-  const tripleRules=[
-    ['prize1[0]',9,'day_month',5,'front3_2[2]',2],
-    ['prize1[0]',9,'top3[0]',0,'front3_2[2]',2],
-    ['prize1[0]',9,'prize1[3]',0,'front3_2[2]',2],
-    ['back3_2[1]',3,'back3_2[2]',9,'day_month',9],
-    ['top3[0]',0,'front3_1[1]',0,'day_month',9],
-    ['prize1[3]',0,'front3_1[1]',0,'day_month',9],
-    ['all_units',4,'p_front3',0,'prize1[1]',0],
-    ['back3_1[0]',8,'all_units',9,'top3[1]',0],
-    ['front3_2[2]',7,'day_month',5,'prize1[4]',0],
-    ['prize1[4]',5,'p_front3',0,'front3_2[2]',5],
-  ];
-  const get=(key,add=0)=>key==='day_month'?_plDateShift(prev,targetIso,add):v(key,add);
-  const any3=[...new Set(tripleRules.map(([a,aa,b,bb,c,cc])=>`${get(a,aa)}${get(b,bb)}${get(c,cc)}`))];
-  return {bottom2Tight:bottom2.slice(0,5),bottom2Wide:bottom2.slice(0,10),any3:any3.slice(0,10)};
-}
-
-function _patternLinkCards(prev, targetIso){
-  const P=_patternLinkFormulas(prev,targetIso);
-  const numRow=(nums,color='#38bdf8')=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:${color}1a;border:1px solid ${color}66;color:${color};padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
-  return [
-    _mkFormulaCard('X5 Pattern Link — 2 ตัวคัดเข้ม','F. Pattern Link',
-      ['เชื่อมตำแหน่งงวดก่อนกับ 2 ตัวล่างงวดถัดไปจาก pattern ที่ผ่าน train/test',
-       'ใช้กฎเดี่ยวที่เคยให้ edge ดีกว่าสุ่ม เช่น prize1[1]+1 → หลักสิบ และ prize1[2]+3 → หลักหน่วย',
-       `คัดเฉพาะ ${P.bottom2Tight.length} ชุดแรกเพื่อใช้เป็นสูตรเน้นแม่น`],
-      P.bottom2Tight,'เหมาะสำหรับใช้เป็นตัวตัดร่วมกับ Predict และสูตรอื่น'),
-    _mkFormulaCard('X6 Pattern Link — 2 ตัวครอบคลุม','F. Pattern Link',
-      ['รวม top pattern หลายตัวเพื่อเพิ่ม coverage',
-       'แนวคิดจากผลทดลอง: top 10 pattern ให้ hit สูงกว่าสุ่มเมื่อยอมรับจำนวนเลขมากขึ้น',
-       `คัด ${P.bottom2Wide.length} ชุดเพื่อให้ Decision Center เลือกเฉพาะที่ซ้ำกับแหล่งอื่น`],
-      P.bottom2Wide,'ใช้ในโหมดสมดุล/ลุ้นสูง'),
-    _mkFormulaCard('X7 Pattern Link — 3 หลักเชื่อมโยง','F. Pattern Link',
-      ['คำนวณ 3 หลักจาก pattern ข้ามตำแหน่ง เช่น prize1[0]+9, day+month+5, front3_2[2]+2',
-       '3 หลักมีความแกว่งสูงกว่า 2 ตัว จึงควรใช้เป็นแรงหนุน ไม่ใช้เดี่ยว',
-       `คัด ${P.any3.length} ชุดสำหรับเทียบกับ 3 ตัวบน/หน้า/ท้าย`],
-      P.any3,'สูตรนี้ควรผ่าน consensus ก่อนนำไปใช้')
-  ];
-}
-
-function _codexCards(rows, targetIso){
-  const C=_codexFormulas(rows,targetIso);
-  const numRow=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(132,204,22,.10);border:1px solid #84cc1666;color:#a3e635;padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
-  return [
-    _mkFormulaCard(
-      'X1 Codex Sharp — ท้าย 2 ตัว','F. เจ้าพ่อ Codex',
-      ['ให้คะแนนเลข 00-99 จากวันเดียวกัน, เดือนเดียวกัน, ความถี่รวม, 80/24 งวดล่าสุด และเลขค้าง',
-       'ตัดคะแนนเลขที่เพิ่งออกงวดก่อนเล็กน้อย เพื่อลด lag-repeat',
-       `Fair match กับ Claude D1: ทาย ${C.bottomSharp.length} เลขเท่ากัน`],
-      [],numRow(C.bottomSharp)
-    ),
-    _mkFormulaCard(
-      'X2 Codex Front — หน้า 3 ตัว','F. เจ้าพ่อ Codex',
-      ['คำนวณแยกหน้า 3 ชุด 1 และชุด 2 แล้วรวมเลขคะแนนสูงสุดแบบไม่ซ้ำ',
-       'ใช้สัญญาณ rolling history ชุดเดียวกับ X1',
-       `Fair match กับ Claude D2: ทาย ${C.front3.length} เลขเท่ากัน`],
-      [],numRow(C.front3)
-    ),
-    _mkFormulaCard(
-      'X3 Codex Back — ท้าย 3 ตัว','F. เจ้าพ่อ Codex',
-      ['คำนวณแยกท้าย 3 ชุด 1 และชุด 2 แล้วรวมเลขคะแนนสูงสุดแบบไม่ซ้ำ',
-       'สูตรนี้ยังเป็นสนามยาก แต่ช่วยให้เทียบกับ Claude แบบเลขเต็มได้ตรงประเภท',
-       `Fair match กับ Claude D3: ทาย ${C.back3.length} เลขเท่ากัน`],
-      [],numRow(C.back3)
-    ),
-    _mkFormulaCard(
-      'X4 Codex Prize Tail — ท้าย 2 รางวัลที่ 1','F. เจ้าพ่อ Codex',
-      ['ใช้ประวัติ 2 ตัวบน/top2 เพื่อทายท้าย 2 ของรางวัลที่ 1',
-       'เป็นวิธีที่ตรงกว่าเอาเลข 6 หลักมาบวกกันแบบล้วน ๆ',
-       `Fair match กับ Claude D4: ทาย ${C.prize1Last2.length} เลขเท่ากัน`],
-      [],numRow(C.prize1Last2)
-    ),
-  ];
-}
-
-// ─── I. จักรพรรดิ — digit-position frequency จาก pool รางวัล 1-5 ของงวดก่อนหน้าเดียว ───
-function _imperialCards(prevRow,nextDay,nextMonth,nextYear2){
-  const numRow=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(192,132,252,.10);border:1px solid #c084fc66;color:#c084fc;padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
-  const cards=[];
-  const preds=_imperialFormula(prevRow,10);
-  if(preds.length){
-    cards.push(_mkFormulaCard(
-      'I1 จักรพรรดิ · เลขเต็ม6หลัก','I. จักรพรรดิ',
-      ['นับความถี่เลขแต่ละหลัก (1-6) จาก pool รางวัลที่ 1-5 ของงวดก่อนหน้าเดียว (near1+prize2-5, ~168 เลข)',
-       'เลือกเลข 2 อันดับแรกต่อหลัก แล้วผสมข้ามหลักแบบ cartesian คัดคะแนนรวมสูงสุด',
-       `เกณฑ์ถูก (backtest): เลขตรงกับตัวใดตัวหนึ่งใน pool รางวัล 1-5 ของงวดนั้น (${preds.length} ชุด)`],
-      [],numRow(preds)
-    ));
-  }
-  const predsGold=_imperialGoldFormula(prevRow,nextDay,nextMonth,nextYear2,10);
-  if(predsGold.length){
-    cards.push(_mkFormulaCard(
-      'I2 จักรพรรดิทองคำ · เลขเต็ม6หลัก','I. จักรพรรดิ',
-      ['ใช้ความถี่ต่อหลักชุดเดียวกับจักรพรรดิ ผสม 80% คะแนนความถี่ + 20% ความใกล้เคียงเลขคณิต',
-       'เลขคณิต = (รางวัลที่1 + วัน×เดือน×ปี ของงวดถัดไป) mod 1,000,000 (สูตรเดียวกับกลุ่ม D)',
-       `เกณฑ์ถูก (backtest): เลขตรงกับตัวใดตัวหนึ่งใน pool รางวัล 1-5 ของงวดนั้น (${predsGold.length} ชุด)`],
-      [],numRow(predsGold)
-    ));
-  }
-  return cards;
-}
-
-// ─── HM. Hermes Pool 1-4 — การ์ดอธิบายวิธีคิด (tab สูตรคำนวณ) ───────────────────
-// เจ้าของต้องการเห็นวิธีคำนวณสูตรที่คิดค้นใหม่: pool 1-4 (65 เลข) → ถ่วงน้ำหนักมูลค่าเงิน 5:2:1
-// → จัดอันดับรายหลัก → ประกอบ 10 ชุด round-robin (K=8) — data-group="HM" ต้องตรงกับ
-// _formulaGroupKey (ไม่งั้นไปปนกลุ่ม A)
-function _hermesCards(prevRow){
-  const numRow=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(45,212,191,.10);border:1px solid #2dd4bf66;color:#2dd4bf;padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
-  const cards=[];
-  const hm=_hermesPool14Formula(prevRow,10);
-  if(hm.length)cards.push(_mkFormulaCard(
-    'HM · Hermes Pool 1-4','HM · Hermes Pool 1-4',
-    ['รวม pool รางวัลที่ 2/3/4 ของงวดก่อนหน้าเดียว (65 เลข — ไม่รวมที่ 1/ข้างเคียง/ที่ 5 เพราะเป้าเคร่งครัดรางวัล 1–4)',
-     'นับความถี่รายหลัก (ตำแหน่ง 1-6) ถ่วงน้ำหนักตามมูลค่าเงินรางวัล: ที่2 ×1.0 · ที่3 ×0.4 · ที่4 ×0.2 (สัดส่วน 5:2:1 ตามเงินจริง 200k/80k/40k — กัน prize4 จำนวน 50 เลขกลบสัญญาณรางวัลใหญ่)',
-     'จัดอันดับเลข 0-9 ต่อหลัก แล้วประกอบ 10 ชุดแบบ round-robin (K=8 หลักไม่ซ้ำต่อตำแหน่ง)',
-     `เกณฑ์ถูก (backtest): เลขตรงกับตัวใดตัวหนึ่งใน pool รางวัล 1-4 ของงวดนั้น (${hm.length} ชุด · 66/10⁶)`],
-    [],numRow(hm),
-    'ทดลอง — ทดลองถาวรตาม ADR-0003: เป้า 66/1,000,000 × 458 งวด ≈ 0.30 ครั้งที่คาดถูกโดยบังเอิญตลอดประวัติศาสตร์ ไม่มี gate ใดพิสูจน์ฝีมือจากโชคได้ (เช่นเดียวกับ J2)'
-  ));
-  const hm2=_hermesTail3Formula(prevRow,10);
-  if(hm2.length)cards.push(_mkFormulaCard(
-    'HM2 · Hermes ท้าย3 ใต้ดิน','HM2 · Hermes ท้าย3 ใต้ดิน',
-    ['รวม pool รางวัลที่ 2/3/4 ของงวดก่อนหน้าเดียว (65 เลข — ชุดเดียวกับ Hermes)',
-     'นับความถี่รายหลักเฉพาะตำแหน่งท้าย (หลัก 4-6) ถ่วงน้ำหนักตามมูลค่าเงิน 5:2:1 (ที่2 ×1.0 · ที่3 ×0.4 · ที่4 ×0.2)',
-     'จัดอันดับเลข 0-9 ต่อหลัก แล้วประกอบเลขท้าย 3 หลัก 10 ชุดแบบ round-robin (K=8 หลักไม่ซ้ำต่อตำแหน่ง)',
-     `เกณฑ์ถูก (backtest): ท้าย 3 ตัวตรงกับท้ายของเลขตัวใดตัวหนึ่งใน pool รางวัล 1-4 ของงวดนั้น (${hm2.length} ชุด · ~64/1000)`],
-    [],numRow(hm2),
-    'สำหรับหวยใต้ดิน (ท้าย 3 ตัว) — ไม่ใช่รางวัลทางการ; ทดลองถาวร per ADR-0003 (เป้าซอฟต์ลง ~1,000 เท่าจาก HM เต็ม 6 หลัก — ถูกบ่อยแต่ edge อยู่ใน noise)'
-  ));
-  const hm3=_hermesOfficialTail3Formula(prevRow,10);
-  if(hm3.length)cards.push(_mkFormulaCard(
-    'HM3 · Hermes ท้าย3 ทางการ','HM3 · Hermes ท้าย3 ทางการ',
-    ['รวม pool รางวัลที่ 2/3/4 ของงวดก่อนหน้าเดียว (65 เลข — ชุดเดียวกับ Hermes)',
-     'นับความถี่รายหลักเฉพาะตำแหน่งหน้า (หลัก 1-3) ถ่วงน้ำหนักตามมูลค่าเงิน 5:2:1 (ที่2 ×1.0 · ที่3 ×0.4 · ที่4 ×0.2) — กระจกเงาของ HM2',
-     'จัดอันดับเลข 0-9 ต่อหลัก แล้วประกอบเลขท้าย 3 หลัก 10 ชุดแบบ round-robin (K=8 หลักไม่ซ้ำต่อตำแหน่ง)',
-     `เกณฑ์ถูก (backtest): เลขตรงกับเลขท้าย 3 ตัวทางการตัวใดตัวหนึ่งของงวดนั้น (${hm3.length} ชุด · 2/1000)`],
-    [],numRow(hm3),
-    'ยิงรางวัลเลขท้าย 3 ตัวทางการ (4,000฿) — ออกรางวัลแยกอิสระ uniform 000-999 → ทดลองถาวร per ADR-0003 (ไม่มีสูตรใดเอาชนะ chance บนเป้านี้ได้โดยโครงสร้าง — ตัวเลขคือ chance ล้วน รายงานตามจริงเสมอ)'
-  ));
-  return cards;
-}
-
-// เจ้าสัว pool6 leg (ISSUE-15) — reuses จักรพรรดิทองคำ's per-position blend structure
-// (0.8×freq + 0.2×closeness-to-target, per digit position, via _imperialRoundRobin) but
-// keyed to Group J's own arithmetic atom (|BK2 − DSUM|, ISSUE-13) instead of Group D's,
-// so it doesn't collapse to จักรพรรดิ/จักรพรรดิทองคำ's exact candidates for the same draw.
-// Permanently ทดลอง per ADR-0003 — no gate applies, this leg exists for J's field-type
-// coverage (mirroring จักรพรรดิ's bottom2+pool6 shape), not a claim of statistical edge.
-function _tycoonPool6Formula(prevRow, nextDay, nextMonth, nextYear2, topN=10){
-  const pool=_buildPrize1to5Pool(prevRow);
-  if(pool.length===0)return [];
-  const ranked=_digitPosFreq(pool);
-  if(!ranked)return [];
-  const bk2raw=String(prevRow?.back3_2??'').trim();
-  if(!bk2raw)return [];
-  if(nextDay==null||nextMonth==null||nextYear2==null||isNaN(nextDay)||isNaN(nextMonth)||isNaN(nextYear2))return [];
-  const BK2=parseInt(bk2raw)||0;
-  const DSUM=_dsumValue(nextDay,nextMonth,nextYear2);
-  const target=String(Math.abs(BK2-DSUM)%1000000).padStart(6,'0');
-  const blendedRanked=ranked.map((posRanked,p)=>{
-    const maxCount=posRanked[0]?.count||1;
-    const targetDigit=Number(target[p]);
-    return [...posRanked]
-      .map(e=>({digit:e.digit,count:e.count,blended:0.8*(e.count/maxCount)+0.2*((9-Math.abs(Number(e.digit)-targetDigit))/9)}))
-      .sort((a,b)=>b.blended-a.blended || b.count-a.count || (a.digit<b.digit?-1:a.digit>b.digit?1:0))
-      .map(e=>e.digit);
-  });
-  return _imperialRoundRobin(blendedRanked,topN,8);
-}
-
-// ─── J. เจ้าสัว — bottom2 leg (ISSUE-13), ทดลอง badge ────────────────────────
-function _tycoonCards(prevRow,nextDay,nextMonth,nextYear2){
-  const numRow=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(16,185,129,.10);border:1px solid #10b98166;color:#10b981;padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
-  const cards=[];
-  const preds=_tycoonBottom2Formula(prevRow,nextDay,nextMonth,nextYear2);
-  if(preds.length){
-    cards.push(_mkFormulaCard(
-      'J1 เจ้าสัว · ท้าย2','J. เจ้าสัว',
-      ['สูตรจากการค้นหาระบบ (arithmetic search) เหนือครอบครัวสูตรที่ประกาศไว้ล่วงหน้า ไม่ใช่ภูมิปัญญาพื้นบ้าน',
-       'pad2(|ท้าย3ชุด2งวดก่อน − (วัน+เดือน+ปี พ.ศ.2หลัก ของงวดถัดไป)|) — DSUM ใช้สูตรเดียวกับกลุ่ม D',
-       'ผ่าน train/validation แต่ไม่ผ่าน holdout (เกณฑ์ล่าสุด: train +0.72% validation +1.67% holdout −0.21%) จึงติดป้ายทดลองตาม ADR-0003 — ยังคงร่วมคำนวณ Picks/เลขแนะนำเต็มรูปแบบ'],
-      [],numRow(preds),'ทดลอง'
-    ));
-  }
-  const predsPool6=_tycoonPool6Formula(prevRow,nextDay,nextMonth,nextYear2,10);
-  if(predsPool6.length){
-    cards.push(_mkFormulaCard(
-      'J2 เจ้าสัว · เลขเต็ม6หลัก','J. เจ้าสัว',
-      ['ใช้ความถี่ต่อหลักจาก pool รางวัลที่ 1-5 ของงวดก่อนหน้าเดียวกับจักรพรรดิ (I.) ผสม 80% คะแนนความถี่ + 20% ความใกล้เคียงเลขคณิตของกลุ่ม J เอง',
-       'เลขคณิต = |ท้าย3ชุด2งวดก่อน − DSUM| (สูตรเดียวกับ J1) แทนที่จะใช้สูตรของกลุ่ม D จึงให้ผลต่างจากจักรพรรดิ/จักรพรรดิทองคำ',
-       `ทดลองถาวรตาม ADR-0003 — ที่ปริมาณข้อมูลปัจจุบัน ~456 งวด ไม่มีทางแยกฝีมือจากโชคได้ในสนามนี้ (${predsPool6.length} ชุด)`],
-      [],numRow(predsPool6),'ทดลอง'
-    ));
-  }
-  return cards;
-}
-
-function runAllFormulas(){
-  if(_formulaAutoFillPending)return false;
-  if(!_validateFormulaInputs()){
-    if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-status','มีช่องข้อมูลต้องตรวจสอบก่อนคำนวณ');
-    return;
-  }
-  setFormulaLoading('กำลังคำนวณทุกสูตร...');
-  const prize1=_fv('f-prize1').padStart(6,'0');
-  const top3=_fv('f-top3').padStart(3,'0');
-  const bottom2=_fv('f-bottom2').padStart(2,'0');
-  const front31=_fv('f-front3-1').padStart(3,'0');
-  const front32=_fv('f-front3-2').padStart(3,'0');
-  const back31=_fv('f-back3-1').padStart(3,'0');
-  const back32=_fv('f-back3-2').padStart(3,'0');
-  const drawday=parseInt(_fv('f-drawday'))||1;
-  const bday=parseInt(_fv('f-bday'))||0;
-  const bmon=parseInt(_fv('f-bmon'))||0;
-  const byear=parseInt(_fv('f-byear'))||0;
-
-  // ดึงงวดปัจจุบัน (next draw date) จาก f-target-date
-  const predDateStr=document.getElementById('f-target-date').value||'';
-  let nextDay=1, nextMonth=1, nextYear2=68;
-  if(predDateStr){
-    const [y,m,d]=predDateStr.split('-').map(Number);
-    nextDay=d; nextMonth=m; nextYear2=(y+543)%100;
-  }
-
-  const cards=[];
-
-  // ══ A. สูตรกูชอบ facebook ══
-
-  // 1. สูตรบวกเลขบนล่าง
-  try{
-    const digits=[...top3,...bottom2].map(Number);
-    const total=digits.reduce((a,b)=>a+b,0);
-    const d1=total%10;
-    const d2=Math.floor(total/10)%10;
-    const highlights=[...new Set([d1,d2])].map(String);
-    cards.push(_mkFormulaCard(
-      'สูตรบวกเลขบนล่าง','A. สูตรกูชอบ',
-      [`3ตัวบน: ${top3} + 2ตัวล่าง: ${bottom2}`,`ผลรวมทุกหลัก: ${top3}+${bottom2} = ${digits.join('+')} = ${total}`,`เลขเด่น: หลักสิบ=${d2}, หลักหน่วย=${d1}`],
-      highlights,'ใช้ตัวเลขเด่นเป็นตัวนำในงวดถัดไป'
-    ));
-  }catch(e){}
-
-  // 2. สูตรเลขคี่เลขคู่
-  try{
-    const allNums=[...prize1,...top3,...bottom2,...back31,...back32].map(Number);
-    const odd=allNums.filter(d=>d%2!==0).length;
-    const even=allNums.filter(d=>d%2===0).length;
-    const trend=odd>even?'งวดนี้มีเลขคี่มาก → งวดหน้ามักออกเลขคู่':'งวดนี้มีเลขคู่มาก → งวดหน้ามักออกเลขคี่';
-    const hint=odd>even?['0','2','4','6','8']:['1','3','5','7','9'];
-    cards.push(_mkFormulaCard(
-      'สูตรเลขคี่เลขคู่','A. สูตรกูชอบ',
-      [`เลขคี่ทั้งหมด: ${odd} ตัว, เลขคู่: ${even} ตัว`,trend],
-      hint,'เลขเด่นที่ควรให้ความสนใจ'
-    ));
-  }catch(e){}
-
-  // 3. สูตรคูณหลักร้อย×หลักสิบ (จากรางวัลที่ 1)
-  try{
-    const d100=parseInt(prize1[3]||'0');
-    const d10=parseInt(prize1[4]||'0');
-    const prod=d100*d10;
-    const result=prod%10;
-    cards.push(_mkFormulaCard(
-      'สูตรคูณหลักร้อย × หลักสิบ','A. สูตรกูชอบ',
-      [`รางวัลที่ 1: ${prize1}`,`หลักร้อย(ตัวที่4)=${d100} × หลักสิบ(ตัวที่5)=${d10} = ${prod}`,`เลขเด่น = หลักหน่วย = ${result}`],
-      [String(result)]
-    ));
-  }catch(e){}
-
-  // 4. สูตรวันหวยออก
-  try{
-    const dayMap={1:['อาทิตย์(0,1)','จันทร์(2,3)','อังคาร(4,5)','พุธ(6,7)'],16:['พฤหัส(1,4)','ศุกร์(5,7)','เสาร์(2,8,9)']};
-    const nums1=[0,1,2,3,4,5,6,7];
-    const nums16=[1,2,4,5,7,8,9];
-    const recNums=drawday===16?nums16:nums1;
-    cards.push(_mkFormulaCard(
-      `สูตรวันหวยออก (งวดวันที่ ${drawday})`,`A. สูตรกูชอบ`,
-      [`งวดออกวันที่ ${drawday}`,`เลขนำโชคตามวัน: ${(dayMap[drawday]||dayMap[1]).join(', ')}`],
-      recNums.map(String)
-    ));
-  }catch(e){}
-
-  // 5. สูตรอมตะ (36 คู่)
-  try{
-    const p=prize1.padStart(6,'0');
-    const dPhan=parseInt(p[2]); // หลักพัน (ตำแหน่งที่ 3)
-    const dSib=parseInt(p[4]);  // หลักสิบ (ตำแหน่งที่ 5)
-    const X=(dPhan+dSib)%10;
-    const g1=[X,(X+1)%10,(X+2)%10,(X+3)%10,(X+4)%10,(X+6)%10];
-    const g2start=(g1[5]+1)%10;
-    const g2=[g2start,(g2start+1)%10,(g2start+2)%10,(g2start+3)%10,(g2start+4)%10,(g2start+5)%10];
-    const gridHtml=`<div style="display:flex;flex-direction:column;gap:3px;margin-top:6px">`+
-      g1.map(a=>`<div style="display:flex;gap:3px">`+
-        g2.map(b=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.82rem;background:var(--surface2);border:1px solid var(--border2);color:var(--text1);padding:2px 5px;border-radius:4px;min-width:26px;text-align:center">${a}${b}</span>`).join('')+
-      `</div>`).join('')+`</div>`;
-    cards.push(_mkFormulaCard(
-      'สูตรอมตะ','A. สูตรกูชอบ',
-      [`รางวัลที่1: ${p} → หลักพัน(${dPhan}) + หลักสิบ(${dSib}) = ${dPhan+dSib} → X = ${X}`,
-       `ชุด 1 (6 ตัว): ${g1.join(', ')}  (X…X+4 แล้วข้าม +2)`,
-       `ชุด 2 (6 ตัว): ${g2.join(', ')}  (ต่อจากชุด1+1 นับ 6 ตัว)`,
-       `จับคู่ 36 คู่ (ชุด1=สิบ, ชุด2=หน่วย):`],
-      [],gridHtml
-    ));
-  }catch(e){}
-
-  // ══ B. สูตรล็อตเตอรี่พลัส ══
-
-  // 5. สูตรเลขสองตัวล่าง (วัน+เดือน+ปี+หน่วยล่าง)
-  try{
-    const unit2=parseInt(bottom2[1]||'0');
-    let sum=nextDay+nextMonth+nextYear2+unit2;
-    if(sum>99) sum-=100;
-    const result=_pad(sum,2);
-    const rev=result[1]+result[0];
-    cards.push(_mkFormulaCard(
-      'สูตรเลขสองตัวล่าง (Lottery+)','B. สูตรล็อตเตอรี่พลัส',
-      [`วัน(${nextDay})+เดือน(${nextMonth})+ปี(${nextYear2}) = ${nextDay+nextMonth+nextYear2}`,`+หน่วยล่าง(${unit2}) = ${nextDay+nextMonth+nextYear2+unit2}${sum!==nextDay+nextMonth+nextYear2+unit2?' → -100 = '+sum:''}`,`เลขเด่น: ${result} | กลับคู่: ${rev}`],
-      [result,rev],'ถ้าเลขซ้ำกับงวดก่อน ให้กลับคู่เสมอ'
-    ));
-  }catch(e){}
-
-  // 6. สูตรรางวัลที่ 1 (วันเกิด+ราศี)
-  if(bday&&bmon&&byear){
-    try{
-      const zodiacNum=[8,6,9,4,7,3,5,2,8,10,8,6]; // ราศีแต่ละเดือน (ม.ค.ถึงธ.ค.)
-      const zodiacName=['มกร','กุมภ์','มีน','เมษ','พฤษภ','เมถุน','กรกฎ','สิงห์','กันย์','ตุลย์','พิจิก','ธนู'];
-      const birthY2=(byear-543)%100;
-      let sum=bday+bmon+birthY2+nextDay+nextMonth;
-      const zodIdx=nextMonth-1;
-      const zodNum=zodiacNum[zodIdx]%10;
-      sum+=zodNum;
-      const result=_pad(sum%100,2);
-      cards.push(_mkFormulaCard(
-        'สูตรรางวัลที่ 1 (วันเกิด+ราศี)','B. สูตรล็อตเตอรี่พลัส',
-        [`วันเกิด ${bday}/${bmon}/${byear} → ${bday}+${bmon}+${birthY2} = ${bday+bmon+birthY2}`,`+งวด(${nextDay}+${nextMonth}) = ${bday+bmon+birthY2+nextDay+nextMonth}`,`+เลขราศีพิจิก(${zodiacName[zodIdx]})=${zodNum} → รวม=${sum} → เลขเด่น=${result}`,`ชุดแนะนำ: ${result}, ${result[1]}${result[0]}, ${prize1[3]}${result}, ${prize1[2]}${result}`],
-        [result,result[1]+result[0]],'ทริค: ถ้าซ้ำกับงวดก่อน กลับคู่เสมอ'
-      ));
-    }catch(e){}
-  } else {
-    cards.push(_mkFormulaCard(
-      'สูตรรางวัลที่ 1 (วันเกิด+ราศี)','B. สูตรล็อตเตอรี่พลัส',
-      ['ต้องกรอก วัน/เดือน/ปีเกิด (พ.ศ.) ก่อน'],[],'กรอกข้อมูลวันเกิดด้านบน'
-    ));
-  }
-
-  // ══ C. สูตรลับพิชิตโชค ══
-
-  // 7. สูตรผันผวนเป็นตัวเงิน (จาก 3ตัวล่างชุด1)
-  try{
-    const b=back31.padStart(3,'0');
-    const r_h=b[0], r_t=b[1], r_u=b[2];
-    // ขั้น1: แถว1=[r_h,r_t] แถว2=[r_u,r_u] บวกไม่ทด
-    const step1_h=(parseInt(r_h)+parseInt(r_u))%10;
-    const step1_t=(parseInt(r_t)+parseInt(r_u))%10;
-    const step1=`${step1_h}${step1_t}`;
-    // ขั้น2: บวกร้อยมาลัย (step1_h+step1_t) mod 10
-    const step2=(step1_h+step1_t)%10;
-    // ขั้น3: step1 ลบ step2step2 ไม่ยืม
-    const res_h=Math.abs(step1_h-step2)%10;
-    const res_t=Math.abs(step1_t-step2)%10;
-    const result=`${res_h}${res_t}`;
-    cards.push(_mkFormulaCard(
-      'สูตรผันผวนเป็นตัวเงิน','C. สูตรลับพิชิตโชค (คุณยายสวัสดิ์)',
-      [`3ตัวล่างชุด1: ${b} → ร้อย=${r_h} สิบ=${r_t} หน่วย=${r_u}`,`ขั้น1: [${r_h}+${r_u}]mod10=[${step1_h}], [${r_t}+${r_u}]mod10=[${step1_t}] → ${step1}`,`ขั้น2: (${step1_h}+${step1_t})mod10 = ${step2}`,`ขั้น3: |${step1_h}-${step2}|=${res_h}, |${step1_t}-${step2}|=${res_t} → เลขเด่น: ${result}`],
-      [result,result[1]+result[0]],'ใช้ได้กับ 3ตัวบน รางวัลที่1 และ 2ตัวล่าง'
-    ));
-  }catch(e){}
-
-  // 8. สูตร 2530 ปีทอง
-  try{
-    const p=prize1.padStart(6,'0');
-    // ใช้ 4 หลักหลัง (พัน-ร้อย-สิบ-หน่วย) + 2530 ไม่ทด
-    const p4=p.slice(2); // xxxxXX → X4 = p[2..5]
-    const add='2530';
-    const r=p4.split('').map((d,i)=>(parseInt(d)+parseInt(add[i]))%10).join('');
-    cards.push(_mkFormulaCard(
-      'สูตร 2530 ปีทอง','C. สูตรลับพิชิตโชค (คุณยายสวัสดิ์)',
-      [`รางวัลที่ 1: ${prize1} → ใช้หลักพัน-ร้อย-สิบ-หน่วย: ${p4}`,`บวก 2530 (ไม่ทดเศษ): ${p4} + 2530 = ${r}`,`ทำนาย 4 หลักท้ายรางวัลที่ 1 (Backtest: เทียบตำแหน่ง)`],
-      [r],'เปรียบเทียบ 4 หลักท้ายรางวัลที่ 1 ตรงตำแหน่ง'
-    ));
-  }catch(e){}
-
-  // 9. สูตรหงส์ฟ้าถล่มปฐพี
-  try{
-    const p=prize1.padStart(6,'0');
-    // แถว1=แสน+หมื่น, แถว2=พัน+ร้อย, แถว3=สิบ+หน่วย, แถว4=bottom2
-    const rows=[
-      [parseInt(p[0]),parseInt(p[1])],
-      [parseInt(p[2]),parseInt(p[3])],
-      [parseInt(p[4]),parseInt(p[5])],
-      [parseInt(bottom2[0]||0),parseInt(bottom2[1]||0)]
-    ];
-    // บวกแต่ละคอลัมน์ มีการทด
-    const colA=rows[0][0]+rows[1][0]+rows[2][0]+rows[3][0];
-    const colB=rows[0][1]+rows[1][1]+rows[2][1]+rows[3][1];
-    const carry=Math.floor(colB/10);
-    const step1_t=(colA+carry)%10;
-    const step1_u=colB%10;
-    const step1=`${step1_t}${step1_u}`;
-    // เอา step1 (2หลัก→3หลัก ถ้าสั้น pad) บวก back32 (ครั้งที่3→ใช้ชุด2)
-    const b2=back32.padStart(3,'0');
-    const s1_padded=step1.padStart(3,'0');
-    let final=0;
-    const fa=s1_padded.split('').map(Number);
-    const fb=b2.split('').map(Number);
-    const raw=fa.map((d,i)=>d+fb[i]);
-    // มีทด
-    let carry2=0, res=[];
-    for(let i=2;i>=0;i--){const s=raw[i]+carry2;res.unshift(s%10);carry2=Math.floor(s/10);}
-    const result3=res.join('');
-    cards.push(_mkFormulaCard(
-      'สูตรหงส์ฟ้าถล่มปฐพี','C. สูตรลับพิชิตโชค (คุณยายสวัสดิ์)',
-      [`รางวัลที่1: ${p} + 2ตัวล่าง: ${bottom2}`,`แยกคู่ [${p[0]}${p[1]}]+[${p[2]}${p[3]}]+[${p[4]}${p[5]}]+[${bottom2}] (บวกทด) → ${step1}`,`${step1} + 3ตัวล่างชุด2(${b2}) = ${result3}`,`เลขเด่น: ${result3}`],
-      [result3,result3.slice(1)],'ใช้ 3ตัวล่างชุด2 แทน หมุนครั้งที่3'
-    ));
-  }catch(e){}
-
-  // ══ D. เจ้าพ่อ Claude — arithmetic creative formulas ══
-  const p6=prize1.padStart(6,'0');
-  const t3=top3.padStart(3,'0');
-  const b2=bottom2.padStart(2,'0');
-  const bk1=back31.padStart(3,'0');
-  const bk2=back32.padStart(3,'0');
-
-  function _digs(arr,k){return[...new Set(arr.map(n=>String(((Math.round(n)%10)+10)%10)))].slice(0,k);}
-  function _chip(txt,hl){return `<span style="font-family:'IBM Plex Mono',monospace;font-size:1rem;background:${hl?'rgba(34,211,238,.14)':'var(--surface2)'};border:1px solid ${hl?'#22d3ee66':'var(--border2)'};color:${hl?'#22d3ee':'var(--text1)'};padding:4px 11px;border-radius:7px;font-weight:700">${txt}</span>`;}
-  function _numRow(nums){return `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:var(--surface2);border:1px solid var(--border2);color:var(--text1);padding:3px 9px;border-radius:6px">${n}</span>`).join('')}</div>`;}
-  function _runChips(ds){return `<div style="margin-top:4px">เลขวิ่ง: ${ds.map(d=>_chip(d,true)).join(' ')}</div>`;}
-  const p1sumD=p6.split('').map(Number).reduce((a,b)=>a+b,0);
-
-  const _D=_claudeFormulas({p6,t3,b2,bk1,bk2,drawday,nextDay,nextMonth,nextYear2});
-
-  // D1 สายธารรากตัวเลข — ท้าย 2 ตัว (เลขเต็มจากสูตรย่อย)
-  cards.push(_mkFormulaCard(
-    'D1 สายธารรากตัวเลข — ท้าย 2 ตัว','D. เจ้าพ่อ Claude',
-    [`อ้างอิงงวดก่อน → prize1:${p6} ท้าย2:${b2} ท้าย3:${bk1}/${bk2}`,
-     `①ซ้ำท้าย2 ②กลับท้าย2 ③สลับขั้ว(99-B2) ④ท้าย2รางวัล+B2 ⑤ท้าย2×2ชุดบวก ⑥ท้าย2รางวัล ⑦ท้าย2ชุด1 ⑧วันเดือนปี+หน่วย ⑨วัน×เดือน+สิบ ⑩หน้า2ท้าย4รางวัล`,
-     `เกณฑ์ถูก: เลขท้าย 2 ตัวออกตรงกับชุดนี้`],
-    [],`<div style="font-size:.82rem;color:var(--text2);margin-bottom:2px">เลขท้าย 2 ตัวที่ทำนาย (${_D.d1.length} ชุด):</div>`+_numRow(_D.d1)
-  ));
-
-  // D2 มังกรวาด — หน้า 3 ตัว
-  cards.push(_mkFormulaCard(
-    'D2 มังกรวาด — หน้า 3 ตัว','D. เจ้าพ่อ Claude',
-    [`อ้างอิงงวดก่อน → prize1:${p6} ท้าย3:${bk1}/${bk2}`,
-     `①3หน้า+ท้าย3 ②3ท้าย+วัน×เดือน ③ท้าย3×2+3บน ④กลับ3หน้า ⑤ท้าย3+วันเดือน ⑥3ท้าย+ท้าย2`,
-     `เกณฑ์ถูก: เลขหน้า 3 ตัวออกตรงกับชุดนี้`],
-    [],`<div style="font-size:.82rem;color:var(--text2);margin-bottom:2px">เลขหน้า 3 ตัวที่ทำนาย (${_D.d2.length} ชุด):</div>`+_numRow(_D.d2)
-  ));
-
-  // D3 หักล้างชะตา — ท้าย 3 ตัว
-  cards.push(_mkFormulaCard(
-    'D3 หักล้างชะตา — ท้าย 3 ตัว','D. เจ้าพ่อ Claude',
-    [`อ้างอิงงวดก่อน → ท้าย3:${bk1}/${bk2} prize1:${p6}`,
-     `①ท้าย3×2บวก ②3ท้าย+วัน ③กลับท้าย3ชุด1 ④ท้าย3ชุด2+เดือน×ปี ⑤ท้าย3+B2×10 ⑥3หน้า+ท้าย3ชุด2`,
-     `เกณฑ์ถูก: เลขท้าย 3 ตัวออกตรงกับชุดนี้`],
-    [],`<div style="font-size:.82rem;color:var(--text2);margin-bottom:2px">เลขท้าย 3 ตัวที่ทำนาย (${_D.d3.length} ชุด):</div>`+_numRow(_D.d3)
-  ));
-
-  // D4 วงจรชีวิต — รางวัลที่ 1
-  cards.push(_mkFormulaCard(
-    'D4 วงจรชีวิต — รางวัลที่ 1','D. เจ้าพ่อ Claude',
-    [`อ้างอิงงวดก่อน → prize1:${p6}`,
-     `เลข6หลัก: ①(รางวัล+ท้าย3คูณ) ②(รางวัล+วัน×เดือน×ปี) ③กลับเลขรางวัล`,
-     `เกณฑ์ถูก (backtest): ท้าย 2 ตัวของรางวัลที่ 1 ออกตรง`],
-    [],`<div style="font-size:.82rem;color:var(--text2);margin-bottom:2px">เลข 6 หลักเต็มที่ทำนาย:</div>`+_numRow(_D.d4full)+`<div style="margin-top:8px;font-size:.82rem;color:var(--text2)">ท้าย 2 ตัวรางวัลที่ 1 (${_D.d4two.length} ชุด):</div>`+_numRow(_D.d4two)
-  ));
-
-  // ══ E. สายมู/ความเชื่อ — อ้างอิงวันที่งวด + โหราศาสตร์ไทย ══
-  const eCards=_computeBeliefCards(nextDay,nextMonth,nextYear2,predDateStr);
-  const codexCards=_codexCards(_codexHistoryForTarget(predDateStr),predDateStr);
-  const patternCards=_patternLinkCards({prize1,top3,bottom2,front3_1:front31,front3_2:front32,back3_1:back31,back3_2:back32},predDateStr);
-  const thepCards=_maenKhanThepCards({p6:prize1,t3:top3,b2:bottom2,f31:front31,f32:front32,bk1:back31,bk2:back32});
-  const misterCCards=_misterCCards({p6:prize1,t3:top3,b2:bottom2,f31:front31,bk1:back31,bk2:back32});
-  const imperialPrevRow=_codexHistoryForTarget(predDateStr)[0]||null;
-  const imperialCards=imperialPrevRow?_imperialCards(imperialPrevRow,nextDay,nextMonth,nextYear2):[];
-  const tycoonCards=imperialPrevRow?_tycoonCards(imperialPrevRow,nextDay,nextMonth,nextYear2):[];
-  const hermesCards=imperialPrevRow?_hermesCards(imperialPrevRow):[];
-
-  // กระจายการ์ดเข้า container ตามกลุ่ม
-  const grouped=_groupFormulaCards(cards.concat(thepCards,misterCCards));
-  const groupA=grouped.A.join('');
-  const groupB=grouped.B.join('');
-  const groupC=grouped.C.join('');
-  const groupD=grouped.D.join('');
-  const groupG=grouped.G.join('');
-  const groupH=grouped.H.join('');
-  const groupF=codexCards.concat(patternCards).join('');
-  const groupI=imperialCards.join('');
-  const groupJ=tycoonCards.join('');
-  const groupHM=hermesCards.join('');
-  const groupAll=cards.concat(codexCards,patternCards,thepCards,misterCCards,eCards,imperialCards,tycoonCards,hermesCards).join('');
-  _renderFormulaSummary({grouped,codexCards,eCards,imperialCards,tycoonCards,hermesCards,targetDate:predDateStr});
-
-  document.getElementById('formula-results-A').innerHTML=_formulaPanelHtml(groupA,'A');
-  document.getElementById('formula-results-B').innerHTML=_formulaPanelHtml(groupB,'B');
-  document.getElementById('formula-results-C').innerHTML=_formulaPanelHtml(groupC,'C');
-  document.getElementById('formula-results-D').innerHTML=_formulaPanelHtml(groupD,'D');
-  document.getElementById('formula-results-F').innerHTML=_formulaPanelHtml(groupF,'Rolling Stats');
-  document.getElementById('formula-results-G').innerHTML=_formulaPanelHtml(groupG,'แม่นขั้นเทพ');
-  document.getElementById('formula-results-H').innerHTML=_formulaPanelHtml(groupH,'มิสเตอร์ซี');
-  document.getElementById('formula-results-E').innerHTML=_formulaPanelHtml(eCards.join(''),'สายมู');
-  document.getElementById('formula-results-I').innerHTML=_formulaPanelHtml(groupI,'จักรพรรดิ');
-  document.getElementById('formula-results-J').innerHTML=_formulaPanelHtml(groupJ,'เจ้าสัว');
-  document.getElementById('formula-results-HM').innerHTML=_formulaPanelHtml(groupHM,'Hermes Pool 1-4');
-  document.getElementById('formula-results-ALL').innerHTML=_formulaPanelHtml(groupAll,'รวมทุกสูตร');
-  document.getElementById('formula-empty').style.display='none';
-  _formulaHasRun=true;
-  _renderFormulaFinalPicks();
-  _renderFormulaInsights();
-
-  // เก็บ context ที่ผ่านการคำนวณแล้ว → ใช้เป็นฐานสร้างผลรางวัลของแต่ละหมวด
-  switchFormulaTab(_formulaActiveTab);
-  filterFormulaCards();
-  if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-status','คำนวณสูตรเสร็จแล้ว');
-}
-
-// ─── Mix. "ไม่รู้ซื้อเหี้ยไรดี" — derived meta-formula ────────────────────────────
-// ผสมเลข 6 หลักจากการโหวตรายหลักของผลลัพธ์ทุกกลุ่มสูตร A–J (ไม่รวมหน้าทำนาย/Predict)
-// กติกา (ตกลงใน CONTEXT.md):
-// - หนึ่งกลุ่ม = หนึ่งเสียงต่อหลัก (normalize มวลโหวตของแต่ละกลุ่มให้รวมเป็น 1 ต่อหลัก
-//   ไม่ว่ากลุ่มนั้นผลิตกี่ตัวเลข) — ไม่ถ่วงน้ำหนักตาม Edge
-// - หลัก 1–3 (index 0–2): ฟังเฉพาะ field 'front3' (กลุ่ม D, F) — เสียงเลขเต็ม 6 หลักของ
-//   I/J2 ถูกกันออกจากครึ่งหน้า เพื่อไม่ให้ครึ่งหน้ากลายเป็น copy ของกลุ่ม I; ถ้างวดไหน
-//   front3 ว่างทั้งหมด จึงค่อย fallback ไปใช้เสียง I/J2 (หน้านี้ต้องมีคำตอบเสมอ)
-// - หลัก 4–6 (index 3–5): ฟังทุก field type ที่ map ลงท้ายเลขได้ + เลขเต็มของ I/J2
-// - ผลลัพธ์ 10 ชุดผ่าน _imperialRoundRobin (K=8) เหมือนกลุ่ม I เพื่อเทียบ backtest แฟร์
-// จงใจ "ไม่" อยู่ใน _computeFormulasBatch: Mix เป็นอนุพันธ์ของทุกกลุ่ม ถ้าไหลเข้า
-// Picks/เลขแนะนำ จะ double-count สูตรแม่ของตัวเอง — ผู้บริโภคที่ต้องการ (backtest,
-// หน้า ไม่รู้ซื้ออะไรดี) ต้องเรียก _computeMixRow/_mixCompute เพิ่มเองเท่านั้น
-const MIX_FORMULA_NAME='ไม่รู้ซื้อเหี้ยไรดี · เลขเต็ม6หลัก';
-
-function _mixGroupKey(name){
-  const m=String(name||'').match(/^([A-Z])\d/);
-  if(m)return m[1]==='X'?'F':m[1]; // X* = กลุ่ม F (Codex/Pattern Link)
-  return 'E'; // แถวชื่อไทยล้วนมาจาก _beliefData (สายมู) เท่านั้น
-}
-
-function _mixCompute(formulaResults){
-  // votes[pos] = Map(groupKey -> Map(digit -> rawCount)) · fallback = เสียง pool6 สำหรับหลัก 0-2
-  const votes=Array.from({length:6},()=>new Map());
-  const fallback=Array.from({length:3},()=>new Map());
-  const addTo=(store,g,d)=>{
-    if(!/^\d$/.test(d))return;
-    if(!store.has(g))store.set(g,new Map());
-    const m=store.get(g);
-    m.set(d,(m.get(d)||0)+1);
-  };
-  const addVote=(g,pos,d)=>{if(pos>=0&&pos<6)addTo(votes[pos],g,d);};
-  for(const fr of (formulaResults||[])){
-    if(!fr||fr.mix)continue;
-    const g=_mixGroupKey(fr.name);
-    const preds=(fr.preds||[]).map(String);
-    if(!preds.length)continue;
-    switch(fr.field){
-      case 'front3':
-        preds.forEach(p=>{if(/^\d{3}$/.test(p))for(let i=0;i<3;i++)addVote(g,i,p[i]);});
-        break;
-      case 'pool6': // I/J2: หลักท้ายโหวตตรง, หลักหน้าเก็บไว้เป็น fallback เท่านั้น
-        preds.forEach(p=>{if(/^\d{6}$/.test(p)){for(let i=3;i<6;i++)addVote(g,i,p[i]);for(let i=0;i<3;i++)addTo(fallback[i],g,p[i]);}});
-        break;
-      case 'top3':
-      case 'back3exact':
-        preds.forEach(p=>{if(/^\d{3}$/.test(p))for(let i=0;i<3;i++)addVote(g,3+i,p[i]);});
-        break;
-      case 'back3': // preds ปน 3 และ 2 หลัก (เช่น C3) — ชิดขวาที่หลักสุดท้าย
-        preds.forEach(p=>{if(/^\d{2,3}$/.test(p))for(let i=0;i<p.length;i++)addVote(g,6-p.length+i,p[i]);});
-        break;
-      case 'bottom2':
-      case 'prize1_last2':
-        preds.forEach(p=>{if(/^\d{2}$/.test(p)){addVote(g,4,p[0]);addVote(g,5,p[1]);}});
-        break;
-      case 'bottom2_unit':
-      case 'prize1_unit':
-        preds.forEach(p=>addVote(g,5,p));
-        break;
-      case 'prize1_last4_digits': // preds[i] ผูกตำแหน่ง 2+i ของ prize1 — ตัด pos 2 ทิ้ง (ครึ่งหน้าเป็นของ front3)
-        preds.forEach((p,i)=>{if(2+i>=3)addVote(g,2+i,p);});
-        break;
-      default: break; // field อื่น (run_* ฯลฯ) ไม่เข้าโหวต
-    }
-  }
-  let fallbackUsed=false;
-  for(let pos=0;pos<3;pos++){
-    if(votes[pos].size===0&&fallback[pos].size>0){votes[pos]=fallback[pos];fallbackUsed=true;}
-  }
-  // normalize รายกลุ่มต่อหลัก แล้วจัดอันดับ 0-9 ต่อหลัก
-  const positions=votes.map(groupMaps=>{
-    const score=new Array(10).fill(0);
-    const votersByDigit=Array.from({length:10},()=>new Set());
-    for(const [g,m] of groupMaps){
-      let total=0;for(const c of m.values())total+=c;
-      if(!total)continue;
-      for(const [d,c] of m){score[Number(d)]+=c/total;votersByDigit[Number(d)].add(g);}
-    }
-    const ranked=score.map((s,d)=>({digit:String(d),score:s,groups:[...votersByDigit[d]].sort()}))
-      .sort((a,b)=>b.score-a.score||Number(a.digit)-Number(b.digit));
-    return {ranked,groupCount:groupMaps.size};
-  });
-  if(positions.some(p=>p.groupCount===0))return null; // มีหลักที่ไม่มีใครโหวตเลย → ผสมไม่ได้
-  const preds=_imperialRoundRobin(positions.map(p=>p.ranked.map(e=>e.digit)),10,8);
-  return {preds,positions,fallbackUsed};
-}
-
-// แถวสำหรับตาราง Backtest — field pool6 เหมือน I1/I2/J2 (baseline ต่อ candidate เท่ากัน)
-function _computeMixRow(formulaResults){
-  try{
-    const mix=_mixCompute(formulaResults);
-    if(!mix||!mix.preds.length)return null;
-    return {name:MIX_FORMULA_NAME,preds:mix.preds,field:'pool6',baseline:mix.preds.length,mix:true};
-  }catch(e){return null;}
-}
-
-// ─── Formula Backtest ──────────────────────────────────────────────────────────
-// คำนวณสูตรแต่ละตัวในโหมด batch (ไม่ยุ่งกับ DOM) และ return {predictions[], compareField}
-function _computeFormulasBatch(prev, nextDateStr, historyCtx=[]){
-  const p6=(prev.prize1||'').padStart(6,'0');
-  const t3=(prev.top3||'').padStart(3,'0');
-  const b2=(prev.bottom2||'').padStart(2,'0');
-  const f31=(prev.front3_1||'').padStart(3,'0');
-  const f32=(prev.front3_2||'').padStart(3,'0');
-  const bk1=(prev.back3_1||'').padStart(3,'0');
-  const bk2=(prev.back3_2||'').padStart(3,'0');
-  let nextDay=1,nextMonth=1,nextYear2=68;
-  if(nextDateStr){const[y,m,d]=nextDateStr.split('-').map(Number);nextDay=d;nextMonth=m;nextYear2=(y+543)%100;}
-  const drawday=nextDay===16?16:1;
-
-  const results=[];
-
-  // A1 บวกเลขบนล่าง → ทาย digit (หลักหน่วย bottom2)
-  try{
-    const digits=[...t3,...b2].map(Number);
-    const total=digits.reduce((a,b)=>a+b,0);
-    results.push({name:'A1 บวกเลขบนล่าง',preds:[String(total%10),String(Math.floor(total/10)%10)],field:'bottom2_unit',baseline:1});
-  }catch(e){results.push({name:'A1 บวกเลขบนล่าง',preds:[],field:'bottom2_unit',baseline:1});}
-
-  // A2 คี่คู่ → ทาย digit หลักหน่วย bottom2
-  try{
-    const allN=[...p6,...t3,...b2,...bk1,...bk2].map(Number);
-    const odd=allN.filter(d=>d%2!==0).length;
-    const hint=odd>allN.length/2?['0','2','4','6','8']:['1','3','5','7','9'];
-    results.push({name:'A2 คี่คู่',preds:hint,field:'bottom2_unit',baseline:5});
-  }catch(e){results.push({name:'A2 คี่คู่',preds:[],field:'bottom2_unit',baseline:5});}
-
-  // A3 คูณหลักร้อย×หลักสิบ → ทาย digit หลักหน่วย bottom2
-  try{
-    const d1=parseInt(p6[3]||'0'),d2=parseInt(p6[4]||'0');
-    results.push({name:'A3 คูณหลักร้อย×หลักสิบ',preds:[String((d1*d2)%10)],field:'bottom2_unit',baseline:1});
-  }catch(e){results.push({name:'A3 คูณหลักร้อย×หลักสิบ',preds:[],field:'bottom2_unit',baseline:1});}
-
-  // A4 วันหวยออก → ทาย digit หลักหน่วย bottom2
-  try{
-    const nums=drawday===16?['1','2','4','5','7','8','9']:['0','1','2','3','4','5','6','7'];
-    results.push({name:`A4 วันหวยออก(${drawday})`,preds:nums,field:'bottom2_unit',baseline:nums.length});
-  }catch(e){results.push({name:'A4 วันหวยออก',preds:[],field:'bottom2_unit',baseline:7});}
-
-  // A5 สูตรอมตะ → ทาย bottom2 (36 คู่)
-  try{
-    const X=(parseInt(p6[2])+parseInt(p6[4]))%10;
-    const g1=[X,(X+1)%10,(X+2)%10,(X+3)%10,(X+4)%10,(X+6)%10];
-    const g2s=(g1[5]+1)%10;
-    const g2=[g2s,(g2s+1)%10,(g2s+2)%10,(g2s+3)%10,(g2s+4)%10,(g2s+5)%10];
-    const pairs=[];for(const a of g1)for(const b of g2)pairs.push(`${a}${b}`);
-    results.push({name:'A5 สูตรอมตะ (36 คู่)',preds:pairs,field:'bottom2',baseline:36});
-  }catch(e){results.push({name:'A5 สูตรอมตะ',preds:[],field:'bottom2',baseline:36});}
-
-  // B1 สูตรสองตัวล่าง → ทาย bottom2
-  try{
-    const unit2=parseInt(b2[1]||'0');
-    let sum=nextDay+nextMonth+nextYear2+unit2;
-    if(sum>99)sum-=100;
-    const r=String(sum).padStart(2,'0');
-    results.push({name:'B1 สูตรสองตัวล่าง',preds:[r,r[1]+r[0]],field:'bottom2',baseline:2});
-  }catch(e){results.push({name:'B1 สูตรสองตัวล่าง',preds:[],field:'bottom2',baseline:2});}
-
-  // C1 ผันผวนเป็นตัวเงิน → ทาย bottom2
-  try{
-    const h=parseInt(bk1[0]),tt=parseInt(bk1[1]),u=parseInt(bk1[2]);
-    const s1h=(h+u)%10,s1t=(tt+u)%10;
-    const s2=(s1h+s1t)%10;
-    const rh=Math.abs(s1h-s2)%10,rt=Math.abs(s1t-s2)%10;
-    const r=`${rh}${rt}`;
-    results.push({name:'C1 ผันผวนเป็นตัวเงิน',preds:[r,r[1]+r[0]],field:'bottom2',baseline:2});
-  }catch(e){results.push({name:'C1 ผันผวนเป็นตัวเงิน',preds:[],field:'bottom2',baseline:2});}
-
-  // C2 2530 ปีทอง → ทาย 4 digit ของ prize1 หลักพัน-หน่วย (เทียบ digit-wise)
-  try{
-    const p4=p6.slice(2);
-    const r=p4.split('').map((d,i)=>(parseInt(d)+parseInt('2530'[i]))%10).join('');
-    results.push({name:'C2 สูตร2530ปีทอง',preds:r.split(''),field:'prize1_last4_digits',baseline:4});
-  }catch(e){results.push({name:'C2 สูตร2530ปีทอง',preds:[],field:'prize1_last4_digits',baseline:4});}
-
-  // C3 หงส์ฟ้า → ทาย back3_1 หรือ back3_2
-  try{
-    const rows=[[parseInt(p6[0]),parseInt(p6[1])],[parseInt(p6[2]),parseInt(p6[3])],[parseInt(p6[4]),parseInt(p6[5])],[parseInt(b2[0]||0),parseInt(b2[1]||0)]];
-    const cA=rows[0][0]+rows[1][0]+rows[2][0]+rows[3][0];
-    const cB=rows[0][1]+rows[1][1]+rows[2][1]+rows[3][1];
-    const carry=Math.floor(cB/10);
-    const st=`${(cA+carry)%10}${cB%10}`;
-    const bk2p=bk2.padStart(3,'0');
-    const sp=st.padStart(3,'0');
-    const raw=sp.split('').map((d,i)=>parseInt(d)+parseInt(bk2p[i]));
-    let c2=0,res3=[];for(let i=2;i>=0;i--){const s=raw[i]+c2;res3.unshift(s%10);c2=Math.floor(s/10);}
-    const r3=res3.join('');
-    results.push({name:'C3 หงส์ฟ้าถล่มปฐพี',preds:[r3,r3.slice(1)],field:'back3',baseline:2});
-  }catch(e){results.push({name:'C3 หงส์ฟ้าถล่มปฐพี',preds:[],field:'back3',baseline:2});}
-
-  // ══ D. เจ้าพ่อ Claude — เลขเต็มจากสูตรย่อย (backtest = ออกตรงเป๊ะ) ══
-  try{
-    const _D=_claudeFormulas({p6,t3,b2,bk1,bk2,drawday,nextDay,nextMonth,nextYear2});
-    results.push({name:'D1 สายธาร · ท้าย2',preds:_D.d1,field:'bottom2',baseline:_D.d1.length});
-    results.push({name:'D2 มังกรวาด · หน้า3',preds:_D.d2,field:'front3',baseline:_D.d2.length});
-    results.push({name:'D3 หักล้าง · ท้าย3',preds:_D.d3,field:'back3exact',baseline:_D.d3.length});
-    results.push({name:'D4 วงจรชีวิต · ท้าย2รางวัลที่1',preds:_D.d4two,field:'prize1_last2',baseline:_D.d4two.length});
-  }catch(e){}
-
-  // ══ G. แม่นขั้นเทพ — ร้อยมาลัย 3 ตัวบน + 2 ตัวล่าง ══
-  try{
-    const _G=_maenKhanThep({p6,t3,b2,f31,f32,bk1,bk2});
-    results.push({name:'G1 แม่นขั้นเทพ · 3ตัวบน 5-9-5',preds:_G.top3Type1,field:'top3',baseline:_G.top3Type1.length});
-    results.push({name:'G2 แม่นขั้นเทพ · 3ตัวบน ขนาบ 4/6',preds:_G.top3Type2,field:'top3',baseline:_G.top3Type2.length});
-    results.push({name:'G3 แม่นขั้นเทพ · 3ตัวบน โครง25ตัด',preds:_G.top3Type3,field:'top3',baseline:_G.top3Type3.length});
-    results.push({name:'G4 แม่นขั้นเทพ · 2ตัวล่าง',preds:_G.bottom2,field:'bottom2',baseline:_G.bottom2.length});
-  }catch(e){}
-
-  // ══ H. มิสเตอร์ซี — สูตรจากคลิป pZI5wD5WzzE สำหรับ 3 ตัวบนตรง ══
-  try{
-    const _H=_misterC({p6,t3,b2,f31,bk1,bk2});
-    results.push({name:'H1 มิสเตอร์ซี · 3ตัวบนตรงชุดเดียว',preds:_H.formula1,field:'top3',baseline:_H.formula1.length});
-    results.push({name:'H2 มิสเตอร์ซี · สูตรเสริมชุดเดียว',preds:_H.formula2,field:'top3',baseline:_H.formula2.length});
-    results.push({name:'H3 มิสเตอร์ซี · จับคู่สองสูตร',preds:_H.combo,field:'top3',baseline:_H.combo.length});
-  }catch(e){}
-
-  // ══ F. เจ้าพ่อ Codex — rolling history scorer (ไม่มองอนาคต) ══
-  try{
-    const codexRows=[{
-      date:prev.date, prize1:p6, top3:t3, top2:p6.slice(-2), bottom2:b2,
-      front3_1:prev.front3_1, front3_2:prev.front3_2,
-      back3_1:bk1, back3_2:bk2,
-    }, ...historyCtx];
-    const _C=_codexFormulas(codexRows,nextDateStr);
-    results.push({name:'X1 Codex Sharp · ท้าย2',preds:_C.bottomSharp,field:'bottom2',baseline:_C.bottomSharp.length});
-    results.push({name:'X2 Codex Front · หน้า3',preds:_C.front3,field:'front3',baseline:_C.front3.length});
-    results.push({name:'X3 Codex Back · ท้าย3',preds:_C.back3,field:'back3exact',baseline:_C.back3.length});
-    results.push({name:'X4 Codex Prize Tail · ท้าย2รางวัลที่1',preds:_C.prize1Last2,field:'prize1_last2',baseline:_C.prize1Last2.length});
-    // ค่า coefficient presets สำหรับเทียบ edge ใน backtest เท่านั้น (ทำนายจริงใช้ baseline เสมอ)
-    for(const preset of CODEX_COEFF_PRESETS){
-      if(preset.key==='baseline')continue; // ซ้ำกับ X1 Codex Sharp
-      const presetPool=_codexPool(codexRows,'bottom2',2,nextDateStr,10,preset.coeffs);
-      results.push({name:`${preset.label} · ท้ายคม`,preds:presetPool,field:'bottom2',baseline:presetPool.length});
-    }
-  }catch(e){}
-
-  // ══ I. จักรพรรดิ — digit-position frequency across near1+prize2-5 pool ══
-  // ข้าม push ผลลัพธ์ทั้งหมดถ้า preds ว่าง (งวดก่อนหน้าไม่มีข้อมูล Sanook) แทนที่จะ push
-  // ชุดว่างเข้า backtest — งวดที่ไม่มีข้อมูลไม่ควรถูกนับเข้า total เพราะทายไม่ได้ตั้งแต่แรก
-  // (ไม่ใช่ "ทายแล้วพลาด") ไม่งั้น total จะถูกเจือจางด้วยงวดที่ไม่มีทางถูกได้เลย
-  try{
-    const _I=_imperialFormula(prev,10);
-    if(_I.length)results.push({name:'I1 จักรพรรดิ · เลขเต็ม6หลัก',preds:_I,field:'pool6',baseline:_I.length});
-  }catch(e){}
-  try{
-    const _IG=_imperialGoldFormula(prev,nextDay,nextMonth,nextYear2,10);
-    if(_IG.length)results.push({name:'I2 จักรพรรดิทองคำ · เลขเต็ม6หลัก',preds:_IG,field:'pool6',baseline:_IG.length});
-  }catch(e){}
-
-  // ══ J. เจ้าสัว — bottom2 leg (ISSUE-13): search finalist, failed holdout gate, ships ทดลอง ══
-  try{
-    const _J1=_tycoonBottom2Formula(prev,nextDay,nextMonth,nextYear2);
-    if(_J1.length)results.push({name:'J1 เจ้าสัว · ท้าย2',preds:_J1,field:'bottom2',baseline:_J1.length,trust:'ทดลอง'});
-  }catch(e){}
-  try{
-    const _J2=_tycoonPool6Formula(prev,nextDay,nextMonth,nextYear2,10);
-    if(_J2.length)results.push({name:'J2 เจ้าสัว · เลขเต็ม6หลัก',preds:_J2,field:'pool6',baseline:_J2.length,trust:'ทดลอง'});
-  }catch(e){}
-
-  // ══ HM. Hermes Pool 1-4 — value-weighted digit freq เป้า pool รางวัล 1-4 (PRD-hermes-pool-1-4.md) ══
-  // ทดลองถาวร per ADR-0003 (66/1e6 × 458 งวด ≈ 0.30 expected chance hits — no gate possible);
-  // group:'HM' explicit เพื่อไม่ให้ 'H' ปน experimentalGroups ของ dcRecommendedNumbers (มิสเตอร์ซี)
-  try{
-    const _HM=_hermesPool14Formula(prev,10);
-    if(_HM.length)results.push({name:'HM · Hermes Pool 1-4',group:'HM',preds:_HM,field:'pool6_14',baseline:_HM.length,trust:'ทดลอง'});
-  }catch(e){}
-
-  // ══ HM2/HM3. Hermes ท้าย3 (PRD-hm2-hermes-tail3.md) — เป้าท้าย 3 ตัว 2 สนาม: ใต้ดิน (ท้าย 3 ของ
-  // pool 1-4, field ใหม่ pool14_tail3) + ทางการ (เลขท้าย 3 ตัว back3_1/back3_2 · 4,000฿ — ออก
-  // รางวัลแยกอิสระ uniform → ungateable by construction per ADR-0003) · ทดลองถาวรทั้งคู่
-  try{
-    const _T2=_hermesTail3Formula(prev,10);
-    if(_T2.length)results.push({name:'HM2 · Hermes ท้าย3 ใต้ดิน',group:'HM',preds:_T2,field:'pool14_tail3',baseline:_T2.length,trust:'ทดลอง'});
-  }catch(e){}
-  try{
-    const _T3=_hermesOfficialTail3Formula(prev,10);
-    if(_T3.length)results.push({name:'HM3 · Hermes ท้าย3 ทางการ',group:'HM',preds:_T3,field:'back3',baseline:_T3.length,trust:'ทดลอง'});
-  }catch(e){}
-
-  // ══ F. Pattern Link — train/test derived transition links (ไม่มองอนาคต) ══
-  try{
-    const _P=_patternLinkFormulas({date:prev.date,prize1:p6,top3:t3,bottom2:b2,front3_1:f31,front3_2:f32,back3_1:bk1,back3_2:bk2},nextDateStr);
-    results.push({name:'X5 Pattern Link · 2ตัวคัดเข้ม',preds:_P.bottom2Tight,field:'bottom2',baseline:_P.bottom2Tight.length});
-    results.push({name:'X6 Pattern Link · 2ตัวครอบคลุม',preds:_P.bottom2Wide,field:'bottom2',baseline:_P.bottom2Wide.length});
-    results.push({name:'X7 Pattern Link · 3หลักหน้า',preds:_P.any3,field:'front3',baseline:_P.any3.length});
-    results.push({name:'X8 Pattern Link · 3หลักท้าย',preds:_P.any3,field:'back3exact',baseline:_P.any3.length});
-    results.push({name:'X9 Pattern Link · 3ตัวบน',preds:_P.any3,field:'top3',baseline:_P.any3.length});
-  }catch(e){}
-
-  // ══ E. สายมู/ความเชื่อ — เทียบ 2 ตัวล่าง (exact = เลขเด่น 2 หลักออกตรง) ══
-  try{
-    for(const f of _beliefData(nextDay,nextMonth,nextYear2,nextDateStr)){
-      results.push({name:f.name+' (เด่น2ตัว)',preds:f.nums,field:'bottom2',baseline:f.nums.length});
-    }
-  }catch(e){}
-
-  return results;
-}
-
-let _btRunning=false;
-async function runFormulaBacktest(){
-  if(_btRunning)return;
-  _btRunning=true;
-  const _btBtn=document.querySelector('#formula-results-BT button.btn-primary');
-  if(_btBtn){_btBtn.disabled=true;_btBtn.textContent='กำลังรัน...';}
-  const n=parseInt(document.getElementById('bt-formula-n').value)||50;
-  const targetTest=Math.max(n,...FORMULA_BT_WINDOWS);
-  if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-bt-status','กำลังรัน Backtest สูตร...');
-  document.getElementById('formula-bt-loading').style.display='block';
-  document.getElementById('formula-bt-table').innerHTML='';
-  switchFormulaTab('BT');
-  try{
-
-  const h=await api(`prize-history?n=${Math.min(600,targetTest+201)}`,{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
-  const rows=Array.isArray(h?.data)?h.data:[];
-  _btFieldCheck=_formulaFieldMappingCheck(rows);
-  if(h?.error||h?.detail||!Array.isArray(h?.data)){
-    document.getElementById('formula-bt-table').innerHTML='<div class="formula-tab-empty" style="display:block">Backtest โหลดข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง</div>';
-    if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-bt-status','Backtest โหลดข้อมูลไม่สำเร็จ ลองใหม่อีกครั้ง');
-    return;
-  }
-  if(rows.length<2){
-    document.getElementById('formula-bt-table').innerHTML='<div class="formula-tab-empty" style="display:block">ยังไม่มีข้อมูลย้อนหลังเพียงพอสำหรับ Backtest</div>';
-    if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-bt-status','ข้อมูลย้อนหลังไม่พอสำหรับ Backtest');
-    return;
-  }
-
-  // rows เรียงใหม่สุดก่อน → rows[i] = current, rows[i+1] = prev
-  const stats={};
-  let tested=0;
-  let selectedTested=0;
-
-  for(let i=0;i<rows.length-1&&tested<targetTest;i++){
-    const curr=rows[i];
-    const prev=rows[i+1];
-    if(!_formulaActualDigits(prev,'prize1',6,true)||!_formulaActualDigits(curr,'prize1',6,true))continue;
-    tested++;
-    // สร้าง ISO date ของงวดปัจจุบัน
-    let isoDate='';
-    if(curr.date){const[d,m,y]=curr.date.split('/').map(Number);isoDate=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;}
-
-    const historyCtx=rows.slice(i+2,i+202); // งวดก่อนหน้า prev สำหรับ rolling scorer (ไม่รวม curr)
-    // Secondary-hit sample is complete only with near1 + all prize2/prize3 values.
-    const near1=_formulaDrawValues(curr,['near1_1','near1_2']);
-    const prize2=_formulaDrawValues(curr,['prize2_1','prize2_2','prize2_3','prize2_4','prize2_5']);
-    const prize3=_formulaDrawValues(curr,['prize3_1','prize3_2','prize3_3','prize3_4','prize3_5','prize3_6','prize3_7','prize3_8','prize3_9','prize3_10']);
-    const hasSecondary=!!(near1&&prize2&&prize3);
-    const secondary6=hasSecondary?[...near1,...prize2,...prize3]:[];
-    const prize4=_formulaPrizeValues(curr,'prize4',50);
-    const prize5=_formulaPrizeValues(curr,'prize5',100);
-    const secTail3=new Set(secondary6.map(v=>v.slice(-3)));
-    const secTail2=new Set(secondary6.map(v=>v.slice(-2)));
-    // pool รวมสำหรับสูตรที่อ้างอิงรางวัล 1-5 ทั้งหมด: prize1 + ทุกรางวัลรอง
-    const pool6Complete=!!(hasSecondary&&prize4&&prize5);
-    const pool6Set=pool6Complete?new Set([curr.prize1,...secondary6,...prize4,...prize5]):null;
-    const poolTail3Set=pool6Set?new Set([...pool6Set].map(v=>v.slice(-3))):null;
-    // pool 1-4 (HM · Hermes Pool 1-4, PRD-hermes-pool-1-4.md): prize1 + prize2×5 + prize3×10 +
-    // prize4×50 = 66 เลข — ไม่รวม near1/prize5 (board แยกตามกติกาคงที่ข้อ 1)
-    const pool14Complete=!!(prize2&&prize3&&prize4);
-    const pool14Set=pool14Complete?new Set([curr.prize1,...prize2,...prize3,...prize4]):null;
-    const pool14Tail3Set=pool14Set?new Set([...pool14Set].map(v=>v.slice(-3))):null; // HM2 · Hermes ท้าย3 ใต้ดิน
-    const formulaResults=_computeFormulasBatch(prev,isoDate,historyCtx);
-    // Mix เข้าตาราง backtest เฉพาะงวดที่มี pool6 producer (I/J มีข้อมูล Sanook) — เงื่อนไข
-    // เดียวกับที่ I1/I2/J2 ข้ามงวดไร้ pool เพื่อให้ baseline pool6 เทียบกันแฟร์
-    if(formulaResults.some(fr=>fr.field==='pool6')){
-      const mixRow=_computeMixRow(formulaResults);
-      if(mixRow)formulaResults.push(mixRow);
-    }
-    for(const fr of formulaResults){
-      if(!stats[fr.name]){
-        stats[fr.name]={hits:0,total:0,preds_n:fr.baseline,field:fr.field,trust:fr.trust||null,mix:fr.mix||false,group:fr.group||null,subHits:0,subTotal:0,slots:fr.slots||2,pool14:{hits:0,total:0},windows:{}};
-        FORMULA_BT_WINDOWS.forEach(w=>{stats[fr.name].windows[w]={hits:0,total:0};});
-      }
-      const s=stats[fr.name];
-      const hit=_formulaHitForField(fr,curr,{pool6Set,poolTail3Set,pool14Set,pool14Tail3Set});
-      const subHit=hasSecondary?_formulaSecondaryHit(fr,secondary6,secTail2,secTail3):false;
-      if(tested<=n){
-        if(hit!==null){
-          s.total++;
-          if(hit)s.hits++;
-        }
-        if(fr.slots)s.slots=fr.slots;
-        if(hasSecondary&&Array.isArray(fr.preds)&&fr.preds.length){
-          s.subTotal++;
-          if(subHit)s.subHits++;
-        }
-        // Board Pool 1-4 (เปรียบเทียบทุก pool6 producer ด้วยเกณฑ์เดียวกัน — กติกาคงที่ข้อ 1);
-        // guard length===6 — preds 3 หลัก (HM2/HM3/C3) เทียบกับ hit-set 66 เลขเต็ม 6 หลักไม่ได้
-        // (จะโชว์ 0/457 หลอกตา) → ข้าม
-        const pool14Preds=Array.isArray(fr.preds)?fr.preds.map(String).filter(p=>/^[0-9]{6}$/.test(p)):[];
-        if(pool14Set?.size&&pool14Preds.length){
-          s.pool14.total++;
-          if(pool14Preds.some(p=>pool14Set.has(p)))s.pool14.hits++;
-        }
-      }
-      FORMULA_BT_WINDOWS.forEach(w=>{
-        if(tested>w||hit===null)return;
-        const ws=s.windows[w]||(s.windows[w]={hits:0,total:0});
-        ws.total++;
-        if(hit)ws.hits++;
-      });
-    }
-  }
-
-  // build row data (fair baseline per field type)
-  selectedTested=Math.min(tested,n);
-  _btTested=selectedTested;
-  _btRowData=Object.entries(stats).map(([name,s])=>{
-    const hasSample=s.total>0;
-    const pct=hasSample?s.hits/s.total*100:null;
-    const baseline=_formulaBaselineForField(s.field,s.preds_n,s.slots||2);
-    const baseP=hasSample?baseline.baseP:null;
-    const baseLabel=hasSample?baseline.baseLabel:'—';
-    const {typeLabel,board}=baseline;
-    const edge=hasSample?pct-baseP:null;
-    const p=hasSample?s.hits/s.total:null;
-    const se=hasSample?Math.sqrt(Math.max(p*(1-p),0)/s.total)*100:null;
-    const ciLow=se==null?null:Math.max(0,pct-1.96*se);
-    const ciHigh=se==null?null:Math.min(100,pct+1.96*se);
-    const rolling={};
-    FORMULA_BT_WINDOWS.forEach(w=>{
-      const ws=s.windows?.[w]||{hits:0,total:0};
-      const wpct=ws.total?ws.hits/ws.total*100:null;
-      rolling[w]={hits:ws.hits,total:ws.total,pct:wpct,edge:wpct==null?null:wpct-baseline.baseP};
-    });
-    const _GRP={'A':['A · กูชอบ','var(--gold)'],'B':['B · ลอตโตพลัส','#4d9de0'],'C':['C · พิชิตโชค','#a855f7'],'D':['D · Claude','#22d3ee'],'X':['F · Codex','#a3e635'],'G':['G · แม่นขั้นเทพ','#f05454'],'H':['H · มิสเตอร์ซี','#f59e0b'],'E':['E · สายมู','#ec4899'],'I':['I · จักรพรรดิ','#c084fc'],'J':['J · เจ้าสัว','#10b981'],'HM':['HM · Hermes Pool 1-4','#2dd4bf']};
-    const gKey=s.group||name[0];
-    const [group,groupColor]=s.mix?['MIX · รวมทุกสูตร','#f2ca73']:(_GRP[gKey]||[gKey,'var(--text3)']);
-    const subPct=s.subTotal>0?s.subHits/s.subTotal*100:null;
-    const edge50=rolling[50]?.edge??null,edge100=rolling[100]?.edge??null,edge200=rolling[200]?.edge??null;
-    const degraded=rolling[200]?.total>=180&&edge200!=null&&edge200<-5;
-    return {name,group,groupColor,field:s.field,typeLabel,board,total:s.total,hits:s.hits,pct,baseP,baseLabel,edge,ciLow,ciHigh,subHits:s.subHits||0,subTotal:s.subTotal||0,subPct,rolling,edge50,edge100,edge200,degraded,trust:s.trust||null,preds_n:s.preds_n,pool14Hits:s.pool14?.hits||0,pool14Total:s.pool14?.total||0};
-  });
-  _btSortKey='edge';_btSortAsc=false;
-  _renderBtTable();
-  if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-bt-status',`Backtest สูตรเสร็จแล้ว ${selectedTested} งวด`);
-  if(_formulaHasRun){
-    try{runAllFormulas();}catch(e){
-      _renderFormulaFinalPicks();
-      _renderFormulaInsights();
-    }
-  }
-  }catch(e){
-    document.getElementById('formula-bt-table').innerHTML='<div class="formula-tab-empty" style="display:block">รัน Backtest ไม่สำเร็จ ลองใหม่อีกครั้ง</div>';
-    if(typeof window!=='undefined'&&typeof window.setPageStatus==='function')window.setPageStatus('formula-bt-status','รัน Backtest ไม่สำเร็จ ลองใหม่อีกครั้ง');
-    if(typeof toast==='function')toast('รัน Backtest ไม่สำเร็จ','error',{announce:false});
-  }finally{
-    document.getElementById('formula-bt-loading').style.display='none';
-    _btRunning=false;
-    if(_btBtn){_btBtn.disabled=false;_btBtn.textContent='▶ รัน Backtest';}
-  }
-}
-
-function btSort(key){
-  if(_btSortKey===key)_btSortAsc=!_btSortAsc;
-  else{_btSortKey=key;_btSortAsc=false;}
-  _renderBtTable();
-}
-
-function _formulaBtSummaryHtml(rows){
-  if(!rows.length)return '';
-  const scored=rows.filter(r=>Number.isFinite(r.edge)&&Number.isFinite(r.pct));
-  if(!scored.length)return '<div class="formula-tab-empty" style="display:block">ยังไม่มีผลที่มีข้อมูลครบสำหรับคำนวณ Hit rate / Edge —</div>';
-  const bestEdge=[...scored].sort((a,b)=>b.edge-a.edge)[0];
-  const bestHit=[...scored].sort((a,b)=>b.pct-a.pct)[0];
-  const focused=[...scored].filter(r=>r.baseP<=2).sort((a,b)=>b.edge-a.edge)[0]||bestEdge;
-  const risky=[...scored].filter(r=>r.edge<0).sort((a,b)=>a.edge-b.edge)[0]||scored[scored.length-1];
-  const card=(label,value,sub,cls='')=>`<div class="bt-summary-card"><div class="bt-summary-label">${label}</div><div class="bt-summary-value ${cls}">${value}</div><div class="bt-summary-sub" title="${_formulaEsc(sub||'')}">${_formulaEsc(sub||'-')}</div></div>`;
-  return `<div class="bt-summary-board">
-    ${card('Best edge',`${bestEdge.edge>=0?'+':''}${bestEdge.edge.toFixed(1)}%`,bestEdge.name,bestEdge.edge>0?'pos':'')}
-    ${card('Best hit rate',`${bestHit.pct.toFixed(1)}%`,bestHit.name)}
-    ${card('ชุดน้อยแต่น่าสนใจ',`${focused.edge>=0?'+':''}${focused.edge.toFixed(1)}%`,focused.name,focused.edge>0?'pos':'')}
-    ${card('ควรระวัง',`${risky.edge>=0?'+':''}${risky.edge.toFixed(1)}%`,risky.name,'neg')}
-  </div>`;
-}
-
-// ตารางเปรียบเทียบ Board Pool 1-4 (PRD-hermes-pool-1-4.md) — ทุกสูตรที่ทายเลขเต็ม 6 หลัก
-// (I1/I2/J2/Mix/Hermes) ถูกวัดซ้ำกับ hit-set รางวัลที่ 1/2/3/4 (66 เลข) ด้วยเกณฑ์เดียวกัน
-// 10 ชุด/งวด — พื้นที่พิสูจน์ "เหนือกว่าทุกสูตร" แบบตรงไปตรงมา (กติกาคงที่ข้อ 1: board แยก)
-function _renderPool14Comparison(rows){
-  const cands=rows.filter(r=>(r.field==='pool6'||r.field==='pool6_14')&&r.pool14Total>0);
-  if(!cands.length)return '';
-  const sorted=[...cands].sort((a,b)=>b.pool14Hits-a.pool14Hits||b.pool14Total-a.pool14Total);
-  const k=Math.max(...cands.map(r=>r.preds_n||10)); // ทุก pool6 producer ปล่อย 10 ชุด (Hermes/I/J/Mix)
-  const baseP=(1-Math.pow(1-66/1e6,k))*100;
-  const tested14=Math.max(...sorted.map(r=>r.pool14Total));
-  const tr=r=>{
-    const pct=r.pool14Total?r.pool14Hits/r.pool14Total*100:0;
-    const edge=pct-baseP;
-    const ec=edge>0?'var(--green)':edge<0?'var(--red)':'var(--text2)';
-    return `<tr>
-      <td><span style="background:${r.groupColor}22;color:${r.groupColor};padding:1px 7px;border-radius:4px;font-size:.7rem;white-space:nowrap;font-weight:600;margin-right:5px">${r.group}</span>${r.name}${r.trust?` <span class="trust-badge">${r.trust}</span>`:''}</td>
-      <td style="text-align:right;font-weight:700;color:${ec}">${r.pool14Hits}</td>
-      <td style="text-align:right">${r.pool14Total}</td>
-      <td style="text-align:right;font-weight:700;color:${ec}">${pct.toFixed(3)}%</td>
-      <td style="text-align:right;font-size:.72rem;color:var(--text3)">${baseP.toFixed(3)}%</td>
-      <td style="text-align:right;font-weight:700;color:${ec}">${edge>=0?'+':''}${edge.toFixed(3)}%</td>
-    </tr>`;
-  };
-  return `<div class="card" style="margin-top:12px">
-    <div class="card-title">🏆 ตารางเปรียบเทียบ Board Pool 1-4 (รางวัลที่ 1/2/3/4 · 66 เลข)</div>
-    <div style="font-size:.72rem;color:var(--text3);margin-bottom:10px">
-      ทุกสูตรที่ทายเลขเต็ม 6 หลักวัดซ้ำด้วยเกณฑ์เดียวกัน — ถูก = เลขตรงตัวใดตัวหนึ่งใน pool รางวัล 1–4 ของงวดนั้น ·
-      baseline สุ่ม ${k} ชุด = ${baseP.toFixed(3)}%/งวด (66/1,000,000) · ${tested14} งวดที่วัดได้ ≈ คาดถูกโดยบังเอิญ ${(tested14*k*66/1e6).toFixed(2)} ครั้งตลอด —
-      ผล "0 hit ทุกสูตร / เทียบไม่ได้" คือผลที่คาดไว้ตาม PRD ไม่ใช่ความล้มเหลว
-    </div>
-    <div class="tbl-wrap" tabindex="0" role="region" aria-label="ตารางเปรียบเทียบ Backtest Pool 1-4 เลื่อนแนวนอนเพื่อดูคอลัมน์เพิ่มเติม"><table>
-      <caption class="sr-only">เปรียบเทียบผล Backtest ของสูตร Pool 1-4</caption>
-      <thead><tr><th>สูตร</th><th style="text-align:right">ถูก</th><th style="text-align:right">งวด</th><th style="text-align:right">%แม่น</th><th style="text-align:right">Baseline</th><th style="text-align:right">Edge</th></tr></thead>
-      <tbody>${sorted.map(tr).join('')}</tbody>
-    </table></div>
-  </div>`;
 }

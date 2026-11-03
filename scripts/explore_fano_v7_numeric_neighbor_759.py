@@ -1,0 +1,246 @@
+"""Numerical circular-neighbor transition model with a Fano codebook."""
+from __future__ import annotations
+
+from datetime import datetime
+import hashlib
+import itertools
+import json
+import math
+from pathlib import Path
+import sys
+import time
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+import astra
+import fano
+
+DRAW_COUNT = 759
+MIN_TARGET_HITS = math.ceil(DRAW_COUNT * 0.40)
+NUMBER_SPACE = 1_000_000
+BANDWIDTHS = (1_000.0, 10_000.0, 50_000.0, 200_000.0)
+HALF_LIVES = (None, 120)
+ALPHAS = (25.0, 100.0)
+MODELS = tuple(
+    {"name": f"numeric-neighbor-bw-{bandwidth:g}-hl-{half_life or 'all'}-alpha-{alpha:g}",
+     "bandwidth": bandwidth, "half_life": half_life, "alpha": alpha}
+    for bandwidth in BANDWIDTHS for half_life in HALF_LIVES for alpha in ALPHAS
+)
+LINE_PAIRS = tuple(itertools.combinations(range(7), 2))
+INITIAL_PAIRS = ((0, 1), (2, 3), (4, 5), (0, 6), (1, 4), (2, 5))
+
+
+def _load_draws():
+    dated = []
+    for row in astra.load_existing_astra_history():
+        values = astra._category_values(row, "prize1", 6)
+        if values is not None:
+            dated.append((astra._history_date(row["date"]), values[0]))
+    dated.sort()
+    if len(dated) != DRAW_COUNT or len({day for day, _ in dated}) != DRAW_COUNT:
+        raise RuntimeError(f"Expected {DRAW_COUNT} unique valid first-prize draws")
+    if any(dated[index - 1][0] >= dated[index][0] for index in range(1, DRAW_COUNT)):
+        raise RuntimeError("First-prize history is not strictly chronological")
+    if any(len(number) != 6 or not number.isascii() or not number.isdigit()
+           for _, number in dated):
+        raise RuntimeError("A first-prize result is not a six-character ASCII number")
+    return dated
+
+
+def _expert_predictions(dated, target_index):
+    prior_count = target_index
+    numbers = [int(number) for _, number in dated]
+    ages = (prior_count - 1 - np.arange(prior_count)).astype(np.float64)
+    encoded = np.zeros((prior_count, 6, 10), dtype=np.float64)
+    for draw_index, (_, number) in enumerate(dated[:prior_count]):
+        for position, char in enumerate(number):
+            encoded[draw_index, position, ord(char) - 48] = 1.0
+    predictions = []
+    for model in MODELS:
+        half_life = model["half_life"]
+        recency = (np.ones(prior_count, dtype=np.float64) if half_life is None
+                   else np.exp2(-ages / half_life))
+        global_counts = np.einsum("n,npd->pd", recency, encoded, optimize=True)
+        global_prior = ((global_counts + 1.0) /
+                        (float(recency.sum()) + 10.0)) if prior_count else np.full((6, 10), 0.1)
+        if target_index < 2:
+            predictions.append(global_prior.tolist())
+            continue
+        transition_targets = np.arange(1, target_index, dtype=np.int64)
+        predecessor_indices = transition_targets - 1
+        query = numbers[target_index - 1]
+        predecessor_numbers = np.asarray([numbers[index] for index in predecessor_indices],
+                                         dtype=np.int64)
+        difference = np.abs(predecessor_numbers - query)
+        circular_distance = np.minimum(difference, NUMBER_SPACE - difference).astype(np.float64)
+        successor_ages = target_index - 1 - transition_targets
+        if half_life is None:
+            transition_recency = np.ones(len(transition_targets), dtype=np.float64)
+        else:
+            transition_recency = np.exp2(-successor_ages / half_life)
+        similarity = np.exp(-0.5 * (circular_distance / model["bandwidth"]) ** 2)
+        weights = similarity * transition_recency
+        local_counts = np.einsum("n,npd->pd", weights, encoded[transition_targets], optimize=True)
+        alpha = model["alpha"]
+        predictions.append(((local_counts + alpha * global_prior) /
+                            (float(weights.sum()) + alpha)).tolist())
+    return predictions
+
+
+def _normalize(log_weights):
+    maximum = max(log_weights)
+    values = [math.exp(value - maximum) for value in log_weights]
+    total = sum(values)
+    return [value / total for value in values]
+
+
+def _log_loss(probabilities, actual):
+    return -sum(math.log(max(probabilities[position][ord(char) - 48], 1e-300))
+                for position, char in enumerate(actual))
+
+
+def _best_slate(probabilities, pairs):
+    rankings = [sorted(range(10), key=lambda digit: (-probabilities[pos][digit], digit))[:4]
+                for pos in range(6)]
+    words = []
+    for point in range(7):
+        digits = []
+        for position, (left, right) in enumerate(pairs):
+            code = int(point in fano.FANO_LINES[left]) * 2 + int(point in fano.FANO_LINES[right])
+            digits.append(rankings[position][code])
+        number = "".join(str(digit) for digit in digits)
+        mass = math.prod(probabilities[position][digit]
+                         for position, digit in enumerate(digits))
+        words.append((point, number, mass))
+    if len({row[1] for row in words}) != 7:
+        return None
+    selected = sorted(words, key=lambda row: (-row[2], row[0]))[:5]
+    return {"numbers": [row[1] for row in selected],
+            "mass": sum(row[2] for row in selected),
+            "points": [row[0] + 1 for row in selected]}
+
+
+def _optimize_codebook(probabilities):
+    pairs = list(INITIAL_PAIRS)
+    selected = _best_slate(probabilities, pairs)
+    if selected is None:
+        raise RuntimeError("Initial numeric-neighbor Fano codebook must be unique")
+    for _ in range(8):
+        changed = False
+        for position in range(6):
+            best_pair, best_slate = pairs[position], selected
+            for pair in LINE_PAIRS:
+                if pair == best_pair:
+                    continue
+                proposal = list(pairs)
+                proposal[position] = pair
+                slate = _best_slate(probabilities, proposal)
+                if slate is not None and slate["mass"] > best_slate["mass"] + 1e-18:
+                    best_pair, best_slate = pair, slate
+            if best_pair != pairs[position]:
+                pairs[position] = best_pair
+                selected = best_slate
+                changed = True
+        if not changed:
+            break
+    selected["line_pairs"] = [[left + 1, right + 1] for left, right in pairs]
+    return selected
+
+
+def run():
+    started = time.perf_counter()
+    dated = _load_draws()
+    material = "\n".join(f"{day.isoformat()}|{number}" for day, number in dated).encode("ascii")
+    fingerprint = hashlib.sha256(material).hexdigest()
+    log_weights = [0.0] * len(MODELS)
+    model_losses = [0.0] * len(MODELS)
+    hits = 0
+    hit_dates = []
+    loss_sum = 0.0
+    mass_sum = 0.0
+    forecasts = []
+    for target_index, (target_date, actual) in enumerate(dated):
+        predictions = _expert_predictions(dated, target_index)
+        weights = _normalize(log_weights)
+        mixture = [[sum(weights[index] * predictions[index][position][digit]
+                        for index in range(len(MODELS))) for digit in range(10)]
+                   for position in range(6)]
+        slate = _optimize_codebook(mixture)
+        hit = actual in slate["numbers"]
+        hits += int(hit)
+        if hit:
+            hit_dates.append(target_date.isoformat())
+        loss = _log_loss(mixture, actual)
+        loss_sum += loss
+        mass_sum += slate["mass"]
+        losses = [_log_loss(prediction, actual) for prediction in predictions]
+        model_losses = [model_losses[index] + losses[index]
+                        for index in range(len(MODELS))]
+        forecasts.append({
+            "target_date": target_date.isoformat(),
+            "prior_valid_draws": target_index,
+            "actual": actual,
+            "candidates": slate["numbers"],
+            "hit": hit,
+            "five_candidate_probability_mass": slate["mass"],
+            "log_loss": loss,
+            "line_pairs": slate["line_pairs"],
+            "selected_points": slate["points"],
+            "top_expert_weights_before_target": sorted(
+                ((MODELS[index]["name"], weights[index]) for index in range(len(MODELS))),
+                key=lambda row: -row[1])[:5],
+        })
+        log_weights = [log_weights[index] - losses[index]
+                       for index in range(len(MODELS))]
+        if (target_index + 1) % 100 == 0:
+            print(f"walk-forward: {target_index + 1}/{DRAW_COUNT}, v7={hits} hits",
+                  flush=True)
+
+    fixed_results = [{"name": MODELS[index]["name"],
+                      "mean_log_loss": round(model_losses[index] / DRAW_COUNT, 8)}
+                     for index in range(len(MODELS))]
+    report = {
+        "run_date": datetime.now(astra.THAILAND_TZ).date().isoformat(),
+        "draw_count": DRAW_COUNT,
+        "date_range": [dated[0][0].isoformat(), dated[-1][0].isoformat()],
+        "actuals_sha256": fingerprint,
+        "target": "exact six-digit first-prize hit; exactly five distinct predictions per draw",
+        "walk_forward": "numerical neighbors and their next prize1 labels are strictly prior to target; expert weights update after scoring",
+        "model_family": "16-expert circular integer-distance nearest-neighbor model from prior winning number to next prize1 digits, with Fano codebook output",
+        "expert_count": len(MODELS),
+        "experts": [{"family": "numeric-neighbor-transition", **dict(model)} for model in MODELS],
+        "uniform_expected_hits": DRAW_COUNT * 5 / 1_000_000,
+        "v7": {"hits": hits, "hit_rate_percent": round(100 * hits / DRAW_COUNT, 8),
+               "hit_dates": hit_dates,
+               "mean_log_loss": round(loss_sum / DRAW_COUNT, 8),
+               "uniform_log_loss": math.log(1_000_000),
+               "mean_five_candidate_probability_mass": round(mass_sum / DRAW_COUNT, 12),
+               "forecasts": forecasts},
+        "fixed_model_comparisons": fixed_results,
+        "threshold": {"minimum_hits_for_40_percent": MIN_TARGET_HITS,
+                      "met": hits >= MIN_TARGET_HITS},
+        "interpretation": "historical exploratory evaluation; circular numeric-neighbor dependence was proposed after prior outcome reviews",
+        "elapsed_seconds": round(time.perf_counter() - started, 3),
+    }
+    folder = ROOT / ".scratch" / "fano-v7-walk-forward"
+    folder.mkdir(parents=True, exist_ok=True)
+    output = folder / f"results-{report['run_date']}-stage-49-numeric-neighbor.json"
+    output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps({"hits": hits,
+                      "hit_rate_percent": report["v7"]["hit_rate_percent"],
+                      "threshold_met": report["threshold"]["met"],
+                      "mean_log_loss": report["v7"]["mean_log_loss"],
+                      "uniform_log_loss": report["v7"]["uniform_log_loss"],
+                      "best_fixed_model": min(fixed_results,
+                                               key=lambda row: row["mean_log_loss"]),
+                      "data_fingerprint": fingerprint,
+                      "result_file": str(output),
+                      "elapsed_seconds": report["elapsed_seconds"]},
+                     ensure_ascii=False), flush=True)
+
+
+if __name__ == "__main__":
+    run()

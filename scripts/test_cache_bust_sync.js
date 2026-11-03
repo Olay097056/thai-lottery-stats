@@ -14,7 +14,8 @@ const { execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const IDX_PATH = path.join(ROOT, 'static', 'index.html');
-const STATIC_FILES = ['app.css', 'app.js', 'formula-engine.js'];
+const manifest = JSON.parse(fs.readFileSync(path.join(ROOT,'static','scripts.json'),'utf8'));
+const STATIC_FILES = ['app.css', ...manifest.engine, ...manifest.app];
 
 let passed = 0;
 function check(label, cond) {
@@ -23,7 +24,7 @@ function check(label, cond) {
 }
 
 function versionsOf(html) {
-  const m = [...String(html).matchAll(/(?:app\.css|formula-engine\.js|app\.js)\?v=([A-Za-z0-9_-]+)/g)];
+  const m = [...String(html).matchAll(/\/static\/[A-Za-z0-9_/-]+\.(?:css|js)\?v=([A-Za-z0-9_-]+)/g)];
   return m.map(x => x[1]);
 }
 function normalize(s) {
@@ -32,7 +33,10 @@ function normalize(s) {
 
 const workIdx = fs.readFileSync(IDX_PATH, 'utf8');
 const workVs = versionsOf(workIdx);
-check('index.html contains exactly 3 static ?v= references (css/engine/app)', workVs.length === 3);
+check('every frontend asset is versioned exactly once', workVs.length === STATIC_FILES.length);
+const loadedScripts=[...workIdx.matchAll(/<script[^>]*src="\/static\/([^?"]+)\?v=/g)].map(m=>m[1]);
+check('browser script order matches the manifest, with boot last', JSON.stringify(loadedScripts)===JSON.stringify([...manifest.engine,...manifest.app])&&loadedScripts.at(-1)==='app-boot.js');
+check('every listed asset exists', STATIC_FILES.every(f=>fs.existsSync(path.join(ROOT,'static',f))));
 check('all 3 ?v= values are equal (no partial bump)', workVs.every(v => v === workVs[0]));
 check('version token is a sane bump token', /^[A-Za-z0-9_-]+$/.test(workVs[0]));
 
@@ -44,7 +48,7 @@ try {
 } catch (e) {
   headIdx = ''; headVs = []; // not a git checkout / no HEAD yet → skip the HEAD comparison
 }
-if (headVs.length === 3) {
+if (headVs.length > 0) {
   const changed = STATIC_FILES.some(f => {
     try {
       return normalize(fs.readFileSync(path.join(ROOT, 'static', f), 'utf8')) !==

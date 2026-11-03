@@ -1,0 +1,30 @@
+{
+  "engine": [
+    "formula-engine.js",
+    "formula-calculators.js",
+    "formula-evaluation.js"
+  ],
+  "app": [
+    "shared/server-data.js",
+    "shared/ui-state.js",
+    "shared/queries.js",
+    "shared/api-client.js",
+    "shared/charts.js",
+    "shared/reports.js",
+    "report-core.js",
+    "app.js",
+    "astra-ui.js",
+    "app-shell.js",
+    "modules/decision-center/index.js",
+    "decision-center.js",
+    "decision-legacy.js",
+    "dashboard-ui.js",
+    "prediction-ui.js",
+    "mix-support.js",
+    "buyplan-ui.js",
+    "mix-ui.js",
+    "history-ui.js",
+    "first-prize-ui.js",
+    "app-boot.js"
+  ]
+}

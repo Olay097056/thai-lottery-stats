@@ -99,16 +99,21 @@ test('manual button recomputes without saving or changing results even when a sa
   manual.warnings = ['synthetic manual report'];
   installFetch(h, state, manual);
   await h.sandbox.loadAstra();
-  const action = tag('astra-run').match(/onclick="([^"]+)"/)?.[1];
-  assert.match(tag('astra-run'), /recompute/);
-  assert.match(html, /ผลคำนวณมือไม่บันทึกถาวร/g);
-  assert.equal((html.match(/ผลคำนวณมือไม่บันทึกถาวร/g) || []).length, 2, 'manual-run disclosure appears for both Astra versions');
-  await vm.runInContext(action, h.sandbox);
+  assert.equal(tag('astra-run'), '');
+  assert.equal(tag('astra-sigma-run'), '');
+  assert.equal((html.match(/ผลคำนวณมือไม่บันทึกถาวร/g) || []).length, 0, 'no version has a separate manual-run panel');
+  h.sandbox.initFormulaPage=async()=>{};
+  h.sandbox.renderPageSnapshots=()=>{};
+  await h.sandbox.switchPredTab('formula');
+  h.sandbox.switchFormulaTab('ASTRA');
+  const action=tag('f-run-formulas').match(/onclick="([^"]+)"/)?.[1];
+  assert.ok(action);
+  await vm.runInContext(action,h.sandbox);
   assert.deepEqual(h.requests, ['/api/astra/automation?date=2026-10-16', '/api/predict/astra?date=2026-10-16']);
   assert.match(h.elements['astra-meta'].innerHTML, /ยังไม่บันทึก/);
   assert.match(h.elements['astra-warnings'].innerHTML, /synthetic manual report/);
-  assert.equal(h.elements['astra-run'].disabled, false);
-  vm.runInContext("currentPredTab='formula';_formulaActiveTab='ASTRA';", h.sandbox);
+  assert.equal(h.elements['f-run-formulas'].disabled, false);
+  vm.runInContext("LotteryUiState.navigation.predictionTab='formula';LotteryUiState.formula.activeTab='ASTRA';", h.sandbox);
   await h.sandbox.runSharedPrimaryAction();
   assert.equal(h.requests[2], '/api/predict/astra?date=2026-10-16');
   assert.equal(h.requests.length, 3);
@@ -120,7 +125,7 @@ test('status refresh with no snapshot performs no inference and exposes the manu
   assert.deepEqual(h.requests, ['/api/astra/automation?date=2026-10-16']);
   assert.equal(h.elements['astra-results'].dataset.state, 'idle');
   assert.match(h.elements['astra-status'].textContent, /ไม่มีรายงานบันทึก/);
-  assert.equal(h.elements['astra-run'].disabled, false);
+  assert.equal(h.elements['f-run-formulas'].disabled, false);
 });
 
 const invalidStatuses = [
@@ -172,7 +177,7 @@ for (const [label, mutate] of invalidStatuses) test('rejects automation payload:
   assert.match(h.elements['astra-auto-status'].textContent, /ไม่ยืนยัน/);
   assert.equal(h.elements['astra-auto-meta'].innerHTML, '');
   assert.equal(h.elements['astra-results'].dataset.state, 'error');
-  assert.equal(h.elements['astra-run'].disabled, false);
+  assert.equal(h.elements['f-run-formulas'].disabled, false);
   assert.equal(h.elements['astra-results'].getAttribute('aria-busy'), 'false');
   assert.doesNotMatch(bodies(h) + h.elements['astra-meta'].innerHTML, /class="astra-number"|<svg|<img/);
   assert.equal(h.toasts.length, 0);
@@ -196,7 +201,7 @@ for (const failure of ['network', 'bad JSON', 'HTTP failure']) test('status ' + 
   assert.equal(h.elements['astra-auto-status'].dataset.state, 'error');
   assert.match(h.elements['astra-auto-status'].textContent, /ไม่ยืนยัน/);
   assert.equal(h.requests.length, 1);
-  assert.equal(h.elements['astra-run'].disabled, false);
+  assert.equal(h.elements['f-run-formulas'].disabled, false);
   await h.sandbox.loadAstra({ recompute: true });
   assert.equal(h.elements['astra-results'].dataset.state, 'ready');
   assert.equal(h.elements['astra-auto-status'].dataset.state, 'error');
@@ -240,7 +245,7 @@ for (const [error, label] of Object.entries(errorLabels)) test('safe error stays
   assert.ok(h.elements['astra-auto-status'].textContent.includes(label));
   assert.ok(h.elements['astra-auto-status'].textContent.includes(error));
   assert.equal(h.elements['astra-results'].dataset.state, 'idle');
-  assert.equal(h.elements['astra-run'].disabled, false);
+  assert.equal(h.elements['f-run-formulas'].disabled, false);
   assert.equal(h.requests.length, 1);
 });
 test('null metadata remains unavailable rather than inventing checks, dates, or success', async () => {
@@ -282,7 +287,7 @@ test('pending automation read clears old metadata and lets manual computation ta
   assert.equal(h.elements['astra-auto-meta'].innerHTML, '');
   assert.equal(h.elements['astra-results'].getAttribute('aria-busy'), 'true');
   assert.doesNotMatch(bodies(h), /class="astra-number"/);
-  assert.equal(h.elements['astra-run'].disabled, false, 'a hung status read must not block manual inference');
+  assert.equal(h.elements['f-run-formulas'].disabled, false, 'a hung status read must not block manual inference');
   await h.sandbox.loadAstra({ recompute: true });
   assert.equal(h.elements['astra-results'].dataset.state, 'ready');
   assert.equal(h.elements['astra-auto-status'].dataset.state, 'idle');
@@ -310,7 +315,7 @@ for (const late of ['saved', 'missing', 'malformed', 'network']) test('newest sa
 });
 for (const late of ['saved', 'missing', 'malformed', 'network']) test('selected target race ignores old automation ' + late, async () => {
   const h = harness(), pending = [];
-  vm.runInContext("currentPage='predict';currentPredTab='formula';_formulaActiveTab='ASTRA';", h.sandbox);
+  vm.runInContext("LotteryUiState.navigation.page='predict';LotteryUiState.navigation.predictionTab='formula';LotteryUiState.formula.activeTab='ASTRA';", h.sandbox);
   h.sandbox.fetch = route => { h.requests.push(route); const p = deferred(); pending.push(p); return p.promise; };
   const first = h.sandbox.loadAstra();
   const second = h.sandbox.syncSharedDrawDate('2026-11-01', true);
@@ -327,7 +332,7 @@ for (const late of ['saved', 'missing', 'malformed', 'network']) test('selected 
 });
 for (const visible of [false, true]) test('non-user ABA and clearing target invalidate auto status without fetching while visible=' + visible, async () => {
   const h = harness(), pending = deferred();
-  vm.runInContext(visible ? "currentPage='predict';currentPredTab='formula';_formulaActiveTab='ASTRA';" : "currentPredTab='predict';", h.sandbox);
+  vm.runInContext(visible ? "LotteryUiState.navigation.page='predict';LotteryUiState.navigation.predictionTab='formula';LotteryUiState.formula.activeTab='ASTRA';" : "LotteryUiState.navigation.predictionTab='predict';", h.sandbox);
   h.sandbox.fetch = route => { h.requests.push(route); return pending.promise; };
   const first = h.sandbox.loadAstra();
   h.sandbox.syncSharedDrawDate('2026-11-01', false);

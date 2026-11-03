@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const source = fs.readFileSync(path.join(__dirname, '..', 'static', 'app.js'), 'utf8');
+const source = require('./frontend_source').readFrontend('app.js');
 
 function extractFunction(name) {
   const start = new RegExp('(?:async\\s+)?function\\s+' + name + '\\s*\\([^)]*\\)\\s*\\{').exec(source);
@@ -20,7 +20,7 @@ const context = {
   document: { getElementById: () => null },
   copyPredNumber: () => {},
 };
-vm.createContext(context);
+require('./frontend_source').prepareContext(context);
 vm.runInContext([
   'escHtml',
   'predictConfidence',

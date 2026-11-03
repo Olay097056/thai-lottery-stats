@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from pathlib import Path
 from contextlib import asynccontextmanager
 import asyncio
+import csv
 import logging
 import threading
 import re
@@ -18,6 +19,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from urllib.parse import urlsplit
+from data_status import read_cache_health, prediction_provenance
+from thai_time import thailand_now_naive
 
 from scraper import load_data, get_cache_info, incremental_update
 from analyzer import (
@@ -49,6 +52,76 @@ async def _lifespan(application):
 
 
 app = FastAPI(title="Lottery Stats API", version="2.0", lifespan=_lifespan)
+
+class FirstPrizeSubmission(BaseModel):
+    target_date: str
+    method: str
+    numbers: list[str]
+    settings: dict = {}
+    provenance: dict = {}
+
+
+@app.get('/api/fano/formula')
+def api_fano_formula(
+    date: str = Query(...),
+    version: str = Query('fano-v4-variable-neighborhood-cover'),
+):
+    import astra
+    import fano
+    try:
+        return fano.formula_forecast(date, version=version)
+    except (ValueError, astra.AstraInputError):
+        raise HTTPException(422, detail='ระนาบฟาโนต้องมีข้อมูลรางวัลที่ 1 ก่อนวันเป้าหมายอย่างน้อย 20 งวด')
+    except astra.AstraCacheError:
+        raise HTTPException(503, detail='อ่านประวัติรางวัลจากแคชเดิมไม่ได้')
+
+
+@app.get('/api/fano/backtest')
+def api_fano_backtest(
+    targets: str = Query(...),
+    version: str = Query('fano-v4-variable-neighborhood-cover'),
+):
+    import astra
+    import fano
+    try:
+        target_dates = targets.split(',')
+        return fano.formula_backtest_forecasts(target_dates, version=version)
+    except (ValueError, astra.AstraInputError):
+        raise HTTPException(422, detail='รายการวันเป้าหมาย Backtest ของระนาบฟาโนไม่ถูกต้อง')
+    except astra.AstraCacheError:
+        raise HTTPException(503, detail='อ่านประวัติรางวัลจากแคชเดิมไม่ได้')
+
+
+@app.get('/api/first-prize')
+def api_first_prize_board():
+    import first_prize
+    try:
+        return first_prize.board()
+    except (ValueError, OSError, first_prize.sqlite3.Error, first_prize.astra.AstraCacheError):
+        raise HTTPException(503, detail='ไม่สามารถอ่านทะเบียนหรือผลรางวัลจากแคชเดิมได้')
+
+
+@app.post('/api/first-prize/register')
+def api_first_prize_register(body: FirstPrizeSubmission):
+    import first_prize
+    if body.method.startswith(('astra-', 'sigma-', 'fano-v')):
+        raise HTTPException(422, detail='วิธีทดลอง Astra, Sigma และระนาบฟาโน ต้องลงทะเบียนผ่านการคำนวณบนเซิร์ฟเวอร์')
+    try:
+        return first_prize.register(body.target_date, body.method, body.numbers, body.settings, body.provenance)
+    except (ValueError, first_prize.astra.AstraInputError):
+        raise HTTPException(422, detail='ต้องเป็นงวดอนาคตและมีเลข 6 หลักไม่ซ้ำอย่างน้อย 5 ชุด')
+
+
+@app.post('/api/first-prize/experiment')
+def api_first_prize_experiment(date: str = Query(...)):
+    import first_prize
+    try:
+        return first_prize.experiment(date)
+    except (ValueError, first_prize.astra.AstraInputError):
+        raise HTTPException(422, detail='เลือกงวดอนาคตและตรวจว่ามีข้อมูลก่อนงวดอย่างน้อย 20 งวด')
+    except first_prize.astra.AstraCacheError:
+        raise HTTPException(503, detail='อ่านแคชเดิมไม่ได้ ไม่มีการรีเฟรชข้อมูล')
+
 PREDICT_ALL_SHARED_WEIGHTS = dict(PREDICT_NUMBERS_DEFAULT_WEIGHTS)
 
 
@@ -173,17 +246,40 @@ def _cache_signature():
     try:
         stat = (BASE_DIR / 'lottery_cache.csv').stat()
         return stat.st_mtime_ns, stat.st_size
-    except OSError:
+    except FileNotFoundError:
         return None
+    except OSError:
+        raise ResultCacheInvalid() from None
+
+
+class ResultCacheMissing(Exception):
+    """Raised when a read-only analysis request has no local history cache."""
+
+
+class ResultCacheInvalid(Exception):
+    """Raised when the local history cache exists but cannot be read safely."""
 
 
 def get_df() -> pd.DataFrame:
     global _df_cache, _df_signature
     with _df_mutex:
         signature = _cache_signature()
-        if _df_cache is None or (_df_signature is not None and signature != _df_signature):
-            _df_cache = load_data()
-            _df_signature = signature if signature is not None else _cache_signature()
+        if signature is None:
+            _df_cache = None
+            _df_signature = None
+            raise ResultCacheMissing()
+        if _df_cache is None or signature != _df_signature:
+            try:
+                _df_cache = load_data(allow_scrape=False)
+            except FileNotFoundError:
+                _df_cache = None
+                _df_signature = None
+                raise ResultCacheMissing() from None
+            except (OSError, ValueError, UnicodeError, csv.Error, pd.errors.ParserError):
+                _df_cache = None
+                _df_signature = None
+                raise ResultCacheInvalid() from None
+            _df_signature = signature
         return _df_cache
 
 
@@ -250,7 +346,7 @@ def _validate_number(col: str, number: str) -> str:
 
 def _target_date(date: str | None) -> datetime:
     if not date:
-        return datetime.now()
+        return thailand_now_naive()
     try:
         return datetime.strptime(date, "%Y-%m-%d")
     except ValueError as exc:
@@ -264,6 +360,42 @@ def root():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
+def _api_failure(exc, **fallback):
+    logging.getLogger(__name__).error("API calculation failed: %s", type(exc).__name__, exc_info=True)
+    return JSONResponse(status_code=500, content={**fallback, "ok": False,
+        "error": "คำนวณหรือโหลดข้อมูลไม่สำเร็จ กรุณาลองใหม่ หากยังเกิดปัญหาให้ตรวจสถานะข้อมูล",
+        "error_code": "calculation_failed", "retryable": True})
+
+
+@app.exception_handler(Exception)
+async def unhandled_api_failure(request: Request, exc: Exception):
+    return _api_failure(exc)
+
+
+@app.exception_handler(ResultCacheMissing)
+async def result_cache_missing(request: Request, exc: ResultCacheMissing):
+    return JSONResponse(status_code=503, content={"ok": False, "error_code": "cache_missing",
+        "error": "ยังไม่มีแคชข้อมูลในเครื่อง เปิดเมนูรีเฟรชข้อมูลเพื่อดึงผลรางวัล", "retryable": False})
+
+
+@app.exception_handler(ResultCacheInvalid)
+async def result_cache_invalid(request: Request, exc: ResultCacheInvalid):
+    return JSONResponse(status_code=422, content={"ok": False, "error_code": "cache_invalid",
+        "error": "อ่านแคชไม่ได้หรือโครงสร้างไฟล์ไม่ถูกต้อง กรุณาตรวจไฟล์ข้อมูล", "retryable": False})
+
+
+@app.get("/api/data-status")
+def api_data_status():
+    try:
+        return read_cache_health(BASE_DIR / "lottery_cache.csv")
+    except FileNotFoundError:
+        return JSONResponse(status_code=404, content={"ok": False, "error_code": "cache_missing",
+            "error": "ยังไม่มีแคชข้อมูลในเครื่อง เปิดเมนูรีเฟรชข้อมูลเพื่อดึงผลรางวัล", "retryable": False})
+    except (ValueError, UnicodeError, OSError, csv.Error):
+        return JSONResponse(status_code=422, content={"ok": False, "error_code": "cache_invalid",
+            "error": "อ่านแคชไม่ได้หรือโครงสร้างไฟล์ไม่ถูกต้อง กรุณาตรวจไฟล์ข้อมูล", "retryable": False})
+
+
 @app.get("/api/summary")
 def api_summary():
     df = get_df()
@@ -275,7 +407,11 @@ def api_summary():
 
     try:
         hot_df = hot_cold_numbers(df, "top3", recent_months=12)
-        hot_list = _safe_records(hot_df.head(10) if hot_df is not None and not hot_df.empty else None)
+        hot_list = _safe_records(
+            hot_df.sort_values(["ล่าสุด", "ทั้งหมด", "เลข"], ascending=[False, False, True]).head(10)
+            if hot_df is not None and not hot_df.empty
+            else None
+        )
     except Exception:
         hot_list = []
     try:
@@ -404,13 +540,14 @@ def api_predict_prize1(
             **preset_kwargs,
         )
         return {
+            "date": target.strftime("%Y-%m-%d"),
             "predictions": _safe_records(res),
             "algorithm": "ultimate",
             "preset": preset_key,
             "preset_label": P1_PRESETS[preset_key]["label"],
         }
     except Exception as e:
-        return {"error": str(e), "predictions": []}
+        return _api_failure(e, predictions=[])
 
 
 @app.get("/api/predict/all")
@@ -448,7 +585,7 @@ def api_predict_all(
             "preset": preset_key,
         }
     except Exception as e:
-        result["categories"]["prize1"] = {"label": "รางวัลที่ 1", "digits": 6, "numbers": [], "error": str(e)}
+        result["categories"]["prize1"] = {"label": "รางวัลที่ 1", "digits": 6, "numbers": [], "error": "คำนวณหมวดนี้ไม่สำเร็จ กรุณาลองใหม่", "error_code": "calculation_failed"}
     # 3 ตัวและ 2 ตัว
     for col, label, digits in [
         ("front3_1","หน้า 3 ตัว ชุด1", 3), ("front3_2","หน้า 3 ตัว ชุด2", 3),
@@ -462,7 +599,9 @@ def api_predict_all(
             recs = _safe_records(pred) if pred is not None else []
             result["categories"][col] = {"label": label, "digits": digits, "numbers": recs}
         except Exception as e:
-            result["categories"][col] = {"label": label, "digits": digits, "numbers": [], "error": str(e)}
+            result["categories"][col] = {"label": label, "digits": digits, "numbers": [], "error": "คำนวณหมวดนี้ไม่สำเร็จ กรุณาลองใหม่", "error_code": "calculation_failed"}
+    result["report_status"] = "partial" if any(category.get("error") for category in result["categories"].values()) else "ready"
+    result["report_provenance"] = prediction_provenance(df, target)
     return result
 
 
@@ -481,6 +620,7 @@ async def api_lucky_news(date: str | None = Query(None)):
     numbers_3: list[str] = []
     numbers_2: list[str] = []
     sources: list[str] = []
+    source_failed = False
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             # Search Google
@@ -490,13 +630,15 @@ async def api_lucky_news(date: str | None = Query(None)):
                 f"https://www.thairath.co.th/search/{query}",
             ]
             all_text = ""
-            for url in urls_to_try[:1]:
+            for url in urls_to_try:
                 try:
                     r = await client.get(url, headers=headers, follow_redirects=True)
+                    r.raise_for_status()
                     all_text += r.text[:5000]
                     sources.append(url)
+                    break  # Use the next configured source only when this one is unavailable.
                 except Exception:
-                    pass
+                    source_failed = True
             # Extract numbers: look for patterns like xx, xxx, xxxxxx near keywords
             found_3 = re.findall(r'\b(\d{3})\b', all_text)
             found_2 = re.findall(r'\b(\d{2})\b', all_text)
@@ -506,15 +648,24 @@ async def api_lucky_news(date: str | None = Query(None)):
             c2 = Counter(found_2).most_common(10)
             numbers_3 = [n for n, _ in c3]
             numbers_2 = [n for n, _ in c2]
-    except Exception as e:
-        sources.append(f"error: {str(e)}")
-    return {
+    except Exception:
+        source_failed = True
+    result = {
+        "date": target.strftime("%Y-%m-%d"),
         "query": query,
         "sources": sources,
         "numbers_3": numbers_3[:10],
         "numbers_2": numbers_2[:10],
         "note": "ข้อมูลจากข่าว/ความเชื่อ ใช้ประกอบการตัดสินใจเท่านั้น"
     }
+    if source_failed and not sources:
+        result.update({
+            "ok": False,
+            "error": "อ่านแหล่งข่าวไม่สำเร็จ กรุณาลองใหม่",
+            "error_code": "news_source_unavailable",
+            "retryable": True,
+        })
+    return result
 
 
 @app.get("/api/stats")
@@ -530,7 +681,7 @@ def api_stats(
         res = predict_numbers(df, col, target, top_n=top_n)
         return {"data": _safe_records(res), "col": col}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/hot-cold")
@@ -544,7 +695,7 @@ def api_hot_cold(
         res = hot_cold_numbers(df, col, recent_months=months)
         return {"data": _safe_records(res), "col": col}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/backtest")
@@ -575,7 +726,7 @@ def api_backtest(
                 clean[k] = v
         return clean
     except Exception as e:
-        return {"error": str(e)}
+        return _api_failure(e)
 
 
 @app.get("/api/digit-analysis")
@@ -586,7 +737,7 @@ def api_digit_analysis(date: str | None = Query(None)):
         res = prize1_digit_analysis(df, target)
         return {"data": _safe_records(res)}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/cache-info")
@@ -629,7 +780,7 @@ def api_freq_table(col: str = Query("top3"), top_n: int = Query(30, ge=5, le=200
         never = never_appeared(df, col)
         return {"data": _safe_records(res), "never": never, "col": col}
     except Exception as e:
-        return {"error": str(e), "data": [], "never": []}
+        return _api_failure(e, data=[], never=[])
 
 
 @app.get("/api/heatmap")
@@ -640,7 +791,7 @@ def api_heatmap(col: str = Query("top3")):
         res = heatmap_data(df, col)
         return {"data": _safe_records(res), "col": col}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/trend")
@@ -652,7 +803,7 @@ def api_trend(col: str = Query("top3"), number: str = Query(...)):
         res = trend_data(df, col, number)
         return {"data": _safe_records(res), "col": col, "number": number}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/digit-freq")
@@ -663,7 +814,7 @@ def api_digit_freq(col: str = Query("top3")):
         res = digit_frequency(df, col)
         return {"data": _safe_records(res), "col": col}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/overdue")
@@ -674,7 +825,7 @@ def api_overdue(col: str = Query("top3"), top_n: int = Query(20, ge=5, le=50)):
         res = overdue_with_prob(df, col, top_n=top_n)
         return {"data": _safe_records(res), "col": col}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/history")
@@ -688,7 +839,7 @@ def api_history(col: str = Query("top3"), n: int = Query(50, ge=10, le=500)):
         df_s = df_s[[c for c in cols if c in df_s.columns]]
         return {"data": _safe_records(df_s), "col": col}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/prize-freq")
@@ -754,7 +905,7 @@ def api_predict_general(
         res = predict_numbers(df, col, target, top_n=top_n)
         return {"data": _safe_records(res), "col": col}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/predict-with-reasons")
@@ -770,7 +921,7 @@ def api_predict_with_reasons(
         res = predict_with_reasons(df, col, target, top_n=top_n)
         return {"data": _safe_records(res), "col": col}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/confidence")
@@ -782,7 +933,7 @@ def api_confidence(col: str = Query("top3"), date: str | None = Query(None)):
         res = prediction_confidence(df, col, target)
         return {k: _safe_val(v) for k, v in res.items()}
     except Exception as e:
-        return {"error": str(e)}
+        return _api_failure(e)
 
 
 @app.get("/api/ensemble")
@@ -798,7 +949,7 @@ def api_ensemble(
         res = ensemble_predict(df, col, target, top_n=top_n)
         return {"data": _safe_records(res), "col": col}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/pairs")
@@ -827,7 +978,7 @@ def api_pairs(
                 rows.append({col_a: num, f"top3_{col_b}": top3})
             return {"data": rows, "col_a": col_a, "col_b": col_b}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/consecutive")
@@ -844,7 +995,7 @@ def api_consecutive(
         res = consecutive_pattern(df, col, query_num=query, top_n=top_n)
         return {"data": _safe_records(res), "col": col}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/decade")
@@ -856,7 +1007,7 @@ def api_decade(col: str = Query("top3"), top_n: int = Query(15, ge=5, le=30)):
         _end_year = int(df["year"].max()) if not df.empty else 2026
         return {"data": _safe_records(res), "col": col, "end_year": _end_year}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.get("/api/network")
@@ -872,12 +1023,12 @@ def api_network(
         nodes, edges = number_network_data(df, col_a, col_b, min_weight=min_weight)
         return {"nodes": nodes, "edges": edges, "col_a": col_a, "col_b": col_b}
     except Exception as e:
-        return {"error": str(e), "nodes": [], "edges": []}
+        return _api_failure(e, nodes=[], edges=[])
 
 
 @app.get("/api/next-draws")
 def api_next_draws():
-    draws = next_thai_draw(datetime.now())
+    draws = next_thai_draw(thailand_now_naive())
     return {"draws": [{"label": f"{d['day']}/{d['month']}/{d['year']+543}", "date": d["date"].strftime("%Y-%m-%d")} for d in draws]}
 
 
@@ -956,7 +1107,7 @@ def api_ml_predict(
         fi = get_feature_importance(col)
         return {"data": _safe_records(res), "feature_importance": _safe_records(fi), "col": col}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 @app.post("/api/ml-train")
@@ -968,7 +1119,7 @@ def api_ml_train(col: str = Query("top3")):
         train_model(df, col, force=True)
         return {"ok": True, "col": col}
     except Exception as e:
-        return {"error": str(e)}
+        return _api_failure(e)
 
 
 @app.get("/api/ml-status")
@@ -978,7 +1129,7 @@ def api_ml_status(col: str = Query("top3")):
         from ml_predictor import model_exists
         return {"trained": model_exists(col), "col": col}
     except Exception as e:
-        return {"trained": False, "col": col, "error": str(e)}
+        return _api_failure(e, trained=False, col=col)
 
 
 @app.get("/api/ticket-analysis")
@@ -990,7 +1141,7 @@ def api_ticket_analysis(col: str = Query("top3"), numbers: str = Query(...)):
         res = ticket_analysis(df, col, num_list)
         return {"data": _safe_records(res), "col": col}
     except Exception as e:
-        return {"error": str(e), "data": []}
+        return _api_failure(e, data=[])
 
 
 if __name__ == "__main__":

@@ -6,9 +6,9 @@ const vm = require('node:vm');
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'static/index.html'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'static/app.css'), 'utf8');
-const app = fs.readFileSync(path.join(root, 'static/app.js'), 'utf8')
+const app = require('./frontend_source').readFrontend('app.js')
   .replace(/^startCountdown\(\);\s*$/m, '').replace(/^init\(\);\s*$/m, '');
-const engine = fs.readFileSync(path.join(root, 'static/formula-engine.js'), 'utf8');
+const engine = require('./frontend_source').readFrontend('formula-engine.js');
 const specs = [
   ['prize1', 'รางวัลที่ 1', 6, 5], ['front3', 'เลขหน้า 3 ตัว', 3, 2],
   ['back3', 'เลขท้าย 3 ตัวทางการ', 3, 2], ['bottom2', 'เลขท้าย 2 ตัว', 2, 1],
@@ -16,7 +16,7 @@ const specs = [
 ];
 const weights = {A:0.50,H:0.10,D:0.10,N:0.12,L:0.08,B:0.10};
 const settings = {
-  max_draws:200, min_valid_draws:20, signal_window_valid_draws:24, overdue_cap_valid_draws:24,
+  max_draws:null, min_valid_draws:20, signal_window_valid_draws:24, overdue_cap_valid_draws:24,
   hot_definition:'position_digit_fraction; equal weight per draw then slot',
   overdue_definition:'valid category draws since same-position appearance; capped at 24',
   numerology:'digit-sum modulo 9; circular distance on residues 0..8',
@@ -47,16 +47,17 @@ function element(id) {
     add(){},appendChild(){},addEventListener(){},remove(){},querySelectorAll:()=>[]};
 }
 function harness(fetchImpl) {
+  const FixedDate=class extends Date{static now(){return Date.parse('2026-10-08T12:00:00+07:00');}};
   const elements=Object.fromEntries([...html.matchAll(/\bid="([^"]+)"/g)].map(m=>[m[1],element(m[1])]));
   const requests=[];
-  const sandbox={console,setTimeout:()=>0,clearTimeout(){},setInterval:()=>0,clearInterval(){},
+  const sandbox={console,Date:FixedDate,setTimeout:()=>0,clearTimeout(){},setInterval:()=>0,clearInterval(){},
     Option:function(text,value){this.text=text;this.value=value;},
     addEventListener(){},
     document:{getElementById:id=>elements[id]||null,querySelector:()=>null,querySelectorAll:()=>[],
       createElement:()=>element(''),addEventListener(){},documentElement:{dataset:{theme:'light'}}},
     localStorage:{getItem:()=>null,setItem(){throw new Error('no storage writes');}},
     fetch:async route=>{requests.push(route);return fetchImpl?fetchImpl(route):{ok:true,json:async()=>report()};}};
-  sandbox.window=sandbox;vm.createContext(sandbox);vm.runInContext(engine,sandbox);vm.runInContext(app,sandbox);
+  sandbox.window=sandbox;require('./frontend_source').prepareContext(sandbox);vm.runInContext(engine,sandbox);vm.runInContext(app,sandbox);
   for(const name of ['_computeFormulasBatch','runFormulaBacktest','dcComputeFormulaResults','_mixCompute','loadMixPage','loadBuyPlan','dcRecommendedNumbers','renderPageSnapshots'])
     sandbox[name]=()=>{throw new Error('Astra-Σ must not enter '+name);};
   elements['shared-draw-date'].value='2026-10-16';
@@ -66,40 +67,64 @@ function deferred(){let resolve;const promise=new Promise(yes=>resolve=yes);retu
 function response(payload){return{ok:true,json:async()=>payload};}
 
 (async()=>{
-  assert.match(html,/id="astra-version-v1"/);
-  assert.match(html,/id="astra-version-sigma"/);
-  assert.match(html,/id="astra-sigma-content"/);
-  assert.match(html,/id="astra-sigma-heading">Astra-Σ </);
-  assert.match(html,/Astra-Σ v0\.1 · ทดลอง/);
+  assert.match(html,/id="astra-version-select"[^>]*aria-label="เลือกรุ่นสูตร Astra"/);
+  assert.equal((html.match(/id="astra-sigma-report-details"/g)||[]).length,1,'Sigma report disclosure has one unique DOM id');
+  assert.equal((html.match(/id="astra-sigma-meta"/g)||[]).length,1,'Sigma metadata has one unique DOM id');
+  assert.match(html,/<details id="astra-sigma-report-details"[^>]*>[\s\S]*?<div id="astra-sigma-meta"[^>]*>[\s\S]*?<\/details>/);
+  const sigmaResultsMarkup=html.slice(html.indexOf('id="astra-sigma-results"'),html.indexOf('id="astra-sigma-method"'));
+  assert.ok(sigmaResultsMarkup.indexOf('id="astra-sigma-categories"')<sigmaResultsMarkup.indexOf('id="astra-sigma-report-details"'), 'Sigma report disclosure follows the visible result cards');
+  assert.doesNotMatch(html,/id="ftab-btn-ASTRA"|id="astra-run"|id="astra-sigma-run"/);
+  assert.match(html,/<option value="ASTRA">Astra · ทดลอง<\/option>/);
+  assert.equal((html.match(/<article[^>]*id="astra-sigma-category-[^"]+"[^>]*class="card formula-card astra-card" data-group="ASTRA"/g)||[]).length,6);
   assert.match(css,/#astra-sigma-categories \.astra-grid-prizes \.astra-numbers\{grid-template-columns:minmax\(0,1fr\);gap:0\}/);
   assert.match(css,/#astra-sigma-categories \.astra-grid-prizes \.astra-numbers li\{display:grid;grid-template-columns:max-content max-content minmax\(0,1fr\)/);
   assert.match(css,/#astra-sigma-categories \.astra-grid-prizes \.astra-components\{grid-column:1\/-1/);
   const h=harness();
   assert.equal(typeof h.sandbox.selectAstraVersion,'function');
   assert.equal(typeof h.sandbox.loadAstraSigma,'function');
+  h.sandbox.initFormulaPage=async()=>{};
+  h.sandbox.renderPageSnapshots=()=>{};
+  await h.sandbox.switchPredTab('formula');
+  h.sandbox.switchFormulaTab('ASTRA');
   await h.sandbox.selectAstraVersion('astra-sigma');
+  assert.deepEqual(h.requests,[], 'choosing an Astra variant only switches the visible formula');
+  const sharedAction=html.match(/<button[^>]*id="f-run-formulas"[^>]*onclick="([^"]+)"/)?.[1];
+  assert.ok(sharedAction,'Astra-Σ must use the shared Formula calculate button');
+  await vm.runInContext(sharedAction,h.sandbox);
   assert.deepEqual(h.requests,['/api/predict/astra-sigma?date=2026-10-16']);
   assert.equal(h.elements['astra-v1-content'].hidden,true);
   assert.equal(h.elements['astra-sigma-content'].hidden,false);
-  assert.equal(h.elements['astra-version-sigma'].getAttribute('aria-pressed'),'true');
-  assert.equal(h.elements['astra-version-v1'].getAttribute('aria-pressed'),'false');
+  assert.equal(h.elements['astra-version-select'].value,'astra-sigma');
   const htmlBodies=specs.map(([key])=>h.elements['astra-sigma-body-'+key].innerHTML).join('\n');
   assert.equal((htmlBodies.match(/class="astra-number"/g)||[]).length,25);
   assert.match(htmlBodies,/>000000<\/span>/);
   assert.match(htmlBodies,/คะแนนจัดอันดับ/);
-  assert.doesNotMatch(htmlBodies,/ความน่าจะเป็น|โอกาสถูกรางวัล/);
+  assert.doesNotMatch(htmlBodies,/log_score|ความน่าจะเป็น|โอกาสถูกรางวัล/);
   assert.match(h.elements['astra-sigma-meta'].innerHTML,/astra-sigma-v0\.1/);
   assert.match(h.elements['astra-sigma-status'].textContent,/25/);
+
+  const fullHistory=report();
+  fullHistory.window_draws=784;
+  specs.forEach(([key])=>{fullHistory.categories[key].valid_draws=784;});
+  const allHistory=harness(async()=>response(fullHistory));
+  await allHistory.sandbox.selectAstraVersion('astra-sigma');
+  await allHistory.sandbox.loadAstraSigma({recompute:true});
+  assert.equal(allHistory.elements['astra-sigma-results'].dataset.state,'ready');
+  assert.match(allHistory.elements['astra-sigma-meta'].innerHTML,/ทุกงวดที่ได้รับก่อนงวดเป้าหมาย/);
+  assert.match(allHistory.elements['astra-sigma-meta'].innerHTML,/784/);
 
   const automatic=harness();
   automatic.sandbox.setAstraAutomaticTarget('2026-11-01');
   await automatic.sandbox.showAstraAutomaticTarget();
   await automatic.sandbox.selectAstraVersion('astra-sigma');
-  assert.ok(automatic.requests.includes('/api/predict/astra-sigma?date=2026-10-16'));
-  assert.match(automatic.elements['astra-sigma-target-label'].textContent,/2026-10-16/);
+  assert.deepEqual(automatic.requests,['/api/astra/automation?date=2026-11-01'], 'changing Astra variant does not start inference');
+  await automatic.sandbox.loadAstraSigma({recompute:true});
+  assert.ok(automatic.requests.includes('/api/predict/astra-sigma?date=2026-11-01'));
+  assert.match(automatic.elements['astra-sigma-target-label'].textContent,/2026-11-01/);
 
   const invalidated=harness();
   await invalidated.sandbox.selectAstraVersion('astra-sigma');
+  await invalidated.sandbox.loadAstraSigma({recompute:true});
   invalidated.sandbox.syncSharedDrawDate('2026-11-01',false);
   assert.equal(invalidated.elements['astra-sigma-results'].dataset.state,'idle');
   assert.equal((specs.map(([key])=>invalidated.elements['astra-sigma-body-'+key].innerHTML).join('').match(/class="astra-number"/g)||[]).length,0);
@@ -109,6 +134,7 @@ function response(payload){return{ok:true,json:async()=>payload};}
   invalid.categories.prize1.numbers[0].number='<img src=x onerror=1>';
   const bad=harness(async()=>response(invalid));
   await bad.sandbox.selectAstraVersion('astra-sigma');
+  await bad.sandbox.loadAstraSigma({recompute:true});
   assert.equal(bad.elements['astra-sigma-results'].dataset.state,'error');
   const badBodies=specs.map(([key])=>bad.elements['astra-sigma-body-'+key].innerHTML).join('\n');
   assert.doesNotMatch(badBodies,/class="astra-number"|<img/);

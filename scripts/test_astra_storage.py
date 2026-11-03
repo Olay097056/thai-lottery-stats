@@ -1,7 +1,7 @@
 """Synthetic-only persistence and concurrency tests."""
 import importlib
 import importlib.util
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 import sys
 import tempfile
@@ -132,6 +132,39 @@ class SnapshotTests(unittest.TestCase):
             for statement in ['DELETE FROM snapshots', "UPDATE snapshots SET payload='{}'"]:
                 with self.assertRaises(sqlite3.IntegrityError):
                     connection.execute(statement)
+
+    def test_legacy_200_draw_snapshot_remains_readable(self):
+        legacy = self.snapshot()
+        legacy['report']['settings']['max_draws'] = 200
+        legacy['report']['window_draws'] = 200
+        legacy['report']['training_cutoff_date'] = '2026-10-07'
+        for category in legacy['report']['categories'].values():
+            category['valid_draws'] = 200
+            category['invalid_draws'] = 0
+            category['training_cutoff_date'] = '2026-10-07'
+        legacy['source_draw_date'] = '2026-10-07'
+
+        self.assertEqual(self.store.save(legacy), legacy)
+        self.assertEqual(self.storage.SnapshotStore(self.path).read('2026-10-16')['snapshot'], legacy)
+
+    def test_full_history_snapshot_above_200_draws_is_accepted(self):
+        import astra
+        from datetime import datetime
+        generated = datetime(2026, 10, 8, 12, tzinfo=astra.THAILAND_TZ)
+        rows = [draw(generated.date() - timedelta(days=age + 1), age) for age in range(205)]
+        report = astra.build_astra_report(rows, '2026-10-16', generated_at=generated)
+        self.assertEqual(report['window_draws'], 205)
+        self.assertEqual(report['training_cutoff_date'], '2026-10-07')
+        report['source'] = 'existing_local_cache'
+        full_history = self.snapshot()
+        full_history['source_draw_date'] = report['training_cutoff_date']
+        full_history['captured_at'] = report['generated_at']
+        full_history['report'] = report
+
+        self.assertEqual(self.store.save(full_history), full_history)
+        persisted = self.storage.SnapshotStore(self.path).read('2026-10-16')['snapshot']
+        self.assertEqual(persisted['report']['window_draws'], 205)
+        self.assertIsNone(persisted['report']['settings']['max_draws'])
 
 
     def test_state_roundtrip_and_malformed_payloads_fail_closed(self):

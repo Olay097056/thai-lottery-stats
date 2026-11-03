@@ -6,13 +6,13 @@ Synthetic verification proves the implementation, not predictive accuracy.
 """
 
 from collections.abc import Mapping
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from math import inf, log, nextafter, ulp
 from pathlib import Path
 import csv
 import re
+from thai_time import THAILAND_TZ
 
-THAILAND_TZ = timezone(timedelta(hours=7))
 _DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
@@ -49,7 +49,7 @@ def validate_astra_target_date(
 
 
 _SETTINGS = (
-    ("max_draws", 200), ("min_valid_draws", 20), ("half_life_draws", 24),
+    ("max_draws", None), ("min_valid_draws", 20), ("half_life_draws", 24),
     ("weight_floor", 0.5), ("positional_prior", 1), ("pair_backoff_strength", 10),
     ("positional_log_weight", 0.5), ("conditional_log_weight", 0.5),
     ("stale_days", 35),
@@ -77,7 +77,7 @@ def _history_date(value):
         raise AstraInputError("วันที่ในประวัติไม่ถูกต้อง") from None
 
 
-def _history_window(history, target, generation_day):
+def _history_window(history, target, generation_day, *, max_draws=None):
     if isinstance(history, (str, bytes, Mapping)):
         raise AstraInputError("ประวัติต้องเป็นรายการข้อมูลงวด")
     try:
@@ -96,7 +96,8 @@ def _history_window(history, target, generation_day):
         seen.add(draw_date)
         if draw_date < target:
             dated.append((draw_date, dict(row)))
-    return sorted(dated, key=lambda item: item[0], reverse=True)[:200]
+    ordered = sorted(dated, key=lambda item: item[0], reverse=True)
+    return ordered if max_draws is None else ordered[:max_draws]
 
 
 def _category_values(row, key, digits):

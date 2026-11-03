@@ -6,6 +6,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from collections.abc import Mapping
 from types import MappingProxyType
+from thai_time import thailand_now_naive
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 _OVERDUE_ALERT_MULTIPLIER = 2.5   # กี่เท่าของ expected gap ถึงแจ้งเตือน
@@ -285,7 +286,7 @@ def overdue_numbers(df: pd.DataFrame, col: str, top_n: int = 20) -> pd.DataFrame
 def next_thai_draw(from_date: datetime = None) -> list[dict]:
     """หางวดหวยถัดไป 6 งวด (หวยออกวันที่ 1 และ 16 ทุกเดือน)"""
     if from_date is None:
-        from_date = datetime.now()
+        from_date = thailand_now_naive()
     draws = []
     # Keep today's draw selectable until the official 16:00 Thailand draw time.
     d = from_date if (from_date.day in (1, 16) and from_date.hour < 16) else from_date + timedelta(days=1)

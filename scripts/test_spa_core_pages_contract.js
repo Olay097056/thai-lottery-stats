@@ -4,10 +4,10 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const appSrc = fs.readFileSync(path.join(__dirname, '..', 'static', 'app.js'), 'utf8');
+const appSrc = require('./frontend_source').readFrontend('app.js');
 const cssSrc = fs.readFileSync(path.join(__dirname, '..', 'static', 'app.css'), 'utf8');
 const indexSrc = fs.readFileSync(path.join(__dirname, '..', 'static', 'index.html'), 'utf8');
-const astraStart = appSrc.indexOf('// ─── astra: isolated');
+const astraStart = appSrc.indexOf('var AstraFeature =');
 const astraEnd = appSrc.indexOf('// ─── HyperUI theme', astraStart);
 if (astraStart < 0 || astraEnd <= astraStart) throw new Error('missing production astra state/helpers');
 const astraSource = appSrc.slice(astraStart, astraEnd);
@@ -50,7 +50,7 @@ const sandbox = {
     return { data: [{ 'เลข': '012345', 'จำนวนครั้ง': 2, 'อัตรา (%)': 50 }], never: [] };
   },
   chartOpts: () => ({}),
-  _charts: {},
+  destroyChart: () => {},
   mkChart: () => {},
 };
 const fakeTimers = new Map();
@@ -62,9 +62,9 @@ function flushTimers() {
   fakeTimers.clear();
   callbacks.forEach(callback => callback());
 }
-vm.createContext(sandbox);
-const frequencyState = appSrc.split(/\r?\n/).find(line => line === 'let _freqLoadRequestId=0;');
-if (!frequencyState) throw new Error('missing frequency request state declaration');
+require('./frontend_source').prepareContext(sandbox);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'..','static','shared','server-data.js'),'utf8'),sandbox);
+const frequencyState = '';
 vm.runInContext(extractFunction(appSrc, 'escHtml'), sandbox);
 vm.runInContext(frequencyState + String.fromCharCode(10) + extractFunction(appSrc, 'loadFreq'), sandbox);
 
@@ -91,7 +91,7 @@ vm.runInContext(frequencyState + String.fromCharCode(10) + extractFunction(appSr
   };
   const apiState = appSrc.split(String.fromCharCode(10)).map(line => line.replace(String.fromCharCode(13), '')).find(line => line.startsWith('let _apiInFlight='));
   if (!apiState) throw new Error('missing API request state declaration');
-  vm.createContext(apiSandbox);
+  require('./frontend_source').prepareContext(apiSandbox);
   vm.runInContext(apiState + String.fromCharCode(10) + extractFunction(appSrc, 'api'), apiSandbox);
   const quietApiResult = await apiSandbox.api('history?n=50', { suppressNetworkToast: true, suppressSpinnerAnnouncement: true });
   check('page-local network errors suppress the duplicate global toast', !!quietApiResult.error && apiToasts.length === 0);
@@ -124,7 +124,7 @@ vm.runInContext(frequencyState + String.fromCharCode(10) + extractFunction(appSr
   check('shared spinner hides after ordinary completion when quiet request already settled',
     !apiSpinnerClasses.has('active') && apiSpinnerAttributes.get('aria-hidden') === 'true');
 
-  apiSandbox.window._lastApiErrToast = 0;
+  apiSandbox.Date = {now:()=>Date.now()+6000};
   const quietSecond = apiSandbox.api('history?n=50', { suppressNetworkToast: true, suppressSpinnerAnnouncement: true });
   const ordinaryFirst = apiSandbox.api('other');
   check('overlapping ordinary and quiet calls expose the ordinary loading announcement', !apiSpinnerAttributes.has('aria-hidden'));
@@ -211,8 +211,8 @@ vm.runInContext(frequencyState + String.fromCharCode(10) + extractFunction(appSr
   elements['hist-tbody'] = { innerHTML: '' };
   elements['hist-status'] = { textContent: '' };
   const testNewline = String.fromCharCode(10);
-  const historyState = appSrc.split(/\r?\n/).find(line => line.startsWith('let _histData='));
-  if (!historyState) throw new Error('missing history state declaration');
+  const historyState = '';
+  vm.runInContext(require('node:fs').readFileSync(require('node:path').join(__dirname,'..','static','shared','server-data.js'),'utf8'), sandbox);
   vm.runInContext(historyState + testNewline + extractFunction(appSrc, 'filterHistory') + testNewline + extractFunction(appSrc, 'loadHistory'), sandbox);
   let historyCallOptions;
   sandbox.api = async (_route, options) => { historyCallOptions = options; return { error: 'fixture backend error', data: [] }; };
@@ -342,9 +342,15 @@ vm.runInContext(frequencyState + String.fromCharCode(10) + extractFunction(appSr
   const srOnlyRule = cssSrc.match(/\.sr-only\{([^}]*)\}/)?.[1] || '';
   check('live status regions are visually clipped, not removed from accessibility tree',
     /position:absolute/.test(srOnlyRule) && /clip:rect\(0,0,0,0\)/.test(srOnlyRule) && !/display:none/.test(srOnlyRule));
-  const navTags = [...indexSrc.matchAll(/<div class="nav-item[^>]*data-page="[^"]+"[^>]*>/g)].map(match => match[0]);
-  check('all seven navigation items expose button semantics and Enter/Space activation',
-    navTags.length === 7 && navTags.every(tag => tag.includes('role="button"') && tag.includes('tabindex="0"') && tag.includes("event.key==='Enter'") && tag.includes("event.key===' '") && tag.includes('showPage(')));
+  const navButtons = [...indexSrc.matchAll(/<button\b([^>]*\bclass="nav-item[^"]*"[^>]*)>([\s\S]*?)<\/button>/g)];
+  const navPages = navButtons.map(match => match[1].match(/\bdata-page="([^"]+)"/)?.[1] || '');
+  const navLabels = navButtons.map(match => match[2].replace(/<[^>]*>/g, '').trim());
+  const expectedNavPages = ['dashboard', 'frequency', 'predict', 'mix', 'buyplan', 'history', 'backtest'];
+  const expectedNavLabels = ['Dashboard', 'ตารางความถี่', 'ทำนาย / สูตร', 'ไม่รู้ซื้ออะไรดี', 'จัดชุดซื้อ', 'ผลย้อนหลัง', 'Backtest'];
+  check('all seven navigation items are native buttons with expected targets and visible labels',
+    navButtons.length === 7 && navPages.every((page, index) => page === expectedNavPages[index]) && expectedNavLabels.every((label, index) => navLabels[index]?.includes(label)) && navButtons.every(match => /\btype="button"/.test(match[1])));
+  check('native sidebar buttons use the production click-to-page binding',
+    appSrc.includes("document.querySelectorAll('.nav-item').forEach(item=>{") && appSrc.includes("item.addEventListener('click',()=>showPage(item.dataset.page))"));
   check('frequency and history controls have associated labels',
     ['freq-col', 'freq-top', 'hist-n', 'hist-search'].every(id => indexSrc.includes(`for="${id}"`) && indexSrc.includes(`id="${id}"`)));
   const themeToggleTag = indexSrc.match(/<button[^>]*id="theme-toggle"[^>]*>/)?.[0] || '';
@@ -372,7 +378,7 @@ vm.runInContext(frequencyState + String.fromCharCode(10) + extractFunction(appSr
     document: { documentElement: { dataset: {} }, getElementById: id => id === 'theme-toggle' ? themeButton : null },
     localStorage: { getItem: key => themeValues.get(key) ?? null, setItem: (key, value) => themeValues.set(key, String(value)) },
   };
-  vm.createContext(themeSandbox);
+  require('./frontend_source').prepareContext(themeSandbox);
   vm.runInContext([
     "const _THEME_KEY='lottery_theme';",
     extractFunction(appSrc, '_applyTheme'), extractFunction(appSrc, 'getTheme'), extractFunction(appSrc, 'toggleTheme'),
@@ -392,14 +398,14 @@ vm.runInContext(frequencyState + String.fromCharCode(10) + extractFunction(appSr
     fmtDate: value => 'fixture ' + value,
   };
   dateSandbox.window = dateSandbox;
-  vm.createContext(dateSandbox);
+  require('./frontend_source').prepareContext(dateSandbox);
   vm.runInContext([
-    'let _sharedDateSyncing=false;',
+    'LotteryUiState.navigation.sharedDateSyncing=false;',
     astraSource,
     extractFunction(appSrc, '_setSelectValueKeepingOptions'), extractFunction(appSrc, 'syncSharedDrawDate'),
   ].join(testNewline), dateSandbox);
   dateSandbox.syncSharedDrawDate('2026-08-16', false);
-  check('non-user shared date synchronization invalidates astra without initializing it', vm.runInContext('_astraRequestId===1&&!_astraStarted', dateSandbox));
+  check('non-user shared date synchronization invalidates astra without initializing it', vm.runInContext('getAstraUiState().requestId===1&&!getAstraUiState().started', dateSandbox));
   check('shared draw date synchronizes all six date controls',
     dateIds.every(id => dateControls[id].value === '2026-08-16' && dateControls[id].options.some(option => option.value === '2026-08-16')));
 

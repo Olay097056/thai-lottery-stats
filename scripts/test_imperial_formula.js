@@ -9,7 +9,6 @@
 //    the 10 candidates (the per-position diversity guarantee).
 // 3. จักรพรรดิ produces no output for a previous-draw row with empty prize-pool
 //    fields (matching the Sanook-dependent-formula skip behavior).
-// 4. จักรพรรดิทองคำ (_imperialGoldFormula) re-ranks each position by its own 80%
 //    frequency + 20% arithmetic-closeness blend (not a whole-candidate blend), and
 //    candidate 0 matches that independently-recomputed per-position ranking exactly.
 // 5. จักรพรรดิ and จักรพรรดิทองคำ produce genuinely different top-ranked candidates
@@ -28,7 +27,7 @@ const path = require('path');
 const vm = require('vm');
 
 const ENGINE_PATH = path.join(__dirname, '..', 'static', 'formula-engine.js');
-const src = fs.readFileSync(ENGINE_PATH, 'utf8');
+const src = require('./frontend_source').readFrontend('formula-engine.js');
 
 function extract(name) {
   const re = new RegExp('function ' + name + '\\([^)]*\\)\\{', 'm');
@@ -48,13 +47,12 @@ const code = [
   extract('_digitPosFreq'),
   extract('_imperialRoundRobin'),
   extract('_imperialFormula'),
-  extract('_imperialGoldFormula'),
 ].join('\n\n');
 
 const sandbox = {};
-vm.createContext(sandbox);
+require('./frontend_source').prepareContext(sandbox);
 vm.runInContext(code, sandbox);
-const { _buildPrize1to5Pool, _digitPosFreq, _imperialRoundRobin, _imperialFormula, _imperialGoldFormula } = sandbox;
+const { _buildPrize1to5Pool, _digitPosFreq, _imperialRoundRobin, _imperialFormula } = sandbox;
 
 function perPositionDistinctCounts(candidates) {
   const sets = Array.from({ length: 6 }, () => new Set());
@@ -160,70 +158,6 @@ if (missingCandidates.length !== 0) {
   throw new Error(`FAIL: expected no candidates when Sanook keys are entirely absent, got ${JSON.stringify(missingCandidates)}`);
 }
 console.log('OK: จักรพรรดิ produces no output when Sanook fields are entirely absent from the row');
-
-// --- 4. จักรพรรดิทองคำ re-ranks per position by 80% freq + 20% arithmetic closeness ---
-const goldFixtureRow = { ...fixtureRow, prize1: '999999' };
-const nextDay = 1, nextMonth = 9, nextYear2 = 68;
-const goldCandidates = _imperialGoldFormula(goldFixtureRow, nextDay, nextMonth, nextYear2, 10);
-if (!Array.isArray(goldCandidates) || goldCandidates.length !== 10) {
-  throw new Error(`FAIL: expected exactly 10 gold candidates, got ${JSON.stringify(goldCandidates)}`);
-}
-if (!goldCandidates.every(c => /^\d{6}$/.test(c))) {
-  throw new Error(`FAIL: gold candidates must all be 6-digit strings, got ${JSON.stringify(goldCandidates)}`);
-}
-if (new Set(goldCandidates).size !== goldCandidates.length) {
-  throw new Error('FAIL: gold candidates contain duplicates');
-}
-const goldPosSpread = perPositionDistinctCounts(goldCandidates);
-if (goldPosSpread.some(n => n !== 8)) {
-  throw new Error(`FAIL: expected exactly 8 distinct digits at every position for gold, got ${JSON.stringify(goldPosSpread)}`);
-}
-// Independently recompute จักรพรรดิทองคำ's per-position blended ranking (0.8 freq + 0.2
-// per-digit arithmetic closeness, NOT a whole-candidate blend) and confirm candidate 0
-// matches this recomputation exactly, proving the per-position blend is genuinely wired in.
-const goldPool = _buildPrize1to5Pool(goldFixtureRow);
-const goldRanked = _digitPosFreq(goldPool);
-const P = parseInt(goldFixtureRow.prize1, 10);
-const target = String(((P + nextDay * nextMonth * nextYear2) % 1000000 + 1000000) % 1000000).padStart(6, '0');
-const expectedGoldTop = goldRanked.map((posRanked, p) => {
-  const maxCount = posRanked[0].count || 1;
-  const targetDigit = Number(target[p]);
-  const blendedRanked = [...posRanked].map(e => ({
-    digit: e.digit,
-    count: e.count,
-    blended: 0.8 * (e.count / maxCount) + 0.2 * ((9 - Math.abs(Number(e.digit) - targetDigit)) / 9),
-  })).sort((a, b) => b.blended - a.blended || b.count - a.count || (a.digit < b.digit ? -1 : a.digit > b.digit ? 1 : 0));
-  return blendedRanked[0].digit;
-}).join('');
-if (goldCandidates[0] !== expectedGoldTop) {
-  throw new Error(`FAIL: gold candidate 0 should be "${expectedGoldTop}" (independently recomputed per-position blend), got "${goldCandidates[0]}"`);
-}
-console.log(`OK: _imperialGoldFormula produced 10 unique candidates, per-position blend independently verified, spread ${JSON.stringify(goldPosSpread)}`);
-
-// --- 5. จักรพรรดิ and จักรพรรดิทองคำ produce genuinely different top-ranked candidates ---
-const realisticPoolRow = {
-  near1_1: '582307', near1_2: '519818',
-  prize2_1: '914939', prize2_2: '698715', prize2_3: '753081', prize2_4: '689433', prize2_5: '521116',
-  prize3_1: '151823', prize3_2: '049061', prize3_3: '226315', prize3_4: '287363', prize3_5: '997032',
-  prize3_6: '710403', prize3_7: '671381', prize3_8: '361886', prize3_9: '256329', prize3_10: '104572',
-  prize4: '899458 849824 839752',
-  prize5: '451212 281179',
-  prize1: '287184',
-};
-const realisticNextDay = 1, realisticNextMonth = 1, realisticNextYear2 = 65;
-const jakRealistic = _imperialFormula(realisticPoolRow, 10);
-const goldRealistic = _imperialGoldFormula(realisticPoolRow, realisticNextDay, realisticNextMonth, realisticNextYear2, 10);
-if (jakRealistic[0] === goldRealistic[0]) {
-  throw new Error(`FAIL: expected จักรพรรดิ and จักรพรรดิทองคำ to disagree on the top candidate for this realistic fixture, both got "${jakRealistic[0]}"`);
-}
-console.log(`OK: จักรพรรดิ (top: ${jakRealistic[0]}) and จักรพรรดิทองคำ (top: ${goldRealistic[0]}) genuinely disagree on realistic data — per-position blend changes ranking`);
-
-// --- 6. จักรพรรดิทองคำ produces no output for a previous draw with empty prize 1-5 pool fields ---
-const goldEmptyCandidates = _imperialGoldFormula(emptyRow, nextDay, nextMonth, nextYear2, 10);
-if (!Array.isArray(goldEmptyCandidates) || goldEmptyCandidates.length !== 0) {
-  throw new Error(`FAIL: expected no gold candidates for a previous draw with empty prize 1-5 pool data, got ${JSON.stringify(goldEmptyCandidates)}`);
-}
-console.log('OK: จักรพรรดิทองคำ produces no output for a previous draw with empty prize 1-5 pool fields');
 
 // --- 7. _imperialRoundRobin: construction correctness, K-spread guarantee, collision-free ---
 

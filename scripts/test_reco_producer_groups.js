@@ -14,8 +14,8 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const engineSrc = fs.readFileSync(path.join(ROOT, 'static', 'formula-engine.js'), 'utf8');
-const appSrc = fs.readFileSync(path.join(ROOT, 'static', 'app.js'), 'utf8');
+const engineSrc = require('./frontend_source').readFrontend('formula-engine.js');
+const appSrc = require('./frontend_source').readFrontend('app.js');
 
 // --- load the whole engine in a vm with minimal browser-global stubs (it defines
 // _computeFormulasBatch plus every group helper; extracting one function wouldn't work) ---
@@ -26,7 +26,7 @@ const engineSandbox = {
   localStorage: { getItem: () => null, setItem: () => {} },
 };
 engineSandbox.window = engineSandbox;
-vm.createContext(engineSandbox);
+require('./frontend_source').prepareContext(engineSandbox);
 vm.runInContext(engineSrc, engineSandbox);
 const _computeFormulasBatch = engineSandbox._computeFormulasBatch;
 if (typeof _computeFormulasBatch !== 'function') throw new Error('FAIL: _computeFormulasBatch not loaded');
@@ -35,7 +35,7 @@ if (typeof _computeFormulasBatch !== 'function') throw new Error('FAIL: _compute
 const m = /const DC_RECO_PRODUCER_GROUPS=\{[^}]*\};/.exec(appSrc);
 if (!m) throw new Error('FAIL: DC_RECO_PRODUCER_GROUPS not found in app.js');
 const constSandbox = {};
-vm.createContext(constSandbox);
+require('./frontend_source').prepareContext(constSandbox);
 vm.runInContext(m[0].replace('const ', 'this.'), constSandbox);
 const DC_RECO_PRODUCER_GROUPS = constSandbox.DC_RECO_PRODUCER_GROUPS;
 

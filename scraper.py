@@ -167,8 +167,8 @@ def _enforce_prize1_identity(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_data(force_refresh=False, start_year=1994, progress_callback=None) -> pd.DataFrame:
-    """โหลดข้อมูล — ใช้ cache ถ้ามี, scrape ถ้าไม่มี"""
+def load_data(force_refresh=False, start_year=1994, progress_callback=None, allow_scrape=True) -> pd.DataFrame:
+    """โหลดแคชในเครื่อง; scrape เมื่อไม่มีแคชได้เฉพาะถ้าอนุญาต"""
     if not force_refresh and CACHE_FILE.exists():
         df = pd.read_csv(
             CACHE_FILE, encoding="utf-8",
@@ -189,6 +189,9 @@ def load_data(force_refresh=False, start_year=1994, progress_callback=None) -> p
                 # multi-number string — ห้าม _fix_num (จะพังเพราะไม่ใช่เลขเดี่ยว)
                 df[col] = df[col].fillna("").astype(str).replace("nan", "")
         return _enforce_prize1_identity(df)
+
+    if not allow_scrape:
+        raise FileNotFoundError("result cache is unavailable")
 
     current_year_ad = datetime.now().year
     current_year_be = current_year_ad + 543

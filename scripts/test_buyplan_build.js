@@ -12,7 +12,7 @@
 //      remainder to rank 1, tiny budget still valid, budget below min → empty-but-valid plan.
 //   6. เลขแนะนำ-empty fixture still yields a full plan from Picks alone.
 //   7. EV คู่: theoretical headline negative and = −5%/baht at default payouts for both tiers;
-//      adjusted EV with a large positive Edge trips the noise warning; zero-Edge stays negative.
+//      candidate-set Edge does not become a per-number probability or monetary EV adjustment.
 //   8. Rendering: plan table shows numbers/stakes and the ทดลอง trust badge (display-only,
 //      ADR-0003); EV card shows the honest per-100฿ loss headline and the noise warning.
 const fs = require('fs');
@@ -20,8 +20,8 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const engineSrc = fs.readFileSync(path.join(ROOT, 'static', 'formula-engine.js'), 'utf8');
-const appSrcRaw = fs.readFileSync(path.join(ROOT, 'static', 'app.js'), 'utf8');
+const engineSrc = require('./frontend_source').readFrontend('formula-engine.js');
+const appSrcRaw = require('./frontend_source').readFrontend('app.js');
 const appSrc = appSrcRaw.replace(/^startCountdown\(\);\s*$/m, '').replace(/^init\(\);\s*$/m, '');
 
 const stubEl = new Proxy({}, { get: () => () => stubEl, set: () => true });
@@ -39,7 +39,7 @@ const sandbox = {
 };
 sandbox.window = sandbox;
 sandbox.addEventListener = () => {};
-vm.createContext(sandbox);
+require('./frontend_source').prepareContext(sandbox);
 vm.runInContext(engineSrc, sandbox);
 vm.runInContext(appSrc, sandbox);
 
@@ -136,15 +136,16 @@ check('at default ×95/×950 both tiers cost exactly −5%/baht → −5% overal
 check('theoretical per-100฿ loss ≈ 5฿', Math.abs(ev.theoretical.per100 - (-5)) < 1e-9);
 check('a bold (mostly 3-digit) plan is ALSO −5%/baht — risk changes variance not cost',
   Math.abs(pBold.ev.theoretical.perBaht - (-0.05)) < 1e-9);
-// zero-Edge fixture: adjusted EV equals theoretical, no warning
+// Edge is historical evidence about a candidate set, so it must not alter per-number theoretical EV.
 const zeroEdge = scoreRows.map(r => ({ ...r, topEdge: null }));
 const pZero = bpBuildPlan({ mode: 'perNumber', budget: 1000, risk: 'mid', config: CFG, scoreRows: zeroEdge, recoNums: [] });
-check('zero-Edge → adjusted EV stays negative and no warning', pZero.ev.adjusted.perBaht < 0 && pZero.ev.warning === false);
-// large positive Edge → adjusted EV positive → noise warning fires
+check('missing Edge leaves theoretical EV negative and warning off', pZero.ev.theoretical.perBaht < 0 && pZero.ev.warning === false);
+check('legacy adjusted EV field mirrors theory for saved-record compatibility', pZero.ev.adjusted.perBaht === pZero.ev.theoretical.perBaht);
+// Large positive candidate-set Edge must not shift any per-number monetary estimate.
 const bigEdge = scoreRows.map(r => ({ ...r, topEdge: 20 }));
 const pBig = bpBuildPlan({ mode: 'perNumber', budget: 1000, risk: 'mid', config: CFG, scoreRows: bigEdge, recoNums: [] });
-check('large positive Edge → adjusted EV goes positive', pBig.ev.adjusted.perBaht > 0 && pBig.ev.adjusted.positive === true);
-check('positive adjusted EV trips the noise warning flag', pBig.ev.warning === true);
+check('large positive candidate-set Edge does not change theoretical EV', pBig.ev.theoretical.perBaht === pZero.ev.theoretical.perBaht);
+check('large positive candidate-set Edge never creates an adjusted-profit warning', pBig.ev.adjusted.perBaht === pBig.ev.theoretical.perBaht && pBig.ev.warning === false);
 // bpComputeEv is callable directly on a row set (the seam ADR-0004 names)
 const evDirect = bpComputeEv([{ len: 2, stake: 100, topEdge: 0 }], CFG);
 check('bpComputeEv direct: single 2-digit row at default payout = −5%/baht', Math.abs(evDirect.theoretical.perBaht - (-0.05)) < 1e-9);
@@ -161,23 +162,40 @@ check('plan table shows a stake with the ฿ unit', /\d+\s*฿/.test(tableExp) |
 check('a ทดลอง-supported row renders the trust badge in the plan table (ADR-0003)', tableExp.includes('trust-badge'));
 const tableNoExp = bpPlanTableHtml(bpBuildPlan({ mode: 'perNumber', budget: 500, risk: 'safe', config: CFG, scoreRows: [expRows[1]], recoNums: [] }));
 check('a plan with no ทดลอง rows renders no trust badge', !tableNoExp.includes('trust-badge'));
-
 const cardTheory = bpEvCardHtml(pZero);
-check('EV card shows the honest per-100฿ loss headline', cardTheory.includes('ต่อ 100฿') && cardTheory.includes('เสีย'));
-check('EV card (zero-Edge) does NOT show the noise warning', !cardTheory.includes('ไม่ใช่กำไรจริง'));
+check('EV card shows configured theoretical return per 100฿', cardTheory.includes('ต่อเงินเดิมพัน 100฿') && cardTheory.includes('คาดเสีย'));
+check('EV card explains Edge is not converted into monetary EV', cardTheory.includes('ไม่ใช้ Edge ย้อนหลัง'));
 const cardWarn = bpEvCardHtml(pBig);
-check('EV card shows the noise warning when adjusted EV is positive', cardWarn.includes('ไม่ใช่กำไรจริง'));
+check('EV card is unchanged by a large candidate-set Edge', cardWarn === cardTheory && !cardWarn.includes('ปรับตาม backtest'));
+const emptyEvCard = bpEvCardHtml(bpBuildPlan({ mode: 'perNumber', budget: 0, risk: 'mid', config: CFG, scoreRows: [], recoNums: [] }));
+check('empty plan does not display a zero as a meaningful EV', emptyEvCard.includes('ยังไม่มีเงินเดิมพัน') && !emptyEvCard.includes('คาดคุ้มทุน'));
+const customPayoutCard = bpEvCardHtml(bpBuildPlan({ mode: 'perNumber', budget: 500, risk: 'mid', config: { ...CFG, pay2: 120, pay3: 1200 }, scoreRows, recoNums: [] }));
+check('theoretical return copy follows configured payouts instead of hard-coded loss claims', customPayoutCard.includes('×120 (2 ตัว) / ×1200 (3 ตัว)') && customPayoutCard.includes('คาดสุทธิ +20.0฿'));
+const customTicketCard = bpEvCardHtml(bpBuildPlan({ mode: 'ticket', budget: 120, risk: 'safe', config: { ...CFG, ticketPrice: 60 }, ticketSources: [{ num: '123456', label: 'Predict', kind: 'predict' }] }));
+check('ticket EV copy follows configured ticket price and expected net', customTicketCard.includes('ราคาที่ตั้งไว้ 60฿') && customTicketCard.includes('คาดเสีย 12.0฿ ต่อใบ'));
 
 // ── 9. explainability data (PRD-buy-plan-explainability) ─────────────────────────
-const { bpGroupsForSources, bpStrengthWord } = sandbox;
-['bpGroupsForSources', 'bpStrengthWord'].forEach(n => {
+const { bpGroupsForSources, bpStrengthWord, bpAttachEdgeSampleCounts } = sandbox;
+['bpGroupsForSources', 'bpStrengthWord', 'bpAttachEdgeSampleCounts'].forEach(n => {
   if (typeof sandbox[n] !== 'function') throw new Error('FAIL: ' + n + ' not loaded from app.js');
 });
+const sampledRows=bpAttachEdgeSampleCounts([
+  {num:'45',topEdge:5,sources:['A1','B1']},
+  {num:'12',topEdge:-2,sources:['C1']},
+  {num:'09',topEdge:null,sources:['Predict']},
+], [
+  {name:'A1',edge:5,total:35},{name:'B1',edge:5,total:78},
+  {name:'C1',edge:-2,total:49},{name:'Predict',edge:99,total:80},
+]);
+check('Edge sample count follows the strongest supporting formula',sampledRows[0].topEdgeDraws===78);
+check('equal strongest Edges choose the larger valid sample',sampledRows[0].topEdgeDraws!==35);
+check('negative Edge keeps the sample count that produced it',sampledRows[1].topEdgeDraws===49);
+check('rows without a supporting formula Edge have no sample count',sampledRows[2].topEdgeDraws===null);
 const richRows = [
-  { num: '45', type: '2 หลัก', score: 82, topEdge: 2.1, trust: null,
+  { num: '45', type: '2 หลัก', score: 82, topEdge: 2.1, topEdgeDraws: 78, trust: null,
     sources: ['C1 พิชิตโชค', 'G แม่นขั้นเทพ', 'I1 จักรพรรดิ', 'Predict 2 ตัวล่าง'],
     reasons: ['สูตร C ให้เลขนี้', 'สูตร G สนับสนุน (backtest edge +2.1%)'], warnings: [], formulaCount: 3, predictCount: 1 },
-  { num: '12', type: '2 หลัก', score: 40, topEdge: 0.4, trust: null,
+  { num: '12', type: '2 หลัก', score: 40, topEdge: 0.4, topEdgeDraws: 47, trust: null,
     sources: ['C1 พิชิตโชค'], reasons: ['สูตร C สนับสนุน'], warnings: ['ไม่มีแรงหนุนจาก Predict'], formulaCount: 1, predictCount: 0 },
 ];
 const pRich = bpBuildPlan({ mode: 'perNumber', budget: 500, risk: 'safe', config: CFG, scoreRows: richRows, recoNums: ['45'] });
@@ -185,6 +203,7 @@ const r45 = pRich.rows.find(r => r.num === '45');
 const t2rich = pRich.rows.filter(r => r.tier === '2d');
 check('row carries reasons array through from the score row', Array.isArray(r45.reasons) && r45.reasons.length === 2);
 check('row carries sources array through', Array.isArray(r45.sources) && r45.sources.includes('G แม่นขั้นเทพ'));
+check('row carries the strongest Edge sample count into the unsaved plan',r45.topEdgeDraws===78);
 check('row carries warnings array through', Array.isArray(pRich.rows.find(r => r.num === '12').warnings));
 check('row carries a money-trace reason object', r45.reason && typeof r45.reason.share === 'number' && typeof r45.reason.tierTotal === 'number');
 check('rank-1 row of a tier is flagged gotRemainder when a remainder exists', t2rich[0].reason.gotRemainder === true);
@@ -199,18 +218,26 @@ check('bpGroupsForSources de-dupes repeated group letters', bpGroupsForSources([
 check('Codex X* source maps to the F group', bpGroupsForSources(['X5 Pattern Link'])[0].label.startsWith('F'));
 check('non-formula sources yield no group dots', bpGroupsForSources(['Predict หน้า 3', 'รางวัลรอง 10 งวด', 'พิมพ์เอง']).length === 0);
 // strength words
-check('strong edge (≥1.0) → หนุนแรง', bpStrengthWord(2.1).word === 'หนุนแรง');
-check('mid edge (0<e<1) → หนุนกลาง', bpStrengthWord(0.4).word === 'หนุนกลาง');
-check('zero/negative/null edge → หนุนเบา',
-  bpStrengthWord(0).word === 'หนุนเบา' && bpStrengthWord(-1).word === 'หนุนเบา' && bpStrengthWord(null).word === 'หนุนเบา');
+check('positive formula-set Edge is labeled as a set-level metric', bpStrengthWord(2.1).word === 'Edge ชุดสูตร');
+check('small positive formula-set Edge keeps its lower-strength color', bpStrengthWord(0.4).cls === 'bp-str-mid');
+check('zero/negative Edge keeps a neutral color without implying individual odds',
+  bpStrengthWord(0).word === 'Edge ชุดสูตร' && bpStrengthWord(-1).word === 'Edge ชุดสูตร' && bpStrengthWord(null).word === 'ไม่มี Edge');
+check('tiny Edge rounds to the same neutral presentation shown to users', bpStrengthWord(0.04).word === 'Edge ชุดสูตร');
 
 // ── 10. แทงรายเลข explain rendering ───────────────────────────────────────────────
-const { bpRowExplainHtml, bpEditablePlanHtml } = sandbox;
-['bpRowExplainHtml', 'bpEditablePlanHtml'].forEach(n => {
+const { bpRowExplainHtml, bpEditablePlanHtml, bpEditableTicketHtml, bpEdgeSignalNoteHtml, bpBudgetRemainingHtml } = sandbox;
+['bpRowExplainHtml', 'bpEditablePlanHtml', 'bpEditableTicketHtml', 'bpEdgeSignalNoteHtml', 'bpBudgetRemainingHtml'].forEach(n => {
   if (typeof sandbox[n] !== 'function') throw new Error('FAIL: ' + n + ' not loaded from app.js');
 });
+const editableExp = bpEditablePlanHtml(pExp);
+check('editable rows identify Edge as a formula-set metric in percentage points', editableExp.includes('Edge ชุดสูตร +3.0 pp') && editableExp.includes('pp = จุดเปอร์เซ็นต์'));
+check('visible note explains strongest supporting set Edge, sample window, individual odds, and EV scope', editableExp.includes('ค่าสูงสุดย้อนหลังจากสูตรที่รองรับเลขนี้') && editableExp.includes('80 งวดล่าสุด') && editableExp.includes('จำนวนจริงข้างค่า') && editableExp.includes('ไม่ใช่โอกาสของเลขรายตัว') && editableExp.includes('ไม่นำไปคำนวณ EV'));
+const ticketPlanForEdge={mode:'ticket',config:{ticketPrice:80},risk:'safe',ticketCount:1,totalStake:80,budget:100,rows:[{num:'123456',qty:1,stake:80,sources:['Predict'],ladder:['123456','456','56']}]};
+check('ticket mode does not render a per-number formula-set Edge note', !bpEditableTicketHtml(ticketPlanForEdge).includes('bp-edge-note'));
 const exHtml = bpRowExplainHtml(r45, 10);
 check('explain body lists each recorded reason', exHtml.includes('สูตร C ให้เลขนี้') && exHtml.includes('สูตร G สนับสนุน'));
+check('detail reasons use percentage-point units for formula Edge', exHtml.includes('backtest edge +2.1 pp') && !exHtml.includes('backtest edge +2.1%'));
+check('row explanation says formula Edge belongs to the candidate set, not the number', exHtml.includes('ผลย้อนหลังของชุดผู้สมัครสูตร') && exHtml.includes('ไม่ใช่โอกาสถูกรางวัลของเลขนี้'));
 check('explain body shows the money chain with คะแนน and สัดส่วน', exHtml.includes('คะแนน') && exHtml.includes('สัดส่วน'));
 check('explain body shows the ×1.5 เลขแนะนำ step for a boosted row', exHtml.includes('×1.5'));
 check('explain body shows a group dot for a backing group', exHtml.includes('bp-group-dot'));
@@ -219,8 +246,15 @@ check('a row with a warning surfaces it in the explain body', warnHtml.includes(
 const handRow = { ...r45, hand: true };
 check('a hand-edited row shows the แก้เอง note instead of the system money math', bpRowExplainHtml(handRow, 10).includes('แก้เอง'));
 const planHtml = bpEditablePlanHtml(pRich);
+check('per-number Edge row shows the actual sample as a fraction of the 80-draw window',planHtml.includes('Edge ชุดสูตร +2.1 pp · 78/80 งวด'));
 check('editable plan renders a ⭐ on the เลขแนะนำ row', planHtml.includes('bp-reco-star'));
-check('editable plan renders the strength word', /หนุน(แรง|กลาง|เบา)/.test(planHtml));
+const overBudgetPlanHtml = bpEditablePlanHtml({ ...pRich, budget: pRich.totalStake - 10 });
+check('per-number plan shows the exact budget overrun alongside actual spend and budget', overBudgetPlanHtml.includes('รวมที่จะซื้อจริง') && overBudgetPlanHtml.includes(`จากงบ ${pRich.totalStake - 10}฿`) && overBudgetPlanHtml.includes('เกินงบ 10฿'));
+check('per-number plan omits overrun status when actual spend is within budget', !bpEditablePlanHtml({ ...pRich, budget: pRich.totalStake }).includes('bp-budget-overrun'));
+const underBudgetPlanHtml = bpEditablePlanHtml({ ...pRich, budget: pRich.totalStake + 50 });
+check('per-number plan states the exact unspent amount after an edit', underBudgetPlanHtml.includes(`เหลืองบ 50฿`) && underBudgetPlanHtml.includes('bp-budget-remaining'));
+check('per-number plan shows neither remaining nor overrun status at exact budget', !bpEditablePlanHtml({ ...pRich, budget: pRich.totalStake }).includes('bp-budget-remaining') && !bpEditablePlanHtml({ ...pRich, budget: pRich.totalStake }).includes('bp-budget-overrun'));
+check('editable plan labels historical Edge as set-level rather than number-level', /Edge ชุดสูตร/.test(planHtml) && !/Edge (เด่น|บวก|ติดลบ|ใกล้ศูนย์)/.test(planHtml));
 check('editable plan renders a why-toggle and a hidden detail row', planHtml.includes('bp-why-toggle') && planHtml.includes('bp-row-detail'));
 check('editable plan detail row carries the matching id', planHtml.includes('id="bp-detail-'));
 

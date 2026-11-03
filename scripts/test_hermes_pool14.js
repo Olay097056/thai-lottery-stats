@@ -16,8 +16,8 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const engineSrc = fs.readFileSync(path.join(ROOT, 'static', 'formula-engine.js'), 'utf8');
-const appSrcRaw = fs.readFileSync(path.join(ROOT, 'static', 'app.js'), 'utf8');
+const engineSrc = require('./frontend_source').readFrontend('formula-engine.js');
+const appSrcRaw = require('./frontend_source').readFrontend('app.js');
 // Strip boot calls (same pattern as test_experimental_badge_propagation.js).
 const appSrc = appSrcRaw.replace(/^startCountdown\(\);?\s*$/m, '').replace(/^init\(\);?\s*$/m, '');
 
@@ -36,12 +36,12 @@ const sandbox = {
 };
 sandbox.window = sandbox;
 sandbox.addEventListener = () => {};
-vm.createContext(sandbox);
+require('./frontend_source').prepareContext(sandbox);
 vm.runInContext(engineSrc, sandbox);
 vm.runInContext(appSrc, sandbox);
 
 const need = ['_buildPrize1to4Pool', '_hermesPool14Formula', '_hermesCards', '_formulaGroupKey',
-  '_imperialFormula', '_imperialGoldFormula', '_tycoonPool6Formula', '_computeMixRow',
+  '_imperialFormula', '_computeMixRow',
   '_computeFormulasBatch', '_formulaBaselineForField', '_formulaHitForField', 'dcRecommendedNumbers'];
 need.forEach(name => { if (typeof sandbox[name] !== 'function') throw new Error(`FAIL: ${name} not loaded`); });
 
@@ -107,10 +107,8 @@ check('skips empty pool (no fallback)', sandbox._hermesPool14Formula(prevNoPool,
 // Distinct from existing pool6 producers on the same realistic fixture.
 const nextIso = '2568-08-01';
 const i1 = sandbox._imperialFormula(prevFull, 10);
-const i2 = sandbox._imperialGoldFormula(prevFull, 1, 8, 68, 10);
-const j2 = sandbox._tycoonPool6Formula(prevFull, 1, 8, 68, 10);
 const mixRow = sandbox._computeMixRow(sandbox._computeFormulasBatch(prevFull, nextIso, []));
-const rivals = [['I1', i1], ['I2', i2], ['J2', j2], ['Mix', mixRow ? mixRow.preds : []]];
+const rivals = [['I1', i1], ['Mix', mixRow ? mixRow.preds : []]];
 for (const [label, preds] of rivals) {
   if (!preds || !preds.length) { check(`Hermes distinct from ${label}: rival produced nothing (skip)`, true); continue; }
   check(`Hermes candidates fully distinct from ${label} (same draw)`, preds.every(p => !hm.includes(p)));
@@ -161,11 +159,9 @@ check('backward compat: name[0] group key still works (J1 → J, badge propagate
   b2Entry && b2Entry.groups.includes('J') && b2Entry.trust === 'ทดลอง');
 
 // ═══ E. สูตรคำนวณ tab card ═══════════════════════════════════════════════════
-// Note: _hermesCards now returns 3 cards — HM (full 6-digit) + HM2 (ท้าย3 ใต้ดิน) + HM3
-// (ท้าย3 ทางการ) per PRD-hm2-hermes-tail3.md. Card[0] remains HM; new cards are covered by
-// test_hermes_tail3.js (section F).
+// Note: _hermesCards returns a single card — HM (full 6-digit pool 1-4).
 const cards = sandbox._hermesCards(prevFull);
-check('_hermesCards returns 3 cards (HM + HM2 + HM3)', Array.isArray(cards) && cards.length === 3);
+check('_hermesCards returns a single HM card', Array.isArray(cards) && cards.length === 1);
 check('card contains formula name', cards[0].includes('HM · Hermes Pool 1-4'));
 check('card carries trust-badge', cards[0].includes('trust-badge') && cards[0].includes('ทดลอง'));
 check('card data-group="HM"', cards[0].includes('data-group="HM"'));

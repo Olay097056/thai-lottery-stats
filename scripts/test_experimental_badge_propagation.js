@@ -11,8 +11,8 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const engineSrc = fs.readFileSync(path.join(ROOT, 'static', 'formula-engine.js'), 'utf8');
-const appSrcRaw = fs.readFileSync(path.join(ROOT, 'static', 'app.js'), 'utf8');
+const engineSrc = require('./frontend_source').readFrontend('formula-engine.js');
+const appSrcRaw = require('./frontend_source').readFrontend('app.js');
 // Strip the two top-level boot calls (startCountdown() sets a DOM element with no null
 // guard and would also start a setInterval; init() fetches over the network) — we only
 // need the function declarations, not a live-booting app.
@@ -33,7 +33,7 @@ const sandbox = {
   fetch: () => Promise.reject(new Error('no network in test sandbox')),
 };
 sandbox.window = sandbox;
-vm.createContext(sandbox);
+require('./frontend_source').prepareContext(sandbox);
 vm.runInContext(engineSrc, sandbox);
 vm.runInContext(appSrc, sandbox);
 

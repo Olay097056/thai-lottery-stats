@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'static', 'formula-engine.js'), 'utf8');
+const src = require('./frontend_source').readFrontend('formula-engine.js');
 
 function extract(name) {
   const re = new RegExp('function ' + name + '\\([^)]*\\)\\{', 'm');
@@ -33,7 +33,7 @@ const code = [
 ].join('\n\n');
 
 const sandbox = {};
-vm.createContext(sandbox);
+require('./frontend_source').prepareContext(sandbox);
 vm.runInContext(code, sandbox);
 const { _codexPool, CODEX_DEFAULT_COEFFS } = sandbox;
 
