@@ -35,6 +35,11 @@ __pycache__/
 *.pyc
 *.pkl
 
+# Secrets
+.env
+.env.*
+!.env.example
+
 # Lottery app runtime files
 .ml_cache/
 lottery_cache.csv

@@ -2,6 +2,23 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-11-03 — แก้ baseline ของ `dcFormulaBaseP` สำหรับ field รางวัลที่ 1 / pool
+
+- `dcFormulaBaseP` ไม่มี case ของ `prize1_exact`, `pool6`, `pool6_14`, `pool_tail3`
+  แล้วตกไปที่ `return 0` — "ไม่มี baseline" จึงอ่านเป็น "โอกาส 0%" และ hit ใด ๆ
+  กลายเป็น edge บวกจนผ่าน gate ของ Picks (`decision-center.js` `edge>0`)
+- เพิ่มสี่ field ด้วยสูตรเดียวกับ `FORMULA_BT_FIELD_META` และเปลี่ยน fallback เป็น
+  `null` แบบเดียวกับ `back3` เพื่อไม่ให้ field ที่ไม่รู้จักได้ edge จากเลข 0
+- วัดจริง 42 สูตร × 200 งวด: เปลี่ยน 2 แถว (I1 pool6, HM pool6_14) — edge 0 → −0.168
+  และ −0.066, weight 1.000 → 0.995 / 0.998, **gate flip 0** เพราะทั้งคู่ยัง 0 hit
+  วันนี้จึงยังไม่ขยับ Picks; เคสที่แก้จริงคือ field ที่ baseline ใหญ่ (pool_tail3 81.4%):
+  สูตรที่ถูก 50% เดิมได้ edge +50 (weight 1.8) ใหม่ได้ −31.4 (ตก gate)
+- เพิ่ม `scripts/test_dc_formula_basep.js` เทียบทุก field กับ `_formulaBaselineForField`
+  ที่ k=1,5,10 และพิสูจน์แล้วว่าใส่บั๊กกลับเข้าไปเทสต์แดง
+- bump cache token เป็น `dcbasep-20261103`; JS suite เหลือ 5 ไฟล์ที่แดงอยู่ก่อนแล้ว
+  (accessibility, astra_automation_ui, frontend_architecture, predict_mix_ui_contract,
+  ux_audit_fixes) — Python suite เขียวทั้งหมด
+
 ## 2026-11-02 — ระนาบฟาโน v4 · self-seed แทน incumbent v1–v3 (ADR-0008)
 
 - v4 สร้าง incumbent เองในโมดูล: greedy weighted pair-cover (beam เดิม เลือกทีละเลข

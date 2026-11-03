@@ -133,7 +133,14 @@ function dcFormulaBaseP(field,n){
   if(field==='back3_suffix2')return (1-Math.pow(1-Math.min(k,100)/100,2))*100;
   if(field==='prize1_last4_digits')return (1-Math.pow(.9,4))*100;
   if((field||'').startsWith('run_'))return (1-Math.pow((10-k)/10,2))*100;
-  return 0;
+  // Six-digit prize-1 and pool fields must share FORMULA_BT_FIELD_META's definition. Returning 0
+  // made "no baseline" read as a 0% chance, so any observed hit became a positive edge and passed
+  // the Picks gate (decision-center.js edge>0).
+  if(field==='prize1_exact')return k/1e6*100;
+  if(field==='pool6')return (1-Math.pow(1-168/1e6,k))*100;
+  if(field==='pool6_14')return (1-Math.pow(1-66/1e6,k))*100;
+  if(field==='pool_tail3'){const p1=1-Math.pow(0.999,168);return (1-Math.pow(1-p1,k))*100;}
+  return null; // no comparable baseline: absence is not a 0% chance
 }
 
 function dcFormulaBacktestRows(rows,n=80){
