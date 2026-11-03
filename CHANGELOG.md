@@ -2,6 +2,26 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-11-03 — Offline hypothesis search: 152 สมมติฐานจาก LLM, ไม่มีตัวไหนผ่าน (ADR-0010)
+
+- เพิ่มเครื่องมือวิจัย `scripts/rll_hypothesis_search.py` — ให้ LLM คิด "สมมติฐาน" เป็น **data spec** (JSON)
+  ไม่ใช่โค้ด: `{op, source, window, weight}` ต่อหลัก 3 หลักท้าย, operator (`freq`/`gap`/`markov`/`weekday`)
+  เป็นของ harness ทั้งหมด → ไม่มีทางรันโค้ดแปลกปลอมหรือ peek อนาคต (feature สร้างจาก `rows[:index]` เท่านั้น)
+- เป้าที่วัดได้: 3 หลักท้ายของ pool รางวัล 1-4 บนงวดที่มี ≥55 tail ต่างกัน (**464 จาก 761 งวด** ตั้งแต่ 2006-12-30)
+  เพราะงวดเก่าก่อนยุค Sanook มี pool แค่เลขเดียว — คำนวณ baseline ต่อ draw ไม่ใช่ค่าเฉลี่ยคงที่
+- Gate 60/20/20: train 206 งวด (2012-04-16→2021-02-01) คัด z ≥ 3.5 · validation 69 งวด ยืนยัน z ≥ 2.0 ·
+  holdout 69 งวด วัดครั้งเดียว (2023-12-30→2026-11-01) และไม่ถูกใช้เลือก
+- `scripts/generate_rll_hypotheses.py` — 3 รอบ × 40 ข้อ (purist / blend / contrarian) ด้วย
+  `deepseek/deepseek-v4.1-flash`, เก็บ usage + raw SHA-256, มี salvage parser เมื่อ JSON ถูกตัดกลางคัน
+  (รอบที่ max_tokens 8000 เคยพังทั้งรอบ) → **152 สมมติฐาน, 115 พฤติกรรมต่างกันจริง, 38,363 token**
+- ผล: **ผ่าน screen 0 / 152**, top z = +2.45 (`contrarian-pool-weekday-freq-mix`, 56.8% vs chance 48.3%),
+  z-distribution mean +0.07 sd 0.88 · **permutation control 200 รอบ: p = 0.219** (null max-z p50 2.13, p95 2.85)
+  → ผลที่ดีที่สุดธรรมดากว่าการสุ่ม 78% ของรอบ, 1/200 shuffle ไปถึง gate (3.53) = false-positive rate จริงของวิธีนี้
+- ไม่มี survivor จึงไม่มีอะไรถูก promote และไม่แตะ `rll.sqlite3` / UI — report อยู่ที่
+  `docs/research/2026-11-rll-hypothesis-search.md`, ชุดสมมติฐาน archiv ที่ `docs/research/rll-hypotheses-2026-11.json`
+- `scripts/test_rll_hypothesis_search.py` 10 tests (ไม่ใช้เน็ต): leak-free features, chance reproduction,
+  split ordering, permutation restore, salvage/validate
+
 ## 2026-11-03 — Reinforcement Learn LLM (RLL) · สูตร bandit ที่ใช้ LLM สด (ADR-0009)
 
 - เพิ่มสูตรใหม่ชื่อ **Reinforcement Learn LLM** — six-arm multi-armed bandit ที่ใช้ LLM สดหนึ่งครั้งต่องวด (การเลือก arm ไม่ขึ้นกับ feature ของงวด)
