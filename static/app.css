@@ -1441,3 +1441,9 @@ tbody tr{transition:background .12s}
 .ftab-btn:hover{background:var(--surface2);color:var(--text)}
 .ftab-btn.active,.ftab-btn[data-color].active{background:var(--accent-soft);border-color:var(--accent-border);color:var(--accent);font-weight:600}
 .predict-toolbar{border:1px solid var(--border-soft);border-radius:var(--radius);padding:14px 16px;background:var(--surface);box-shadow:var(--elev-1)}
+
+/* ─── RLL · Reinforcement Learn LLM (ทดลอง) ──────────────────────────────────── */
+.rll-noevidence{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;
+  color:#7c3608;background:#fdf3e3;border:1px dashed #e9c9a0;border-radius:999px;padding:2px 10px}
+[data-theme="dark"] .rll-noevidence{color:#f3c98b;background:#2a2118;border-color:#6b4f2a}
+.rll-arms{overflow-x:auto}

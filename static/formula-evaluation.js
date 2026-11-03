@@ -97,7 +97,7 @@ function _computeMixRow(formulaResults){
 
 // ─── Formula Backtest ──────────────────────────────────────────────────────────
 // คำนวณสูตรแต่ละตัวในโหมด batch (ไม่ยุ่งกับ DOM) และ return {predictions[], compareField}
-function _computeFormulasBatch(prev, nextDateStr, historyCtx=[]){
+function _computeFormulasBatch(prev, nextDateStr, historyCtx=[], extraRows=[]){
   const p6=(prev.prize1||'').padStart(6,'0');
   const t3=(prev.top3||'').padStart(3,'0');
   const b2=(prev.bottom2||'').padStart(2,'0');
@@ -274,6 +274,10 @@ function _computeFormulasBatch(prev, nextDateStr, historyCtx=[]){
       results.push({name:f.name+' (เด่น2ตัว)',preds:f.nums,field:'bottom2',baseline:f.nums.length});
     }
   }catch(e){}
+
+  // Only live call sites pass extraRows (the RLL forecast). The rolling backtest loops never do,
+  // so a stored forecast can never be replayed into a historical draw.
+  for(const row of (extraRows||[]))results.push(row);
 
   return results;
 }
@@ -638,7 +642,7 @@ async function runFormulaBacktest(){
       const wpct=ws.total?ws.hits/ws.total*100:null;
       rolling[w]={hits:ws.hits,total:ws.total,pct:wpct,edge:wpct==null||rollingBaselineP==null?null:wpct-rollingBaselineP};
     });
-    const _GRP={'A':['A · กูชอบ','var(--gold)'],'B':['B · ลอตโตพลัส','#4d9de0'],'C':['C · พิชิตโชค','#a855f7'],'D':['D · Claude','#22d3ee'],'X':['F · Codex','#a3e635'],'G':['G · แม่นขั้นเทพ','#f05454'],'H':['H · มิสเตอร์ซี','#f59e0b'],'E':['E · สายมู','#ec4899'],'I':['I · จักรพรรดิ','#c084fc'],'J':['J · เจ้าสัว','#10b981'],'HM':['HM · Hermes Pool 1-4','#2dd4bf'],'FANO':['ระนาบฟาโน · รางวัลที่ 1','#67e8f9']};
+    const _GRP={'A':['A · กูชอบ','var(--gold)'],'B':['B · ลอตโตพลัส','#4d9de0'],'C':['C · พิชิตโชค','#a855f7'],'D':['D · Claude','#22d3ee'],'X':['F · Codex','#a3e635'],'G':['G · แม่นขั้นเทพ','#f05454'],'H':['H · มิสเตอร์ซี','#f59e0b'],'E':['E · สายมู','#ec4899'],'I':['I · จักรพรรดิ','#c084fc'],'J':['J · เจ้าสัว','#10b981'],'HM':['HM · Hermes Pool 1-4','#2dd4bf'],'FANO':['ระนาบฟาโน · รางวัลที่ 1','#67e8f9'],'RLL':['RLL · Reinforcement Learn LLM','#f472b6']};
     const gKey=s.group||name[0];
     const [group,groupColor]=s.mix?['MIX · รวมทุกสูตร','#f2ca73']:(_GRP[gKey]||[gKey,'var(--text3)']);
     const subPct=s.subTotal>0?s.subHits/s.subTotal*100:null;
@@ -646,6 +650,22 @@ async function runFormulaBacktest(){
     const degraded=rolling[200]?.total>=180&&edge200!=null&&edge200<-5;
     return {name,group,groupColor,field:s.field,typeLabel,board,total:s.total,hits:s.hits,pct,baseP,baseLabel,edge,ciLow,ciHigh,subHits:s.subHits||0,subTotal:s.subTotal||0,subPct,rolling,edge50,edge100,edge200,degraded,trust:s.trust||null,preds_n:s.preds_n,pool14Hits:s.pool14?.hits||0,pool14Total:s.pool14?.total||0};
   });
+  // RLL has no historical row by construction: one live call per draw, so its evidence is
+  // prospective only. It ships as a shaped row with no sample ("—"), never a fabricated history.
+  const RLL_SHIP_DATE='2026-11-16';
+  const rllDraws=(rows||[]).filter(r=>{
+    const [d,m,y]=String(r.date||'').split('/').map(Number);
+    if(!d||!m||!y)return false;
+    const iso=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    return iso>RLL_SHIP_DATE&&/^[0-9]{6}$/.test(String(r.prize1||''));
+  }).length;
+  if(selectedTested>0)LotteryServerData.formula.backtestRows.push({
+    name:'RLL · Reinforcement Learn LLM',group:'RLL · Reinforcement Learn LLM',groupColor:'#f472b6',
+    field:'prize1_exact',typeLabel:'รางวัลที่ 1 ตรง 6 หลัก',board:'รางวัลที่ 1 · ตรง 6 หลัก',
+    total:0,hits:0,pct:null,baseP:null,baseLabel:'—',edge:null,ciLow:null,ciHigh:null,
+    subHits:0,subTotal:0,subPct:null,rolling:{},edge50:null,edge100:null,edge200:null,degraded:false,
+    trust:'ทดลอง',preds_n:5,pool14Hits:0,pool14Total:0,
+    prospective:{since:RLL_SHIP_DATE,draws:rllDraws,expectedHits:rllDraws*5/1e6}});
   LotteryUiState.formula.sortKey='edge';LotteryUiState.formula.sortAsc=false;
   _renderBtTable();
   const partial=failedStages.length>0;

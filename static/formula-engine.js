@@ -335,7 +335,7 @@ function _clearFormulaResults(msg=''){
     window._formulaCalculationRequestId=(Number(window._formulaCalculationRequestId)||0)+1;
     window._formulaCalculationPending=false;
   }
-  ['A','B','C','D','F','G','H','E','ALL','FANO'].forEach(k=>{
+  ['A','B','C','D','F','G','H','E','ALL','FANO','RLL'].forEach(k=>{
     const el=document.getElementById('formula-results-'+k);
     if(el)el.innerHTML='';
   });
@@ -442,7 +442,7 @@ function switchFormulaTab(tab){
   const astraVersionControl=document.getElementById('astra-version-control');
   if(astraVersionControl)astraVersionControl.hidden=tab!=='ASTRA';
   if(groupSel){
-    const isGroup=['A','B','C','D','F','G','H','E','I','J','HM','ASTRA','FANO'].includes(tab);
+    const isGroup=['A','B','C','D','F','G','H','E','I','J','HM','ASTRA','FANO','RLL'].includes(tab);
     groupSel.value=isGroup?tab:'';
     groupSel.classList.toggle('ftab-select-active',isGroup);
     if(isGroup)groupSel.setAttribute('aria-controls','formula-results-'+tab);
@@ -807,6 +807,7 @@ function _formulaQualityBadges(title,source,highlights=[]){
 function _formulaGroupKey(source,title=''){
   const s=String(source||title||'').trim();
   if(s.startsWith('FANO.'))return 'FANO';
+  if(s.startsWith('RLL'))return 'RLL';
   if(s.startsWith('A.'))return 'A';
   if(s.startsWith('B.'))return 'B';
   if(s.startsWith('C.'))return 'C';
@@ -847,7 +848,7 @@ function _groupFormulaCards(cards){
   return groups;
 }
 
-function _renderFormulaSummary({grouped,codexCards,patternCards=[],eCards,imperialCards,tycoonCards,hermesCards,fanoCards=0,targetDate}){
+function _renderFormulaSummary({grouped,codexCards,patternCards=[],eCards,imperialCards,tycoonCards,hermesCards,fanoCards=0,rllCards=0,targetDate}){
   const el=document.getElementById('formula-summary');
   if(!el)return;
   const counts={
@@ -863,6 +864,7 @@ function _renderFormulaSummary({grouped,codexCards,patternCards=[],eCards,imperi
     J:(tycoonCards||[]).length,
     HM:(hermesCards||[]).length,
     FANO:fanoCards,
+    RLL:rllCards,
   };
   const total=Object.values(counts).reduce((a,b)=>a+b,0);
   const targetLabel=targetDate?(()=>{
@@ -877,6 +879,7 @@ function _renderFormulaSummary({grouped,codexCards,patternCards=[],eCards,imperi
     ['สูตร 6 ตัว (pool 1-5)',counts.I,'จักรพรรดิ'],
     ['สูตร Hermes (pool 1-4)',counts.HM,'Hermes · ทดลอง'],
     ['รางวัลที่ 1 · สมมติฐาน',counts.FANO,'ระนาบฟาโน v4 + v5 · แยกจาก Picks · เลือก 2 เลขจากโมเดลย้อนหลัง'],
+    ['RLL · LLM สด',counts.RLL,'เรียนจากจำนวนหลักที่ตรง ไม่ใช่เงินรางวัล · ยังไม่มีหลักฐาน'],
   ].map(([label,value,sub])=>`<div class="formula-summary-item"><div class="formula-summary-label">${label}</div><div class="formula-summary-value">${value}</div><div class="formula-summary-sub">${sub}</div></div>`).join('');
   el.classList.add('active');
 }

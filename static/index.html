@@ -14,7 +14,7 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/app.css?v=dcbasep-20261103">
+<link rel="stylesheet" href="/static/app.css?v=rll-20261103">
 </head>
 <body>
 
@@ -495,6 +495,7 @@
       <option value="HM">HM · Hermes Pool 1-4 (ทดลอง)</option>
       <option value="ASTRA">Astra · ทดลอง</option>
       <option value="FANO">ระนาบฟาโน v4 + v5 · ทดลอง</option>
+      <option value="RLL">RLL · Reinforcement Learn LLM (ทดลอง)</option>
     </select>
     <label id="astra-version-control" class="astra-version-control" for="astra-version-select" hidden>
       <span>รุ่น Astra</span>
@@ -510,7 +511,7 @@
   <div id="ftab-desc-A" class="ftab-info" data-color="gold">สูตรบวกเลข · คี่คู่ · คูณหลัก · วันออก · อมตะ — สูตรพื้นบ้านจาก Facebook</div>
   <div id="ftab-desc-B" class="ftab-info hidden" data-color="blue">สูตรวัน+เดือน+ปี+หน่วยล่าง · สูตรวันเกิด+ราศี — จากเพจ Lottery Plus</div>
   <div id="ftab-desc-C" class="ftab-info hidden" data-color="purple">สูตรผันผวนเป็นตัวเงิน · 2530 ปีทอง · หงส์ฟ้าถล่มปฐพี — จากหนังสือ "สูตรลับคำนวณเลขพิชิตโชค" คุณยายสวัสดิ์</div>
-  <div id="ftab-desc-ALL" class="ftab-info hidden" data-color="green">รวมชุดเลขจากกลุ่ม A–J, HM และระนาบฟาโน · รายงาน Astra แสดงในแท็บแยก</div>
+  <div id="ftab-desc-ALL" class="ftab-info hidden" data-color="green">รวมชุดเลขจากกลุ่ม A–J, HM, ระนาบฟาโน และ RLL · รายงาน Astra แสดงในแท็บแยก</div>
   <div id="ftab-desc-D" class="ftab-info hidden" data-color="cyan">สูตร Claude สร้างเอง อ้างอิงงวดก่อน — แยกตามประเภทรางวัล: ท้าย2, หน้า3, ท้าย3, รางวัลที่1</div>
   <div id="ftab-desc-F" class="ftab-info hidden" data-color="lime">สูตร Codex ใช้ rolling history ก่อนงวดทำนายเท่านั้น — จำนวนเลขเท่ากับเจ้าพ่อ Claude เพื่อเทียบ backtest แบบแฟร์</div>
   <div id="ftab-desc-G" class="ftab-info hidden" data-color="red">แม่นขั้นเทพ — สูตรร้อยมาลัย 3 ตัวบน 3 แบบ และเลขท้าย 2 ตัวล่างแบบเด่น 3 ชุดตรง</div>
@@ -531,6 +532,11 @@
   <div id="ftab-desc-FANO" class="ftab-info hidden" data-color="violet">
     ระนาบฟาโน v4 ใช้ weighted pair-cover และ variable neighborhood search; v5 ใช้สัญญาณจัดอันดับแยกตามหลักกับ codebook ระนาบฟาโน 5 ชุด (Adaptive Rank Codebook) · config v5 คัดแบบ post-hoc จากผลย้อนหลังชุดเดียวกัน จึงเป็นสูตรทดลอง ไม่ใช่ผลยืนยันอิสระ · ทั้งสองรุ่นแยกจาก Picks และ Backtest วัดเลขรางวัลที่ 1 ตรง 6 หลัก
   </div>
+  <div id="ftab-desc-RLL" class="ftab-info hidden" data-color="pink">
+    Reinforcement Learn LLM — สูตรทดลองที่เรียก LLM หนึ่งครั้งต่องวด เลือก arm จาก 6 แบบด้วย Thompson sampling
+    และเรียนจากจำนวนหลักที่ตรงของชุดที่ใกล้ที่สุด (ไม่ใช่เงินรางวัล) · ค่าสุ่มคาดหวัง 1.496 ต่องวด ·
+    ยังไม่มีหลักฐานว่าดีกว่าการสุ่ม · หลักฐานเป็นแบบ prospective เท่านั้น (ไม่มี backtest ย้อนหลัง)
+  </div>
   <!-- Results per tab -->
   <div id="formula-results-A" class="formula-results-panel active" role="group" aria-label="ผลสูตรกลุ่ม A"></div>
   <div id="formula-results-B" class="formula-results-panel" role="group" aria-label="ผลสูตรกลุ่ม B"></div>
@@ -545,6 +551,7 @@
   <div id="formula-results-J" class="formula-results-panel" role="group" aria-label="ผลสูตรกลุ่ม J"></div>
   <div id="formula-results-HM" class="formula-results-panel" role="group" aria-label="ผลสูตรกลุ่ม HM"></div>
   <div id="formula-results-FANO" class="formula-results-panel" role="group" aria-label="ผลสูตรระนาบฟาโน v4 และ v5 รางวัลที่ 1"></div>
+  <div id="formula-results-RLL" class="formula-results-panel" role="group" aria-label="ผลสูตร Reinforcement Learn LLM"></div>
   <div id="formula-results-BT" class="formula-results-panel" role="group" aria-label="ผล Backtest">
     <section class="card astra-prospective-panel" aria-labelledby="formula-astra-prospective-title">
       <header class="bt-report-header"><h2 id="formula-astra-prospective-title">สะสมงวดใหม่ · Astra v1 / Sigma / ระนาบฟาโน v4 + v5</h2><p>ทดลอง · ตรงรางวัลที่ 1 ครบ 6 หลัก · 5 เลขไม่ซ้ำต่อวิธี · ใช้คำทำนายที่ลงทะเบียนก่อนงวดเท่านั้น</p><p>ระนาบฟาโน v5 เป็น config ที่คัดแบบ post-hoc จากผลย้อนหลัง 759 งวด · ผลงวดใหม่จะถูกติดตามแยกจากชุดค้นพบ</p><p>รายงานเดิมที่คำนวณหรือบันทึกอัตโนมัติยังไม่ถือว่าอยู่ในทะเบียนทดลองนี้</p></header>
@@ -830,30 +837,30 @@
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล" aria-hidden="true"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script defer src="/static/formula-engine.js?v=dcbasep-20261103"></script>
-<script defer src="/static/formula-calculators.js?v=dcbasep-20261103"></script>
-<script defer src="/static/formula-evaluation.js?v=dcbasep-20261103"></script>
-<script defer src="/static/shared/server-data.js?v=dcbasep-20261103"></script>
-<script defer src="/static/shared/ui-state.js?v=dcbasep-20261103"></script>
-<script defer src="/static/shared/queries.js?v=dcbasep-20261103"></script>
-<script defer src="/static/shared/api-client.js?v=dcbasep-20261103"></script>
-<script defer src="/static/shared/charts.js?v=dcbasep-20261103"></script>
-<script defer src="/static/shared/reports.js?v=dcbasep-20261103"></script>
-<script defer src="/static/report-core.js?v=dcbasep-20261103"></script>
-<script defer src="/static/app.js?v=dcbasep-20261103"></script>
-<script defer src="/static/astra-ui.js?v=dcbasep-20261103"></script>
-<script defer src="/static/app-shell.js?v=dcbasep-20261103"></script>
-<script defer src="/static/modules/decision-center/index.js?v=dcbasep-20261103"></script>
-<script defer src="/static/decision-center.js?v=dcbasep-20261103"></script>
-<script defer src="/static/decision-legacy.js?v=dcbasep-20261103"></script>
-<script defer src="/static/dashboard-ui.js?v=dcbasep-20261103"></script>
-<script defer src="/static/prediction-ui.js?v=dcbasep-20261103"></script>
-<script defer src="/static/mix-support.js?v=dcbasep-20261103"></script>
-<script defer src="/static/buyplan-ui.js?v=dcbasep-20261103"></script>
-<script defer src="/static/mix-ui.js?v=dcbasep-20261103"></script>
-<script defer src="/static/history-ui.js?v=dcbasep-20261103"></script>
-<script defer src="/static/first-prize-ui.js?v=dcbasep-20261103"></script>
-<script defer src="/static/app-boot.js?v=dcbasep-20261103"></script>
+<script defer src="/static/formula-engine.js?v=rll-20261103"></script>
+<script defer src="/static/formula-calculators.js?v=rll-20261103"></script>
+<script defer src="/static/formula-evaluation.js?v=rll-20261103"></script>
+<script defer src="/static/shared/server-data.js?v=rll-20261103"></script>
+<script defer src="/static/shared/ui-state.js?v=rll-20261103"></script>
+<script defer src="/static/shared/queries.js?v=rll-20261103"></script>
+<script defer src="/static/shared/api-client.js?v=rll-20261103"></script>
+<script defer src="/static/shared/charts.js?v=rll-20261103"></script>
+<script defer src="/static/shared/reports.js?v=rll-20261103"></script>
+<script defer src="/static/report-core.js?v=rll-20261103"></script>
+<script defer src="/static/app.js?v=rll-20261103"></script>
+<script defer src="/static/astra-ui.js?v=rll-20261103"></script>
+<script defer src="/static/app-shell.js?v=rll-20261103"></script>
+<script defer src="/static/modules/decision-center/index.js?v=rll-20261103"></script>
+<script defer src="/static/decision-center.js?v=rll-20261103"></script>
+<script defer src="/static/decision-legacy.js?v=rll-20261103"></script>
+<script defer src="/static/dashboard-ui.js?v=rll-20261103"></script>
+<script defer src="/static/prediction-ui.js?v=rll-20261103"></script>
+<script defer src="/static/mix-support.js?v=rll-20261103"></script>
+<script defer src="/static/buyplan-ui.js?v=rll-20261103"></script>
+<script defer src="/static/mix-ui.js?v=rll-20261103"></script>
+<script defer src="/static/history-ui.js?v=rll-20261103"></script>
+<script defer src="/static/first-prize-ui.js?v=rll-20261103"></script>
+<script defer src="/static/app-boot.js?v=rll-20261103"></script>
 
 </body>
 </html>

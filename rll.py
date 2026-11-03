@@ -395,7 +395,7 @@ def formula_forecast(target_date, *, call_model=None):
         arm, samples = _choose_arm(target, rows)
         # pool-weighted needs the whole window (it reads prize2..5 from the same rows)
         prompt, slice_sha, banned = _build_prompt(arm, draws, (target, window), _recent_outcomes(db))
-        attempts, numbers, last_error = [], None, None
+        attempts, numbers, last_error, raw_response = [], None, None, ''
 
         for attempt in (1, 2):
             if attempt == 1:
@@ -408,6 +408,7 @@ def formula_forecast(target_date, *, call_model=None):
             try:
                 result = call_model(text)
                 numbers = _parse_numbers(result['content'], banned)
+                raw_response = result.get('raw') or ''
                 attempts.append({'http': 200, 'latency_ms': result.get('latency_ms'),
                                  'usage': result.get('usage'), 'parse_error': None,
                                  'prompt_sha256': hashlib.sha256(text.encode()).hexdigest()})
@@ -446,6 +447,8 @@ def formula_forecast(target_date, *, call_model=None):
             'seed_used': False, 'prompt': prompt, 'prompt_sha256': hashlib.sha256(prompt.encode()).hexdigest(),
             'slice_sha256': slice_sha, 'history_sha256': history_sha, 'history_rows': len(window),
             'attempts': attempts, 'computed_at': now.isoformat(),
+            'response_raw': (raw_response or '')[:20000],
+            'response_sha256': hashlib.sha256((raw_response or '').encode()).hexdigest(),
             'code_sha256': hashlib.sha256((ROOT / 'rll.py').read_bytes() + (ROOT / 'astra.py').read_bytes()).hexdigest(),
             'source': 'server_live_llm', 'cached': False,
         }

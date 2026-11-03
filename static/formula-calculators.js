@@ -849,6 +849,27 @@ function _hermesCards(prevRow){
   return cards;
 }
 
+// ─── RLL. Reinforcement Learn LLM — หนึ่งการเรียก LLM ต่องวด ──────────────────
+// ticket 05/06: reward = จำนวนหลักที่ตรงของชุดที่ใกล้ที่สุด ไม่ใช่เงินรางวัล; การ์ดห้าขั้นตามดีไซน์
+// (arm → prompt/โมเดล → เลข → ผลเทียบค่าสุ่ม → ข้อจำกัด) และไม่พิมพ์ edge ใด ๆ
+function _rllCards(response){
+  const row=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(244,114,182,.10);border:1px solid #f472b666;color:var(--text);padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
+  const state=(response.arm_state_before||{})[response.arm]||{n:0,sum_r:0};
+  const n=Number(state.n)||0;
+  const observed=n?Number(state.sum_r)/n:null;
+  return _mkFormulaCard(
+    'RLL · Reinforcement Learn LLM','RLL · Reinforcement Learn LLM',
+    [`arm ที่ถูกเลือก: ${response.arm} · เล่นมาแล้ว ${n} งวด · reward = จำนวนหลักที่ตรงของชุดที่ใกล้ที่สุด (0–6)`,
+     `prompt hash ${String(response.prompt_sha256||'').slice(0,16)}… · โมเดล ${response.model||'—'} · อุณหภูมิ 0 และไม่ใช้ seed (ผู้ให้บริการไม่รับประกันซ้ำ)`,
+     `ค่าเฉลี่ยของ arm นี้ ${observed==null?'—':observed.toFixed(3)} เทียบค่าสุ่ม 1.496 ต่องวด · ช่วงปกติ 1–3 หลัก`,
+     'ยังไม่มีหลักฐานว่าสูตรนี้ดีกว่าการสุ่ม · การเห็นผลต่าง +50% ต้องใช้ประมาณ 480 งวด (~20 ปี)',
+     'ทุกใบมี EV เท่ากัน (ประมาณ −40% ต่อใบ) — สูตรไม่เปลี่ยน EV',
+     'หนึ่งการเรียกต่องวด · บันทึกผลครั้งแรกแล้วไม่คำนวณซ้ำ (ไม่มีปุ่มสุ่มใหม่)'],
+    [], row(response.numbers||[]),
+    'ทดลอง'
+  );
+}
+
 // เจ้าสัว pool6 leg (ISSUE-15) — reuses จักรพรรดิทองคำ's per-position blend structure
 // (0.8×freq + 0.2×closeness-to-target, per digit position, via _imperialRoundRobin) but
 // keyed to Group J's own arithmetic atom (|BK2 − DSUM|, ISSUE-13) instead of Group D's,
@@ -1275,6 +1296,29 @@ async function _runAllFormulas({userInitiated=false}={}){
   }catch(e){
     fanoHtml+=_formulaEmptyStateHtml('คำนวณระนาบฟาโน v5 ไม่สำเร็จ ตรวจสอบประวัติหรือการเชื่อมต่อแล้วลองใหม่');
   }
+  // RLL: an isolated hypothesis with one live LLM call per draw. It renders beside the formula
+  // families and never feeds Mix; the record is stored server-side and never recomputed.
+  let rllCards=0;
+  let rllHtml='';
+  try{
+    const response=await api(`rll/formula?date=${encodeURIComponent(predDateStr)}`,{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
+    if(calculationId!==window._formulaCalculationRequestId)return false;
+    const targetMatches=_formulaResponseTargetMatches(response,predDateStr);
+    const numbersOk=Array.isArray(response?.numbers)&&response.numbers.length===5&&response.numbers.every(n=>/^[0-9]{6}$/.test(String(n)));
+    if(!response?.ok||response.status==='unavailable'||!numbersOk||!targetMatches){
+      const message=response?.status==='unavailable'
+        ?'งวดนี้ไม่มีเลข (โมเดลไม่ตอบ) — ไม่มีการเติมเลขสำรอง'
+        :response?.ok&&!targetMatches?'ผล RLL ไม่ตรงกับงวดที่เลือก กรุณาคำนวณงวดนี้ใหม่'
+        :response?.detail||'คำนวณ RLL ไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองใหม่';
+      rllHtml=_formulaEmptyStateHtml(message);
+    }else{
+      const card=_rllCards(response);
+      if(card){rllHtml+=card;rllCards++;}
+    }
+  }catch(e){
+    rllHtml+=_formulaEmptyStateHtml('คำนวณ RLL ไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองใหม่');
+  }
+
 
   // กระจายการ์ดเข้า container ตามกลุ่ม
   const grouped=_groupFormulaCards(cards.concat(thepCards,misterCCards));
@@ -1288,9 +1332,9 @@ async function _runAllFormulas({userInitiated=false}={}){
   const groupI=imperialCards.join('');
   const groupJ=tycoonCards.join('');
   const groupHM=hermesCards.join('');
-  const groupAll=cards.concat(codexCards,patternCards,thepCards,misterCCards,eCards,imperialCards,tycoonCards,hermesCards,fanoHtml).join('');
+  const groupAll=cards.concat(codexCards,patternCards,thepCards,misterCCards,eCards,imperialCards,tycoonCards,hermesCards,fanoHtml,rllHtml).join('');
   setFormulaLoading('ขั้น 4/4 · คำนวณส่วนหลักแล้ว กำลังจัดทำผลรวมและข้อมูลอ้างอิง...');
-  _renderFormulaSummary({grouped,codexCards,patternCards,eCards,imperialCards,tycoonCards,hermesCards,fanoCards,targetDate:predDateStr});
+  _renderFormulaSummary({grouped,codexCards,patternCards,eCards,imperialCards,tycoonCards,hermesCards,fanoCards,rllCards,targetDate:predDateStr});
 
   document.getElementById('formula-results-A').innerHTML=_formulaPanelHtml(groupA,'A');
   document.getElementById('formula-results-B').innerHTML=_formulaPanelHtml(groupB,'B');
@@ -1304,6 +1348,7 @@ async function _runAllFormulas({userInitiated=false}={}){
   document.getElementById('formula-results-J').innerHTML=_formulaPanelHtml(groupJ,'เจ้าสัว');
   document.getElementById('formula-results-HM').innerHTML=_formulaPanelHtml(groupHM,'Hermes Pool 1-4');
   document.getElementById('formula-results-FANO').innerHTML=_formulaPanelHtml(fanoHtml,'ระนาบฟาโน');
+  document.getElementById('formula-results-RLL').innerHTML=_formulaPanelHtml(rllHtml,'RLL');
   document.getElementById('formula-results-ALL').innerHTML=_formulaPanelHtml(groupAll,'สูตรคำนวณรวม');
   document.getElementById('formula-empty').style.display='none';
   if(typeof buildReportProvenance==='function'){

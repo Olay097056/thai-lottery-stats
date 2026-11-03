@@ -129,7 +129,10 @@ function dcBuildScoreRows({cats,formulaResults,formulaMatches,btRows,mode,second
     const edge=bt?.edge??0;
     const isPattern=String(fr.name||'').includes('Pattern Link');
     const compact=(fr.preds||[]).length<=10;
-    if(!isPattern&&!(compact&&edge>0))return;
+    // Ticket 10: RLL is the one zero-evidence formula allowed past this gate. It carries no
+    // backtest row, so its weight stays 1.0, and its row still shows the ทดลอง badge plus the
+    // "ไม่มีหลักฐาน" marker. Keyed on the explicit group so no other ทดลอง formula inherits it.
+    if(!isPattern&&!(compact&&(edge>0||fr.group==='RLL')))return;
     const w=bt?.weight||1;
     (fr.preds||[]).forEach(n=>{
       const len=String(n||'').length;

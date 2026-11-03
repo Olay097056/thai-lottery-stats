@@ -33,10 +33,11 @@ assert.equal(sandbox._formulaResponseHasValidCandidates({ numbers: ['000001', '0
 assert.equal(sandbox._formulaResponseHasValidCandidates({ numbers: ['000001', '000002', '000003', '000004', 5] }), false);
 assert.equal(sandbox._formulaResponseHasValidCandidates({ numbers: ['000001', '000002', '000003', '000004'] }), false);
 
-assert.equal((source.match(/const targetMatches=_formulaResponseTargetMatches\(response,predDateStr\);/g) || []).length, 2,
-  'Fano v4 and Fano v5 must both validate the selected target');
-assert.equal((source.match(/\|\|!targetMatches\)/g) || []).length, 2,
-  'both formula result branches must reject mismatched targets');
+// Three server forecasts now validate the target: Fano v4, Fano v5, and the live-LLM RLL call.
+assert.equal((source.match(/const targetMatches=_formulaResponseTargetMatches\(response,predDateStr\);/g) || []).length, 3,
+  'Fano v4, Fano v5 and RLL must all validate the selected target');
+assert.equal((source.match(/\|\|!targetMatches\)/g) || []).length, 3,
+  'every server-forecast branch must reject mismatched targets');
 assert.equal((source.match(/!_formulaResponseHasValidCandidates\(response\)/g) || []).length, 2,
   'both formula result branches must reject malformed and duplicate candidates');
 console.log('PASS: formula target matcher and Fano v4/Fano v5 guards');
