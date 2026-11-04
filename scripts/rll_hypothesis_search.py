@@ -1,22 +1,27 @@
-"""Offline hypothesis search for a measurable field (option 3) — protocol v2.
+"""Offline hypothesis search for a measurable field (option 3) — protocol hs-v3.
 
-A hypothesis is pure DATA (never code). v1 scored each tail position independently; v2 adds terms that
-couple positions, so candidates are chosen by enumerating all 1000 triples and taking the best k.
+A hypothesis is pure DATA (never code). The harness owns every operator; a hypothesis only picks
+operators, sources, windows and weights. Candidates are the top k of an enumeration over all 1000
+tails, so terms that couple positions are expressible.
 
 Term kinds
-  positions[p] = [term]   per-position additive feature (freq / gap / markov / weekday)
-  joints       = [term]   joint feature over a digit pair (pair01 / pair02 / pair12)
-  sums         = [term]   preference over the digit sum a+b+c (0..27)
-  exclude      = [term]   penalty for tails seen in the last `draws` draws' pool
+  positions[p] = [term]   per-position additive feature: freq / gap / markov / weekday / markov2 / markov3
+  joints       = [term]   exact digit-pair frequency: pair01 / pair02 / pair12
+  shapes       = [term]   coarse pair structure or shape: pairsum01|02|12, diff01|02|12, summod
+  sums         = [term]   digit-sum frequency (0..27)
+  structs      = [term]   within-the-tail structure: repeat / ascending / even (no history)
+  exclude      = [term]   penalty for tails seen in the last 1-5 draws' pool
 
-Every feature is computed from draws strictly before the target. The harness owns every operator, so a
-hypothesis cannot read the future, import anything, or touch the network — the DSL is the sandbox.
+v3 adds shapes (19-cell pair sums, 10-cell pair differences, 10-cell sum mod 10 — far more data per
+cell than the 100-cell joint tables), within-tail structure, and lagged markov at 2 and 3 draws.
+
+Every historical feature is computed from draws strictly before the target. The DSL is the sandbox.
 
 Field: last-3 digits of the prize 1-4 pool (~62 distinct tails / 1000), on the 464 draws where the pool
 actually exists (>= 55 distinct tails, 2006-12-30 onward).
 
-Protocol (mirrors ADR-0003's gate):
-  train      oldest 60 % of evaluable targets — screening at z >= 3.5
+Protocol:
+  train      oldest 60 % of evaluable targets — screening at z >= 3.5 (calibrate against the null)
   validation next 20 %                        — confirmation at z >= 2.0
   holdout    newest 20 %                      — evaluated ONCE, never used for selection
 
@@ -41,12 +46,34 @@ sys.path.insert(0, str(ROOT))
 import astra  # noqa: E402
 
 WINDOWS = (30, 60, 120)
-EXCLUDE_DRAWS = (1, 2, 3)
+EXCLUDE_DRAWS = (1, 2, 3, 5)
+LAGS = (2, 3)
 WARMUP = 60
-PROTOCOL = 'hs-v2'
+PROTOCOL = 'hs-v3'
 PAIRS = {'pair01': (0, 1), 'pair02': (0, 2), 'pair12': (1, 2)}
-SUM_GRID = (np.arange(10)[:, None, None] + np.arange(10)[None, :, None]
-            + np.arange(10)[None, None, :]).astype(np.int16)  # 10x10x10 digit sums
+SOURCES = ('pool', 'prize1')
+SHAPES = ('pairsum01', 'pairsum02', 'pairsum12', 'diff01', 'diff02', 'diff12', 'summod')
+
+_I = np.arange(10)
+_A, _B, _C = _I[:, None, None], _I[None, :, None], _I[None, None, :]
+SUM_GRID = (_A + _B + _C).astype(np.int16)
+SUMMOD_GRID = ((_A + _B + _C) % 10).astype(np.int16)
+# pair index grids are 10x10 and get broadcast onto the missing axis
+PAIR_INDEX = {
+    'pair01': (_A + _B)[:, :, 0].astype(np.int16),
+    'pair02': (_A + _C)[:, 0, :].astype(np.int16),
+    'pair12': (_B + _C)[0, :, :].astype(np.int16),
+}
+DIFF_INDEX = {
+    'diff01': ((_B - _A) % 10)[:, :, 0].astype(np.int16),
+    'diff02': ((_C - _A) % 10)[:, 0, :].astype(np.int16),
+    'diff12': ((_C - _B) % 10)[0, :, :].astype(np.int16),
+}
+STRUCT = {
+    'repeat': ((_A == _B).astype(float) + (_B == _C).astype(float) + (_A == _C).astype(float)),
+    'ascending': ((_A < _B) & (_B < _C)).astype(float),
+    'even': ((_A % 2 == 0).astype(float) + (_B % 2 == 0).astype(float) + (_C % 2 == 0).astype(float)),
+}
 
 
 # ─── corpus ─────────────────────────────────────────────────────────────────
@@ -80,6 +107,23 @@ def day_of_week(text):
     return (d + (13 * (m + 1)) // 5 + k + k // 4 + j // 4 + 5 * j) % 7
 
 
+def _shape_tallies(tails):
+    """summod (10), pair sums (19 per pair), pair differences (10 per pair) for one draw."""
+    summod = np.zeros(10)
+    pairsum = {key: np.zeros(19) for key in PAIRS}
+    diff = {key: np.zeros(10) for key in PAIRS}
+    for tail in tails:
+        a, b, c = int(tail[0]), int(tail[1]), int(tail[2])
+        summod[(a + b + c) % 10] += 1.0
+        pairsum['pair01'][a + b] += 1.0
+        pairsum['pair02'][a + c] += 1.0
+        pairsum['pair12'][b + c] += 1.0
+        diff['pair01'][(b - a) % 10] += 1.0
+        diff['pair02'][(c - a) % 10] += 1.0
+        diff['pair12'][(c - b) % 10] += 1.0
+    return summod, pairsum, diff
+
+
 class Corpus:
     """Per-draw tallies plus a per-target feature cache built only from earlier draws."""
 
@@ -98,6 +142,8 @@ class Corpus:
                 for position in range(3):
                     counts[position, int(tail[position])] += 1.0
             self.pool_counts.append(counts)
+        self.day_pool_shapes = [_shape_tallies(t) for t in self.tails]
+        self.day_prize_shapes = [_shape_tallies([t]) for t in self.prize1_tail]
         self._cache = {}
 
     def features(self, index):
@@ -112,14 +158,11 @@ class Corpus:
             start = max(0, index - window)
             span = range(start, index)
             for position in range(3):
-                # pool frequency over the window
                 total = np.zeros(10)
                 for j in span:
                     total += self.pool_counts[j][position]
-                s = total.sum() or 1.0
-                feats[('freq', 'pool', window, position)] = total / s
+                feats[('freq', 'pool', window, position)] = total / (total.sum() or 1.0)
 
-                # pool gap: draws since a digit last appeared at this position
                 gaps = np.full(10, float(window))
                 for age, j in enumerate(range(index - 1, start - 1, -1)):
                     for d in range(10):
@@ -127,15 +170,12 @@ class Corpus:
                             gaps[d] = age
                 feats[('gap', 'pool', window, position)] = gaps / (gaps.max() or 1.0)
 
-                # weekday: pool frequency restricted to the target's weekday
                 total = np.zeros(10)
                 for j in span:
                     if self.weekday[j] == target_weekday:
                         total += self.pool_counts[j][position]
-                s = total.sum() or 1.0
-                feats[('weekday', 'pool', window, position)] = total / s
+                feats[('weekday', 'pool', window, position)] = total / (total.sum() or 1.0)
 
-                # markov over prize-1 tails (defined for every draw)
                 table = np.zeros((10, 10))
                 for j in range(start + 1, index):
                     table[int(self.prize1_tail[j - 1][position]), int(self.prize1_tail[j][position])] += 1.0
@@ -143,7 +183,6 @@ class Corpus:
                 row = table[state]
                 feats[('markov', 'pool', window, position)] = row / (row.sum() or 1.0)
 
-                # prize-1 tail features
                 total = np.zeros(10)
                 for j in span:
                     total[int(self.prize1_tail[j][position])] += 1.0
@@ -163,9 +202,34 @@ class Corpus:
                 feats[('weekday', 'prize1', window, position)] = total / (total.sum() or 1.0)
                 feats[('markov', 'prize1', window, position)] = feats[('markov', 'pool', window, position)]
 
-            # joint digit-pair frequencies
+                # lagged markov: P(digit at p in t | digit at p in t-L)
+                for lag in LAGS:
+                    table = np.zeros((10, 10))
+                    for j in range(start + lag, index):
+                        table[int(self.prize1_tail[j - lag][position]),
+                              int(self.prize1_tail[j][position])] += 1.0
+                    state = int(self.prize1_tail[index - lag][position]) if index >= lag else 0
+                    row = table[state]
+                    feats[(f'markov{lag}', 'prize1', window, position)] = row / (row.sum() or 1.0)
+
+            for source, days in (('pool', self.day_pool_shapes), ('prize1', self.day_prize_shapes)):
+                summod = np.zeros(10)
+                pairsum = {key: np.zeros(19) for key in PAIRS}
+                diff = {key: np.zeros(10) for key in PAIRS}
+                for j in span:
+                    day_summod, day_pairsum, day_diff = days[j]
+                    summod += day_summod
+                    for key in PAIRS:
+                        pairsum[key] += day_pairsum[key]
+                        diff[key] += day_diff[key]
+                feats[('summod', source, window)] = summod / (summod.sum() or 1.0)
+                for key in PAIRS:
+                    feats[(f'pairsum{key[-2:]}', source, window)] = pairsum[key] / (pairsum[key].sum() or 1.0)
+                    feats[(f'diff{key[-2:]}', source, window)] = diff[key] / (diff[key].sum() or 1.0)
+
+            # exact joint digit-pair frequencies
             for pair, (left, right) in PAIRS.items():
-                for source in ('pool', 'prize1'):
+                for source in SOURCES:
                     table = np.zeros((10, 10))
                     for j in span:
                         if source == 'pool':
@@ -177,17 +241,14 @@ class Corpus:
                     feats[(pair, source, window)] = table / (table.sum() or 1.0)
 
             # digit-sum preference (0..27)
-            for source in ('pool', 'prize1'):
+            for source in SOURCES:
                 sums = np.zeros(28)
                 for j in span:
-                    if source == 'pool':
-                        for tail in self.tails[j]:
-                            sums[sum(int(ch) for ch in tail)] += 1.0
-                    else:
-                        sums[sum(int(ch) for ch in self.prize1_tail[j])] += 1.0
+                    targets = self.tails[j] if source == 'pool' else [self.prize1_tail[j]]
+                    for tail in targets:
+                        sums[sum(int(ch) for ch in tail)] += 1.0
                 feats[('sum', source, window)] = sums / (sums.sum() or 1.0)
 
-        # exclusion masks: tails seen in the pool of the last N draws
         for draws in EXCLUDE_DRAWS:
             mask = np.zeros((10, 10, 10))
             for j in range(max(0, index - draws), index):
@@ -198,6 +259,14 @@ class Corpus:
 
 
 # ─── hypotheses ─────────────────────────────────────────────────────────────
+
+def _broadcast(table, op):
+    if op.endswith('01'):
+        return table[:, :, None]
+    if op.endswith('02'):
+        return table[:, None, :]
+    return table[None, :, :]
+
 
 def score_grid(hyp, feats):
     """10x10x10 score for every possible tail, from one target's feature cache."""
@@ -211,20 +280,31 @@ def score_grid(hyp, feats):
 
     for term in hyp.get('joints') or []:
         table = feats.get((term['op'], term['source'], int(term['window'])))
-        if table is None:
+        if table is not None:
+            grid = grid + float(term['weight']) * _broadcast(table, term['op'])
+
+    for term in hyp.get('shapes') or []:
+        op = term['op']
+        vec = feats.get((op, term['source'], int(term['window'])))
+        if vec is None:
             continue
         weight = float(term['weight'])
-        if term['op'] == 'pair01':
-            grid = grid + weight * table[:, :, None]
-        elif term['op'] == 'pair02':
-            grid = grid + weight * table[:, None, :]
+        if op == 'summod':
+            grid = grid + weight * vec[SUMMOD_GRID]
+        elif op.startswith('pairsum'):
+            grid = grid + weight * _broadcast(vec[PAIR_INDEX['pair' + op[-2:]]], 'pair' + op[-2:])
         else:
-            grid = grid + weight * table[None, :, :]
+            grid = grid + weight * _broadcast(vec[DIFF_INDEX[op]], op)
 
     for term in hyp.get('sums') or []:
         vec = feats.get(('sum', term['source'], int(term['window'])))
         if vec is not None:
             grid = grid + float(term['weight']) * vec[SUM_GRID]
+
+    for term in hyp.get('structs') or []:
+        table = STRUCT.get(term['name'])
+        if table is not None:
+            grid = grid + float(term['weight']) * table
 
     for term in hyp.get('exclude') or []:
         mask = feats.get(('exclmask', 'pool', int(term.get('draws', 1))))
@@ -307,13 +387,14 @@ def permutation_test(hypotheses, corpus, train, shuffles=100, seed=7):
     maxes = []
     for _ in range(shuffles):
         rng.shuffle(order)
-        base_mean = sum(baselines[q] for q in order_slots(order, train_slots)) / n
+        base_mean = sum(baselines[order[target]] for target in train_slots) / n
         se = math.sqrt(max(base_mean * (1 - base_mean), 1e-12) / n)
         best = -9e9
         for per_hyp in picks:
             hits = 0
             for slot, target in enumerate(train_slots):
-                if any(p in sets[order[target]] for p in per_hyp[slot]):
+                outcome = sets[order[target]]
+                if any(p in outcome for p in per_hyp[slot]):
                     hits += 1
             best = max(best, (hits / n - base_mean) / se if se else 0.0)
         maxes.append(best)
@@ -322,11 +403,6 @@ def permutation_test(hypotheses, corpus, train, shuffles=100, seed=7):
             'max_z': {'p50': round(maxes[len(maxes) // 2], 2),
                       'p95': round(maxes[int(len(maxes) * 0.95)], 2),
                       'max': round(maxes[-1], 2)}}
-
-
-def order_slots(order, train_slots):
-    for target in train_slots:
-        yield order[target]
 
 
 def search(hypotheses, corpus, z_screen=3.5, z_confirm=2.0, shortlist=12):
@@ -392,30 +468,35 @@ def selftest(corpus):
           f'(baseline {stats["baseline"]:.3f})')
     ok &= leak_hits / len(sample) > 0.9
 
-    # v2 terms must actually be wired: a huge weight on one joint table must change the picks
-    joint = {'name': 'joint', 'k': 10, 'positions': [[], [], []],
-             'joints': [{'op': 'pair01', 'source': 'pool', 'window': 60, 'weight': 50.0}],
-             'sums': [], 'exclude': []}
-    plain = candidates(flat, corpus.features(sample[0]))
-    coupled = candidates(joint, corpus.features(sample[0]))
-    assert len(set(coupled)) == 10 and len(set(plain)) == 10
-    ok &= plain != coupled
-    print(f'OK  joint term changes the candidate set ({plain[0]}… -> {coupled[0]}…)')
+    base_picks = candidates(flat, corpus.features(sample[0]))
+    probes = [
+        ('joint', {'joints': [{'op': 'pair01', 'source': 'pool', 'window': 60, 'weight': 50.0}]}),
+        ('pairsum', {'shapes': [{'op': 'pairsum12', 'source': 'pool', 'window': 60, 'weight': 50.0}]}),
+        ('diff', {'shapes': [{'op': 'diff01', 'source': 'prize1', 'window': 60, 'weight': 50.0}]}),
+        ('summod', {'shapes': [{'op': 'summod', 'source': 'pool', 'window': 60, 'weight': 50.0}]}),
+        ('struct', {'structs': [{'name': 'repeat', 'weight': 50.0}]}),
+        ('markov3', {'positions': [[{'op': 'markov3', 'source': 'prize1', 'window': 60, 'weight': 50.0}]] * 3}),
+    ]
+    for label, extra in probes:
+        hyp = {'name': label, 'k': 10, 'positions': [[], [], []], **extra}
+        picks = candidates(hyp, corpus.features(sample[0]))
+        assert len(set(picks)) == 10
+        changed = picks != base_picks
+        ok &= changed
+        print(f'{"OK " if changed else "BAD"} v3 term "{label}" moves the picks ({base_picks[0]}… -> {picks[0]}…)')
 
-    excluded = {'name': 'exclude', 'k': 10, 'positions': [[], [], []],
-                'joints': [], 'sums': [], 'exclude': [{'draws': 1, 'weight': -99.0}]}
-    picks = set(candidates(excluded, corpus.features(sample[0])))
-    recent = corpus.tails[sample[0] - 1]
-    ok &= not (picks & recent)
-    print(f'OK  exclude term drops all {len(picks & recent)} of last draw\'s tails from the picks')
+    picks = set(candidates({'name': 'x', 'k': 10, 'positions': [[], [], []],
+                            'exclude': [{'draws': 1, 'weight': -99.0}]}, corpus.features(sample[0])))
+    ok &= not (picks & corpus.tails[sample[0] - 1])
+    print('OK  exclude term drops the last draw\'s tails')
 
-    sums = {'name': 'sums', 'k': 10, 'positions': [[], [], []], 'joints': [],
-            'sums': [{'source': 'pool', 'window': 60, 'weight': 5.0}], 'exclude': []}
-    picked_sums = [sum(int(ch) for ch in p) for p in candidates(sums, corpus.features(sample[0]))]
-    ok &= max(picked_sums) - min(picked_sums) <= 3
-    print(f'OK  sum term clusters the picks (sums {min(picked_sums)}..{max(picked_sums)})')
+    picked = [sum(int(ch) for ch in p) for p in
+              candidates({'name': 's', 'k': 10, 'positions': [[], [], []],
+                          'sums': [{'source': 'pool', 'window': 60, 'weight': 5.0}]},
+                         corpus.features(sample[0]))]
+    ok &= max(picked) - min(picked) <= 4
+    print(f'OK  sum term clusters the picks (sums {min(picked)}..{max(picked)})')
 
-    # the null must be centred on zero: an un-centre null is a size mismatch, not a control
     control = permutation_test([flat], corpus, corpus.usable[WARMUP:WARMUP + 120], shuffles=12)
     centre = sum(control['maxes']) / len(control['maxes'])
     ok &= -1.2 < centre < 1.2

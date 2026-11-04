@@ -121,7 +121,7 @@ class JointTermTest(unittest.TestCase):
 
     def test_exclusion_masks_use_only_prior_draws(self):
         masks = [k for k in self.feats if k[0] == 'exclmask']
-        self.assertEqual(sorted(m[2] for m in masks), [1, 2, 3])
+        self.assertEqual(sorted(m[2] for m in masks), [1, 2, 3, 5])
         recent = set()
         for j in range(self.index - 1, self.index):
             recent |= self.corpus.tails[j]
@@ -129,6 +129,52 @@ class JointTermTest(unittest.TestCase):
         for tail in recent:
             self.assertEqual(mask[int(tail[0]), int(tail[1]), int(tail[2])], 1.0)
         self.assertEqual(mask.sum() > 0, True)
+
+
+class V3TermTest(unittest.TestCase):
+    """hs-v3 terms: coarse pair shapes, within-tail structure, lagged markov."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.corpus = Corpus(load_rows())
+        cls.index = cls.corpus.usable[240]
+        cls.feats = cls.corpus.features(cls.index)
+        cls.base = candidates(FLAT, cls.feats)
+
+    def _picks(self, extra):
+        return candidates({'name': 'probe', 'k': 10, 'positions': [[], [], []], **extra}, self.feats)
+
+    def test_shape_terms_are_wired(self):
+        for op in ('pairsum01', 'pairsum12', 'diff01', 'diff12', 'summod'):
+            picks = self._picks({'shapes': [{'op': op, 'source': 'pool', 'window': 60, 'weight': 20.0}]})
+            self.assertNotEqual(picks, self.base, op)
+
+    def test_pairsum_and_diff_tables_have_the_right_support(self):
+        self.assertEqual(len(self.feats[('pairsum01', 'pool', 60)]), 19)
+        self.assertEqual(len(self.feats[('diff01', 'pool', 60)]), 10)
+        self.assertEqual(len(self.feats[('summod', 'prize1', 120)]), 10)
+        self.assertAlmostEqual(float(self.feats[('diff02', 'pool', 30)].sum()), 1.0, places=6)
+
+    def test_struct_terms_are_wired_and_not_constant(self):
+        for name in ('repeat', 'ascending', 'even'):
+            grid = score_grid({'name': 's', 'k': 10, 'positions': [[], [], []],
+                               'structs': [{'name': name, 'weight': 1.0}]}, self.feats)
+            self.assertGreater(float(grid.max() - grid.min()), 0.0, name)
+            self.assertNotEqual(self._picks({'structs': [{'name': name, 'weight': 2.0}]}), self.base, name)
+
+    def test_lagged_markov_differs_from_lag_one(self):
+        self.assertIn(('markov2', 'prize1', 60, 0), self.feats)
+        self.assertIn(('markov3', 'prize1', 60, 2), self.feats)
+        lag1 = self.feats[('markov', 'prize1', 60, 0)]
+        lag3 = self.feats[('markov3', 'prize1', 60, 0)]
+        self.assertGreater(float(abs(lag1 - lag3).max()), 0.0)
+
+    def test_exclusion_mask_extends_to_five_draws(self):
+        masks = sorted(k[2] for k in self.feats if k[0] == 'exclmask')
+        self.assertEqual(masks, [1, 2, 3, 5])
+        wide = self.feats[('exclmask', 'pool', 5)]
+        narrow = self.feats[('exclmask', 'pool', 1)]
+        self.assertGreaterEqual(float(wide.sum()), float(narrow.sum()))
 
 
 class GeneratorTest(unittest.TestCase):
@@ -150,6 +196,17 @@ class GeneratorTest(unittest.TestCase):
         self.assertEqual(good[0]['name'], 'ok')
         self.assertEqual(good[0]['positions'][1], [])
         self.assertEqual(dropped[0]['reason'], 'all weights zero')
+
+    def test_validate_keeps_the_v3_operators(self):
+        good, _ = validate([
+            {'name': 'lag', 'positions': [[{'op': 'markov3', 'source': 'prize1', 'window': 60, 'weight': 1}],
+                                          [], []],
+             'shapes': [{'op': 'summod', 'source': 'pool', 'window': 30, 'weight': -1}],
+             'structs': [{'name': 'even', 'weight': 0.5}]},
+        ])
+        self.assertEqual(good[0]['positions'][0][0]['op'], 'markov3')
+        self.assertEqual(good[0]['shapes'][0]['op'], 'summod')
+        self.assertEqual(good[0]['structs'][0]['name'], 'even')
 
     def test_generated_set_is_loadable_and_unique(self):
         path = ROOT / '.scratch' / 'rll-llm-formula' / 'hypotheses.json'

@@ -22,41 +22,46 @@ import sys
 sys.path.insert(0, str(ROOT))
 import rll  # noqa: E402  (for _env_key only)
 
-OUT = ROOT / '.scratch' / 'rll-llm-formula' / 'hypotheses-v2.json'
+OUT = ROOT / '.scratch' / 'rll-llm-formula' / 'hypotheses-v3.json'
 BASE = os.environ.get('RLL_BASE_URL', 'https://api.commandcode.ai/provider/v1')
 MODEL = os.environ.get('RLL_MODEL', 'deepseek/deepseek-v4.1-flash')
 
 SCHEMA = """Each hypothesis is a JSON object:
 {"name":"short-slug","k":10,"claim":"one sentence",
  "positions":[[term,term],[term,term],[term,term]],
- "joints":[jterm],"sums":[sterm],"exclude":[eterm]}
-Per-position term: {"op":"freq|gap|markov|weekday","source":"pool|prize1","window":30|60|120,"weight":-3..3}
+ "joints":[jterm],"shapes":[shtrm],"sums":[sterm],"structs":[structterm],"exclude":[eterm]}
+Per-position term: {"op":"freq|gap|markov|markov2|markov3|weekday","source":"pool|prize1","window":30|60|120,"weight":-3..3}
 Joint term:        {"op":"pair01|pair02|pair12","source":"pool|prize1","window":30|60|120,"weight":-3..3}
+Shape term:        {"op":"pairsum01|pairsum02|pairsum12|diff01|diff02|diff12|summod","source":"pool|prize1","window":30|60|120,"weight":-3..3}
 Digit-sum term:    {"source":"pool|prize1","window":30|60|120,"weight":-3..3}
-Exclusion term:    {"draws":1|2|3,"weight":-3..3}
+Structure term:    {"name":"repeat|ascending|even","weight":-3..3}
+Exclusion term:    {"draws":1|2|3|5,"weight":-3..3}
 
 How it scores: every one of the 1000 possible 3-digit tails gets a score, and the top k are the tickets.
-- positions[p] adds weight * feature(digit at position p)
-- joints adds weight * P(pair of digits) across two positions — this is the ONLY way to express coupling
-- sums adds weight * P(digit sum a+b+c)
+- positions[p] adds weight * feature(digit at position p); markov2/markov3 look 2 or 3 draws back
+- joints adds weight * P(exact digit pair) — 100 cells, needs a lot of data
+- shapes adds weight * P(pair SUM a+b = 0..18) or P(pair DIFFERENCE mod 10) — only 19/10 cells, much
+  better sampled than an exact pair table
+- sums adds weight * P(digit sum a+b+c); summod is the same mod 10
+- structs adds weight * (0..3 pairwise-equal digits), (1 if ascending), (0..3 even digits) — no history,
+  it describes the tail's own shape
 - exclude subtracts weight from tails that appeared in the pool of the last `draws` draws
-- freq = digit frequency at that position; gap = draws since it last appeared;
-  markov = P(digit | previous draw's digit); weekday = freq on the target's weekday only
-- pool = all ~62 prize 1-4 tails of a draw; prize1 = the first prize only
+- freq = digit frequency at that position; gap = draws since it last appeared; weekday = freq on the
+  target's weekday only; pool = all ~62 prize 1-4 tails of a draw; prize1 = the first prize only
 - features come from PRIOR draws only; there is no way to see the target, do not try
-- at most 3 joints, 2 sums, 2 exclude terms per hypothesis; leaving a list out means "none"
+- limits: 3 joints, 3 shapes, 2 sums, 2 structs, 2 exclude; leaving a list out means "none"
 """
 
 ROUND_PROMPTS = [
-    ("joint", "Give 40 hypotheses that use JOINT structure: `joints` terms alone, or one joint term plus "
-              "one per-position term. Explore pair01 (digits 1-2), pair02 (digits 1-3) and pair12 "
-              "(digits 2-3), and both negative and positive weights."),
-    ("sum", "Give 40 hypotheses built around DIGIT SUM plus one other signal: a `sums` term weighted "
-            "positively or negatively, optionally combined with a single freq/gap term or a joint term. "
-            "Vary the window and the sign."),
-    ("exclude", "Give 40 hypotheses that use EXCLUSION (`exclude` with draws 1-3, negative weight) "
-                "combined with a per-position or joint term, plus a few pure-exclusion controls "
-                "(exclude alone, nothing else) and pure-joint controls."),
+    ("shape", "Give 40 hypotheses that use SHAPE terms: pairsum01/02/12 (pair sums), diff01/02/12 (pair "
+              "differences mod 10) or summod, alone or with one joint term. These tables are small, so "
+              "they are better sampled than exact pairs — vary source, window and sign."),
+    ("struct", "Give 40 hypotheses that use STRUCTURE terms (repeat, ascending, even) alone or combined "
+               "with one shape or per-position term. Include the pure-structure controls and negative "
+               "weights, plus a few that combine structure with a lag term."),
+    ("lag", "Give 40 hypotheses built on LAGGED markov (markov2, markov3) and broader exclusion "
+            "(draws 3 and 5), combined with a shape term. Vary window and sign; include a few "
+            "pure-lag controls."),
 ]
 
 
@@ -126,7 +131,7 @@ def validate(items):
             for terms in positions:
                 kept = []
                 for term in terms:
-                    if term.get('op') not in ('freq', 'gap', 'markov', 'weekday'):
+                    if term.get('op') not in ('freq', 'gap', 'markov', 'markov2', 'markov3', 'weekday'):
                         continue
                     if term.get('source') not in ('pool', 'prize1'):
                         continue
@@ -152,6 +157,28 @@ def validate(items):
                 joints.append({'op': term['op'], 'source': term['source'],
                                'window': window if window in (30, 60, 120) else 60,
                                'weight': round(weight, 3)})
+            shapes = []
+            for term in (item.get('shapes') or [])[:3]:
+                if term.get('op') not in ('pairsum01', 'pairsum02', 'pairsum12',
+                                          'diff01', 'diff02', 'diff12', 'summod'):
+                    continue
+                if term.get('source') not in ('pool', 'prize1'):
+                    continue
+                weight = float(term.get('weight', 0))
+                if weight == 0 or abs(weight) > 3:
+                    continue
+                window = int(term.get('window', 60))
+                shapes.append({'op': term['op'], 'source': term['source'],
+                               'window': window if window in (30, 60, 120) else 60,
+                               'weight': round(weight, 3)})
+            structs = []
+            for term in (item.get('structs') or [])[:2]:
+                if term.get('name') not in ('repeat', 'ascending', 'even'):
+                    continue
+                weight = float(term.get('weight', 0))
+                if weight == 0 or abs(weight) > 3:
+                    continue
+                structs.append({'name': term['name'], 'weight': round(weight, 3)})
             sums = []
             for term in (item.get('sums') or [])[:2]:
                 if term.get('source') not in ('pool', 'prize1'):
@@ -171,17 +198,18 @@ def validate(items):
                 if weight == 0 or abs(weight) > 3:
                     continue
                 exclude.append({'draws': draws, 'weight': round(weight, 3)})
-            if not any(clean) and not joints and not sums and not exclude:
+            if not any(clean) and not joints and not shapes and not sums and not structs and not exclude:
                 raise ValueError('all weights zero')
             good.append({'name': name, 'k': 10, 'claim': str(item.get('claim', ''))[:220],
-                         'positions': clean, 'joints': joints, 'sums': sums, 'exclude': exclude})
+                         'positions': clean, 'joints': joints, 'shapes': shapes,
+                         'sums': sums, 'structs': structs, 'exclude': exclude})
         except (KeyError, TypeError, ValueError) as exc:
             dropped.append({'reason': str(exc), 'item': str(item)[:120]})
     return good, dropped
 
 
 def spec_key(hyp):
-    return json.dumps({k: hyp.get(k) for k in ('positions', 'joints', 'sums', 'exclude')},
+    return json.dumps({k: hyp.get(k) for k in ('positions', 'joints', 'shapes', 'sums', 'structs', 'exclude')},
                       sort_keys=True)
 
 
@@ -238,7 +266,7 @@ def main():
               f'tokens={(usage or {}).get("total_tokens")}')
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({'generated_at': datetime.now().isoformat(timespec='seconds'),
-                               'model': MODEL, 'protocol': 'hs-v2',
+                               'model': MODEL, 'protocol': 'hs-v3',
                                'runs': runs, 'hypotheses': hypotheses},
                               ensure_ascii=False, indent=1), encoding='utf-8')
     print(f'hypotheses={len(hypotheses)} -> {out}')

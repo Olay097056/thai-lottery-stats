@@ -2,29 +2,30 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
-## 2026-11-03/04 — Offline hypothesis search: 368 สมมติฐานจาก LLM, ไม่มีตัวไหนผ่าน (ADR-0010)
+## 2026-11-03/04 — Offline hypothesis search: 587 สมมติฐานจาก LLM, ไม่มีตัวไหนผ่าน (ADR-0010)
 
-- เพิ่มเครื่องมือวิจัย `scripts/rll_hypothesis_search.py` — ให้ LLM คิด "สมมติฐาน" เป็น **data spec** (JSON)
+- เครื่องมือวิจัย `scripts/rll_hypothesis_search.py` — ให้ LLM คิด "สมมติฐาน" เป็น **data spec** (JSON)
   ไม่ใช่โค้ด: operator ทั้งหมดเป็นของ harness → ไม่มีทางรันโค้ดแปลกปลอมหรือ peek อนาคต
-  (feature สร้างจาก `rows[:index]` เท่านั้น) · **protocol `hs-v2`**: เพิ่ม term ที่ผูกระหว่างหลัก
-  (`pair01/02/12`), digit-sum และ exclusion (ตัดเลขงวดก่อน 1-3 งวด) → เลือกผู้สมัครด้วยการ enumerate
-  ทั้ง 1000 combos เพราะ joint ทำให้แต่ละหลักแยกกันไม่ได้ (v1 ที่ round-robin จึงเทียบกับ v2 ไม่ได้)
-- เป้าที่วัดได้: 3 หลักท้ายของ pool รางวัล 1-4 บนงวดที่มี ≥55 tail ต่างกัน (**464 จาก 761 งวด** ตั้งแต่ 2006-12-30)
-  เพราะงวดยุค 1995-2006 มี pool แค่เลขเดียว — baseline คำนวณต่อ draw ไม่ใช่ค่าเฉลี่ยคงที่
-- Gate 60/20/20: train 206 งวด (2012-04-16→2021-02-01) คัด z ≥ 3.5 · validation 69 งวด ยืนยัน z ≥ 2.0 ·
-  holdout 69 งวด วัดครั้งเดียว (2023-12-30→2026-11-01) และไม่ถูกใช้เลือก — **ไม่มีอะไรไปถึง validation เลย**
-- `scripts/generate_rll_hypotheses.py` — 9 รอบ × 40 ด้วย `deepseek/deepseek-v4.1-flash`, เก็บ usage +
-  raw SHA-256, มี salvage parser เมื่อ JSON ถูกตัดกลางคัน → **368 สมมติฐาน (v1 152 + v2 216), 92,362 token**
-- ผล: **ผ่าน screen 0/368**, top z = **+3.00** (`gap120-sum-prize1-120-excl2`, 58.7% vs chance 48.3%),
-  z-distribution mean −0.17 sd 0.96 · **permutation 200 รอบ: p = 0.468** โดย null median = +3.00 พอดี
-  → ผลที่ดีที่สุดคือ *ค่ามัธยฐานของการสุ่ม* ไม่ใช่ "ใกล้มีนัยสำคัญ"
-- บทเรียนที่ถูกบันทึกเป็นโค้ด: null รุ่นแรก shuffle ข้ามงวดทั้งหมด ทำให้เป้ายุค pool ไปรับ tail เดียวของปี 1995
-  → z ติดลบทั้งกระดานและ p เพี้ยน (0.219) · แก้เป็นสุ่ม *ภายในยุคที่ field มีจริง* และ `--selftest` บังคับให้ null
-  ต้อง centred (+0.06) · และ **gate 3.5 หลวมเกินไป**: ที่ 368 สมมติฐาน มี 28/200 รอบสุ่มที่ไปถึง → เกณฑ์จริงคือ z ≥ 3.9
-- `scripts/test_rll_hypothesis_search.py` 15 tests (ไม่ใช้เน็ต): leak-free features, chance reproduction,
-  joint coupling (2×2 minor), exclusion mask, sum clustering, split ordering, permutation centring/salvage/validate
-- report: `docs/research/2026-11-rll-hypothesis-search.md` · ชุดสมมติฐาน archive:
-  `docs/research/rll-hypotheses-2026-11.json` · ไม่แตะ `rll.sqlite3` และไม่มีอะไรขึ้น UI
+  (feature สร้างจาก `rows[:index]` เท่านั้น) · เลือกผู้สมัครด้วยการ enumerate ทั้ง 1000 combos
+- **สามรุ่นของ operator family**: v1 ต่อหลัก (freq/gap/markov/weekday) → v2 เพิ่ม exact pair + digit sum +
+  exclusion → **v3 เพิ่ม pair sum (19 cell), pair difference mod 10 (10 cell), sum mod 10, โครงสร้างในเลข
+  (ซ้ำ/เรียงขึ้น/จำนวนคู่) และ markov ที่ lag 2-3 งวด** · assembler เปลี่ยนจาก round-robin เป็น top-k
+  ทั้ง 1000 → คะแนนข้ามรุ่นเทียบกันไม่ได้ (protocol เป็นส่วนหนึ่งของสัญญา)
+- เป้าที่วัดได้: 3 หลักท้ายของ pool รางวัล 1-4 บนงวดที่มี ≥55 tail (**464 จาก 761 งวด** ตั้งแต่ 2006-12-30) ·
+  gate 60/20/20: train 206 งวด (2012-04-16→2021-02-01) · validation 69 · holdout 69 (ไม่ถูกแตะเลย)
+- **587 สมมติฐาน, 152,182 token** (v1 38,363 · v2 53,999 · v3 59,820) จาก `deepseek/deepseek-v4.1-flash`
+  · **ผ่าน screen 0/587** · top z = **+3.00** (`gap120-sum-prize1-120-excl2`) — **ตัวเดิมจาก v2 ไม่ขยับ**
+  แม้เพิ่ม 219 ข้อใน v3 · z-distribution mean −0.17 sd 0.94
+- **permutation 200 รอบ: p = 0.567** (null p50 3.14, p95 3.99) → ผลที่ดีที่สุด *ต่ำกว่ามัธยฐานของการสุ่ม*
+  และที่ 587 สมมติฐาน z ≥ 3.5 ถูกยิงโดยความบังเอิญ 36/200 = 18% → เกณฑ์จริงคือ **z ≥ 4.0**
+  (เท่ากับต้องเห็นผลต่าง ≥ +13.9 pp / +29% ถึงจะตรวจจับได้ที่ n=206)
+- บั๊กที่เจอและแก้ (มี test คุมทุกตัว): salvage parser เมื่อ JSON ถูกตัด · validator บังคับ 3 positions
+  ทำให้ pure-exclusion หาย 20 ข้อ · **validator ตัด `markov2/markov3` ทิ้งเงียบ ๆ** ทำให้รอบ lag ทั้งรอบ
+  ไม่มี term lag จริง (เจอเพราะแยก z ตาม family) · และ null รุ่นแรก shuffle ข้ามยุคทำให้ p เพี้ยน (0.219→0.94)
+- `scripts/test_rll_hypothesis_search.py` 21 tests (ไม่ใช้เน็ต): leak-free features, chance reproduction,
+  joint coupling (2×2 minor), shape/struct/lag wiring, exclusion mask, sum clustering, null centring
+- report: `docs/research/2026-11-rll-hypothesis-search.md` · ชุด 587 ข้อ: `docs/research/rll-hypotheses-2026-11.json`
+  · ไม่แตะ `rll.sqlite3` และไม่มีอะไรขึ้น UI
 
 ## 2026-11-03 — Reinforcement Learn LLM (RLL) · สูตร bandit ที่ใช้ LLM สด (ADR-0009)
 
