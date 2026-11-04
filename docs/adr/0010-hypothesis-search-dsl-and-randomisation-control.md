@@ -24,18 +24,24 @@ Four ways to do that are tempting and all four are wrong here:
 **Hypotheses are JSON data over a fixed operator menu, the split is fixed, and every sweep ships with a
 permutation control.**
 
-1. **Data, never code.** A hypothesis is `{name, k, positions: [[term×3]×3]}` with
-   `term = {op, source, window, weight}`. Operators (`freq`, `gap`, `markov`, `weekday`), sources (`pool`,
-   `prize1`) and windows (30/60/120) are owned by the harness in
-   `scripts/rll_hypothesis_search.py`. Adding an operator is a contract change and needs a new ADR.
+1. **Data, never code.** A hypothesis is `{name, k, positions, joints, sums, exclude}` with
+   `term = {op, source, window, weight}`. The harness owns every operator (`freq`, `gap`, `markov`,
+   `weekday`, `pair01`, `pair02`, `pair12`, digit-sum, exclusion). Candidates are the top k of an
+   enumeration over all 1000 tails, because a joint term makes the positions inseparable. Adding an
+   operator changes the protocol and needs a new ADR; results are only comparable within one protocol.
 2. **The field decides, and it must exist.** Target is the last three digits of the prize 1-4 pool on draws
    with ≥ 55 distinct tails (464 of 761, 2006-12-30 onward). Earlier draws carry a one-number pool and are
    excluded, not silently down-weighted.
 3. **Fixed 60/20/20 split inside the usable set**, screen at z ≥ 3.5 on train (206 draws), confirm at
    z ≥ 2.0 on validation (69), evaluate the holdout (69) once and never use it to select. Thresholds are
    one-sided against a per-draw chance baseline, so varying pool sizes cannot flatter a hypothesis.
+   **The screen threshold is provisional**: the authoritative gate is the 95th percentile of the run's own
+   permutation null. A fixed z is a convention, not a calibration — at 368 hypotheses z ≥ 3.5 fires on
+   14 % of pure-noise sweeps.
 4. **Permutation control is mandatory** for any sweep that is reported: shuffle the target outcomes 200
-   times, rerun the whole sweep, publish `p(best z ≥ observed)` and the null's max-z quantiles.
+   times **within the usable era** (permuting across the 1995-2006 one-tail draws is a size mismatch, not a
+   null, and drives every z to −3), rerun the whole sweep, publish `p(best z ≥ observed)` and the null's
+   max-z quantiles. The harness's own `--selftest` must print a centred null.
 5. **A null result is a result.** The report is committed even when nothing survives, with the detection
    floor stated (at n = 206 and z = 3.5, a real effect must be ≥ +12 pp / +25 % relative to be visible).
 6. **Generation is recorded**: model id, per-round usage, raw-response SHA-256, and the validated JSON set,
@@ -43,13 +49,23 @@ permutation control.**
 
 ## Consequences
 
-- The 2026-11 sweep (152 hypotheses from `deepseek/deepseek-v4.1-flash`) found **nothing**: 0 passed,
-  best z = +2.45, permutation p = 0.219. One of 200 shuffles reached the gate (3.53), which is the measured
-  false-positive rate of the procedure.
+- The 2026-11 sweep found **nothing**, across two protocol generations: v1 (152 hypotheses, per-position
+  features, round-robin assembly) peaked at z = +2.45; v2 (368 hypotheses, adding joint pair terms, digit
+  sums and exclusion masks) peaked at **z = +3.00** against a permutation null whose median is exactly
+  +3.00, **p = 0.468**. No hypothesis reached the validation stage, so the holdout was never touched.
+- The control was wrong once and the run says so. The first v1 control permuted outcomes across all 761
+  draws, including the one-tail 1995-2006 era, and reported p = 0.219 on a null that was an artefact. The
+  corrected control permutes within the usable era and scores the same 152 hypotheses at p = 0.94. The
+  lesson is in the code as a self-test that refuses an off-centre null.
+- A fixed z threshold is not a gate. At 368 correlated hypotheses, z ≥ 3.5 is exceeded by 14 % of
+  pure-noise sweeps (28/200). The gate must come from the null: **z ≥ 3.9** for this family, and it rises
+  as the family grows. Reporting "nothing passed at z ≥ 3.5" would have been true and misleading at the
+  same time.
 - The search is a research tool, not a feature: it never runs in the server, never touches `rll.sqlite3`,
   and does not appear in the UI. Promoting a survivor would need its own ADR — a survivor is a candidate
   formula, not an arm.
-- More tokens do not buy evidence here. Generation cost 38 k tokens; the binding constraint is n, not the
-  size of the search.
-- The operator family is the real ceiling of this ADR. A rule that needs digit sums, cross-position
-  constraints or exclusion logic cannot be expressed, and the null result must be read with that in mind.
+- More tokens do not buy evidence here. All 368 hypotheses cost 92 k tokens; the binding constraint is
+  n = 206 train draws, not the size of the search.
+- The operator family is the real ceiling of this ADR. A rule that needs multi-draw patterns beyond three
+  draws, arithmetic on neighbouring digits, or per-number structure inside a single prize cannot be
+  expressed, and the null result must be read with that in mind.

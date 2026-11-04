@@ -1,20 +1,28 @@
-"""Offline hypothesis search for a measurable field (option 3).
+"""Offline hypothesis search for a measurable field (option 3) — protocol v2.
 
-A hypothesis is pure DATA (never code): per tail position, a weighted sum of features computed
-strictly from draws before the target. The harness owns every operator, so a hypothesis cannot read
-the future, import anything, or touch the network — the DSL is the sandbox.
+A hypothesis is pure DATA (never code). v1 scored each tail position independently; v2 adds terms that
+couple positions, so candidates are chosen by enumerating all 1000 triples and taking the best k.
 
-Field: last-3 digits of the prize 1-4 pool of the target draw (~62 distinct tails / 1000), the only
-field in this app where a real effect could be seen in years rather than millennia.
+Term kinds
+  positions[p] = [term]   per-position additive feature (freq / gap / markov / weekday)
+  joints       = [term]   joint feature over a digit pair (pair01 / pair02 / pair12)
+  sums         = [term]   preference over the digit sum a+b+c (0..27)
+  exclude      = [term]   penalty for tails seen in the last `draws` draws' pool
+
+Every feature is computed from draws strictly before the target. The harness owns every operator, so a
+hypothesis cannot read the future, import anything, or touch the network — the DSL is the sandbox.
+
+Field: last-3 digits of the prize 1-4 pool (~62 distinct tails / 1000), on the 464 draws where the pool
+actually exists (>= 55 distinct tails, 2006-12-30 onward).
 
 Protocol (mirrors ADR-0003's gate):
-  train      oldest 60 % of evaluable targets — screening at z >= 3.5 (family-wise, ~200 hypotheses)
+  train      oldest 60 % of evaluable targets — screening at z >= 3.5
   validation next 20 %                        — confirmation at z >= 2.0
   holdout    newest 20 %                      — evaluated ONCE, never used for selection
 
 Run:
     python scripts/rll_hypothesis_search.py --selftest
-    python scripts/rll_hypothesis_search.py --hypotheses <file.json> [--json out.json]
+    python scripts/rll_hypothesis_search.py --hypotheses <file.json> [--null-shuffles 200] [--json out.json]
 """
 from __future__ import annotations
 
@@ -25,13 +33,20 @@ import random
 import sys
 from pathlib import Path
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import astra  # noqa: E402
 
 WINDOWS = (30, 60, 120)
+EXCLUDE_DRAWS = (1, 2, 3)
 WARMUP = 60
+PROTOCOL = 'hs-v2'
+PAIRS = {'pair01': (0, 1), 'pair02': (0, 2), 'pair12': (1, 2)}
+SUM_GRID = (np.arange(10)[:, None, None] + np.arange(10)[None, :, None]
+            + np.arange(10)[None, None, :]).astype(np.int16)  # 10x10x10 digit sums
 
 
 # ─── corpus ─────────────────────────────────────────────────────────────────
@@ -78,10 +93,10 @@ class Corpus:
         self.weekday = [day_of_week(r['date']) for r in rows]
         self.pool_counts = []
         for tails in self.tails:
-            counts = [[0.0] * 10 for _ in range(3)]
+            counts = np.zeros((3, 10))
             for tail in tails:
                 for position in range(3):
-                    counts[position][int(tail[position])] += 1.0
+                    counts[position, int(tail[position])] += 1.0
             self.pool_counts.append(counts)
         self._cache = {}
 
@@ -95,90 +110,150 @@ class Corpus:
         target_weekday = self.weekday[index]
         for window in WINDOWS:
             start = max(0, index - window)
+            span = range(start, index)
             for position in range(3):
                 # pool frequency over the window
-                total = [0.0] * 10
-                for j in range(start, index):
-                    for d in range(10):
-                        total[d] += self.pool_counts[j][position][d]
-                s = sum(total) or 1.0
-                feats[('freq', 'pool', window, position)] = [v / s for v in total]
+                total = np.zeros(10)
+                for j in span:
+                    total += self.pool_counts[j][position]
+                s = total.sum() or 1.0
+                feats[('freq', 'pool', window, position)] = total / s
 
                 # pool gap: draws since a digit last appeared at this position
-                gaps = [window] * 10
+                gaps = np.full(10, float(window))
                 for age, j in enumerate(range(index - 1, start - 1, -1)):
                     for d in range(10):
-                        if gaps[d] == window and self.pool_counts[j][position][d] > 0:
+                        if gaps[d] == window and self.pool_counts[j][position, d] > 0:
                             gaps[d] = age
-                top = max(gaps) or 1
-                feats[('gap', 'pool', window, position)] = [g / top for g in gaps]
+                feats[('gap', 'pool', window, position)] = gaps / (gaps.max() or 1.0)
 
                 # weekday: pool frequency restricted to the target's weekday
-                total = [0.0] * 10
-                for j in range(start, index):
+                total = np.zeros(10)
+                for j in span:
                     if self.weekday[j] == target_weekday:
-                        for d in range(10):
-                            total[d] += self.pool_counts[j][position][d]
-                s = sum(total) or 1.0
-                feats[('weekday', 'pool', window, position)] = [v / s for v in total]
+                        total += self.pool_counts[j][position]
+                s = total.sum() or 1.0
+                feats[('weekday', 'pool', window, position)] = total / s
 
                 # markov over prize-1 tails (defined for every draw)
-                table = [[0.0] * 10 for _ in range(10)]
+                table = np.zeros((10, 10))
                 for j in range(start + 1, index):
-                    table[int(self.prize1_tail[j - 1][position])][int(self.prize1_tail[j][position])] += 1.0
+                    table[int(self.prize1_tail[j - 1][position]), int(self.prize1_tail[j][position])] += 1.0
                 state = int(self.prize1_tail[index - 1][position]) if index else 0
                 row = table[state]
-                s = sum(row) or 1.0
-                feats[('markov', 'pool', window, position)] = [v / s for v in row]
+                feats[('markov', 'pool', window, position)] = row / (row.sum() or 1.0)
 
                 # prize-1 tail features
-                total = [0.0] * 10
-                for j in range(start, index):
+                total = np.zeros(10)
+                for j in span:
                     total[int(self.prize1_tail[j][position])] += 1.0
-                s = sum(total) or 1.0
-                feats[('freq', 'prize1', window, position)] = [v / s for v in total]
+                feats[('freq', 'prize1', window, position)] = total / (total.sum() or 1.0)
 
-                gaps = [window] * 10
+                gaps = np.full(10, float(window))
                 for age, j in enumerate(range(index - 1, start - 1, -1)):
                     d = int(self.prize1_tail[j][position])
                     if gaps[d] == window:
                         gaps[d] = age
-                top = max(gaps) or 1
-                feats[('gap', 'prize1', window, position)] = [g / top for g in gaps]
+                feats[('gap', 'prize1', window, position)] = gaps / (gaps.max() or 1.0)
 
-                total = [0.0] * 10
-                for j in range(start, index):
+                total = np.zeros(10)
+                for j in span:
                     if self.weekday[j] == target_weekday:
                         total[int(self.prize1_tail[j][position])] += 1.0
-                s = sum(total) or 1.0
-                feats[('weekday', 'prize1', window, position)] = [v / s for v in total]
+                feats[('weekday', 'prize1', window, position)] = total / (total.sum() or 1.0)
                 feats[('markov', 'prize1', window, position)] = feats[('markov', 'pool', window, position)]
+
+            # joint digit-pair frequencies
+            for pair, (left, right) in PAIRS.items():
+                for source in ('pool', 'prize1'):
+                    table = np.zeros((10, 10))
+                    for j in span:
+                        if source == 'pool':
+                            for tail in self.tails[j]:
+                                table[int(tail[left]), int(tail[right])] += 1.0
+                        else:
+                            tail = self.prize1_tail[j]
+                            table[int(tail[left]), int(tail[right])] += 1.0
+                    feats[(pair, source, window)] = table / (table.sum() or 1.0)
+
+            # digit-sum preference (0..27)
+            for source in ('pool', 'prize1'):
+                sums = np.zeros(28)
+                for j in span:
+                    if source == 'pool':
+                        for tail in self.tails[j]:
+                            sums[sum(int(ch) for ch in tail)] += 1.0
+                    else:
+                        sums[sum(int(ch) for ch in self.prize1_tail[j])] += 1.0
+                feats[('sum', source, window)] = sums / (sums.sum() or 1.0)
+
+        # exclusion masks: tails seen in the pool of the last N draws
+        for draws in EXCLUDE_DRAWS:
+            mask = np.zeros((10, 10, 10))
+            for j in range(max(0, index - draws), index):
+                for tail in self.tails[j]:
+                    mask[int(tail[0]), int(tail[1]), int(tail[2])] = 1.0
+            feats[('exclmask', 'pool', draws)] = mask
         return feats
 
 
 # ─── hypotheses ─────────────────────────────────────────────────────────────
 
+def score_grid(hyp, feats):
+    """10x10x10 score for every possible tail, from one target's feature cache."""
+    base = [np.zeros(10) for _ in range(3)]
+    for position, terms in enumerate(hyp['positions']):
+        for term in terms:
+            vec = feats.get((term['op'], term['source'], int(term['window']), position))
+            if vec is not None:
+                base[position] = base[position] + float(term['weight']) * vec
+    grid = base[0][:, None, None] + base[1][None, :, None] + base[2][None, None, :]
+
+    for term in hyp.get('joints') or []:
+        table = feats.get((term['op'], term['source'], int(term['window'])))
+        if table is None:
+            continue
+        weight = float(term['weight'])
+        if term['op'] == 'pair01':
+            grid = grid + weight * table[:, :, None]
+        elif term['op'] == 'pair02':
+            grid = grid + weight * table[:, None, :]
+        else:
+            grid = grid + weight * table[None, :, :]
+
+    for term in hyp.get('sums') or []:
+        vec = feats.get(('sum', term['source'], int(term['window'])))
+        if vec is not None:
+            grid = grid + float(term['weight']) * vec[SUM_GRID]
+
+    for term in hyp.get('exclude') or []:
+        mask = feats.get(('exclmask', 'pool', int(term.get('draws', 1))))
+        if mask is not None:
+            grid = grid + float(term['weight']) * mask
+    return grid
+
+
 def candidates(hyp, feats):
     k = int(hyp.get('k', 10))
-    orders = []
-    for position in range(3):
-        score = [0.0] * 10
-        for term in hyp['positions'][position]:
-            vec = feats.get((term['op'], term['source'], int(term['window']), position))
-            if vec is None:
-                continue
-            w = float(term['weight'])
-            for d in range(10):
-                score[d] += w * vec[d]
-        orders.append(sorted(range(10), key=lambda d: (-score[d], d)))
-    out = []
-    for r in range(k):
-        out.append(''.join(str(orders[p][r % 10]) for p in range(3)))
-    return list(dict.fromkeys(out))[:k]
+    grid = score_grid(hyp, feats).ravel()
+    if k >= grid.size:
+        order = np.argsort(-grid, kind='stable')
+    else:
+        order = np.argpartition(-grid, k - 1)[:k]
+        order = order[np.argsort(-grid[order], kind='stable')]
+    return [f'{int(i):03d}' for i in order[:k]]
 
 
 def baseline_for(tails, k):
     return 1 - (1 - len(tails) / 1000) ** k
+
+
+def signature(feats):
+    """Hashable form of a feature cache (for leak tests)."""
+    out = {}
+    for key, value in feats.items():
+        out[key] = np.asarray(value).round(12).tolist() if isinstance(value, np.ndarray) else sorted(value)
+    return out
 
 
 # ─── evaluation ─────────────────────────────────────────────────────────────
@@ -213,29 +288,45 @@ def split_bounds(total):
 def permutation_test(hypotheses, corpus, train, shuffles=100, seed=7):
     """Randomisation control: shuffle the target outcomes across draws, keep the features.
 
-    If the observed best z is ordinary under this null, the search found nothing but noise — which is
-    the only defensible way to read a 150-hypothesis sweep.
+    Outcomes are permuted **within the usable era only**. Permuting across all 761 draws would hand
+    pool-era targets the one-tail sets of 1995-2006 and push every z to -3; that is a size mismatch,
+    not a null.
+
+    Candidate sets do not depend on the outcome, so they are computed once and each shuffle is a lookup.
     """
     rng = random.Random(seed)
-    originals = corpus.tails
+    picks = [[[int(p) for p in candidates(hyp, corpus.features(index))] for index in train]
+             for hyp in hypotheses]
+    usable = corpus.usable
+    slot_of = {index: position for position, index in enumerate(usable)}
+    sets = [frozenset(int(t) for t in corpus.tails[index]) for index in usable]
+    baselines = [baseline_for(corpus.tails[index], 10) for index in usable]
+    train_slots = [slot_of[index] for index in train]
+    n = len(train)
+    order = list(range(len(sets)))
     maxes = []
-    try:
-        for _ in range(shuffles):
-            order = list(range(len(originals)))
-            rng.shuffle(order)
-            corpus.tails = [originals[i] for i in order]
-            best = -9e9
-            for hyp in hypotheses:
-                stats = evaluate(hyp, corpus, train)
-                best = max(best, z_score(stats['rate'], stats['baseline'], stats['n']))
-            maxes.append(best)
-    finally:
-        corpus.tails = originals
+    for _ in range(shuffles):
+        rng.shuffle(order)
+        base_mean = sum(baselines[q] for q in order_slots(order, train_slots)) / n
+        se = math.sqrt(max(base_mean * (1 - base_mean), 1e-12) / n)
+        best = -9e9
+        for per_hyp in picks:
+            hits = 0
+            for slot, target in enumerate(train_slots):
+                if any(p in sets[order[target]] for p in per_hyp[slot]):
+                    hits += 1
+            best = max(best, (hits / n - base_mean) / se if se else 0.0)
+        maxes.append(best)
     maxes.sort()
     return {'shuffles': shuffles, 'seed': seed, 'maxes': maxes,
             'max_z': {'p50': round(maxes[len(maxes) // 2], 2),
                       'p95': round(maxes[int(len(maxes) * 0.95)], 2),
                       'max': round(maxes[-1], 2)}}
+
+
+def order_slots(order, train_slots):
+    for target in train_slots:
+        yield order[target]
 
 
 def search(hypotheses, corpus, z_screen=3.5, z_confirm=2.0, shortlist=12):
@@ -262,6 +353,7 @@ def search(hypotheses, corpus, z_screen=3.5, z_confirm=2.0, shortlist=12):
             confirmed.append({'name': name, 'hypothesis': hyp, 'train': stats, 'validation': validation,
                               'holdout': holdout, 'survives': holdout['z'] > 0})
     return {
+        'protocol': PROTOCOL,
         'field': 'tail3 of prize 1-4 pool',
         'draws': len(corpus.rows),
         'usable_draws': len(corpus.usable),
@@ -300,11 +392,34 @@ def selftest(corpus):
           f'(baseline {stats["baseline"]:.3f})')
     ok &= leak_hits / len(sample) > 0.9
 
-    picks = candidates(flat, corpus.features(sample[0]))
-    assert len(picks) == len(set(picks)) == 10, picks
-    print('OK  10 distinct candidates per hypothesis')
-    assert corpus.features(sample[0]) == corpus.features(sample[0])
-    print('OK  features are deterministic per target')
+    # v2 terms must actually be wired: a huge weight on one joint table must change the picks
+    joint = {'name': 'joint', 'k': 10, 'positions': [[], [], []],
+             'joints': [{'op': 'pair01', 'source': 'pool', 'window': 60, 'weight': 50.0}],
+             'sums': [], 'exclude': []}
+    plain = candidates(flat, corpus.features(sample[0]))
+    coupled = candidates(joint, corpus.features(sample[0]))
+    assert len(set(coupled)) == 10 and len(set(plain)) == 10
+    ok &= plain != coupled
+    print(f'OK  joint term changes the candidate set ({plain[0]}… -> {coupled[0]}…)')
+
+    excluded = {'name': 'exclude', 'k': 10, 'positions': [[], [], []],
+                'joints': [], 'sums': [], 'exclude': [{'draws': 1, 'weight': -99.0}]}
+    picks = set(candidates(excluded, corpus.features(sample[0])))
+    recent = corpus.tails[sample[0] - 1]
+    ok &= not (picks & recent)
+    print(f'OK  exclude term drops all {len(picks & recent)} of last draw\'s tails from the picks')
+
+    sums = {'name': 'sums', 'k': 10, 'positions': [[], [], []], 'joints': [],
+            'sums': [{'source': 'pool', 'window': 60, 'weight': 5.0}], 'exclude': []}
+    picked_sums = [sum(int(ch) for ch in p) for p in candidates(sums, corpus.features(sample[0]))]
+    ok &= max(picked_sums) - min(picked_sums) <= 3
+    print(f'OK  sum term clusters the picks (sums {min(picked_sums)}..{max(picked_sums)})')
+
+    # the null must be centred on zero: an un-centre null is a size mismatch, not a control
+    control = permutation_test([flat], corpus, corpus.usable[WARMUP:WARMUP + 120], shuffles=12)
+    centre = sum(control['maxes']) / len(control['maxes'])
+    ok &= -1.2 < centre < 1.2
+    print(f'OK  permutation null is centred ({centre:+.2f}, p50 {control["max_z"]["p50"]:+.2f})')
     return ok
 
 
@@ -313,8 +428,7 @@ def main():
     ap.add_argument('--selftest', action='store_true')
     ap.add_argument('--hypotheses')
     ap.add_argument('--json')
-    ap.add_argument('--null-shuffles', type=int, default=0,
-                    help='run a permutation control with this many shuffles')
+    ap.add_argument('--null-shuffles', type=int, default=0)
     args = ap.parse_args()
     rows = load_rows()
     print(f'draws={len(rows)} first={rows[0]["date"]} last={rows[-1]["date"]}')
@@ -325,7 +439,7 @@ def main():
         sys.exit('need --selftest or --hypotheses')
     payload = json.loads(Path(args.hypotheses).read_text(encoding='utf-8'))
     hypotheses = payload['hypotheses'] if isinstance(payload, dict) else payload
-    print(f'hypotheses={len(hypotheses)}')
+    print(f'hypotheses={len(hypotheses)} protocol={PROTOCOL}')
     result = search(hypotheses, corpus)
     if args.null_shuffles:
         usable = corpus.usable[WARMUP:]
@@ -336,9 +450,13 @@ def main():
         control['observed_max_z'] = observed
         control['p_value'] = round(
             (sum(1 for z in maxes if z >= observed) + 1) / (len(maxes) + 1), 3) if observed else None
+        control['reached_screen'] = sum(1 for z in maxes if z >= 3.5)
         result['permutation'] = control
         print('permutation:', json.dumps(control, ensure_ascii=False))
-    print(json.dumps({k: v for k, v in result.items() if k != 'confirmed'}, ensure_ascii=False, indent=1)[:2500])
+    printable = {k: v for k, v in result.items() if k not in ('confirmed', 'top')}
+    print(json.dumps(printable, ensure_ascii=False, indent=1)[:1800])
+    for row in result['top'][:5]:
+        print(f"  {row['name'][:44]:<44} z={row['z']:+.2f} rate={row['rate']:.4f} base={row['baseline']:.4f}")
     for item in result['confirmed']:
         print(f"CONFIRMED {item['name']}: train z={item['train']['z']:+.2f} "
               f"val z={item['validation']['z']:+.2f} holdout z={item['holdout']['z']:+.2f} "

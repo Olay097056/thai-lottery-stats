@@ -22,33 +22,41 @@ import sys
 sys.path.insert(0, str(ROOT))
 import rll  # noqa: E402  (for _env_key only)
 
-OUT = ROOT / '.scratch' / 'rll-llm-formula' / 'hypotheses.json'
+OUT = ROOT / '.scratch' / 'rll-llm-formula' / 'hypotheses-v2.json'
 BASE = os.environ.get('RLL_BASE_URL', 'https://api.commandcode.ai/provider/v1')
 MODEL = os.environ.get('RLL_MODEL', 'deepseek/deepseek-v4.1-flash')
 
 SCHEMA = """Each hypothesis is a JSON object:
 {"name":"short-slug","k":10,"claim":"one sentence",
- "positions":[[term,term],[term,term],[term,term]]}
-A term is {"op":"freq|gap|markov|weekday","source":"pool|prize1","window":30|60|120,"weight":-3..3}
-- positions has exactly 3 lists (tail position 0,1,2)
-- the score for digit d at position p = sum(weight * feature)
-- higher score = more preferred digit; the top digits are assembled round-robin into 10 distinct
-  three-digit candidates
-- features are computed from PRIOR draws only. There is no way to see the target; do not try.
-- freq = how often the digit appears in that position (pool = all 66 prize 1-4 numbers of a draw)
-- gap = how many draws since it last appeared there
-- markov = P(digit | previous draw's digit in that position), from prize-1 tails
-- weekday = freq restricted to draws on the target's weekday
+ "positions":[[term,term],[term,term],[term,term]],
+ "joints":[jterm],"sums":[sterm],"exclude":[eterm]}
+Per-position term: {"op":"freq|gap|markov|weekday","source":"pool|prize1","window":30|60|120,"weight":-3..3}
+Joint term:        {"op":"pair01|pair02|pair12","source":"pool|prize1","window":30|60|120,"weight":-3..3}
+Digit-sum term:    {"source":"pool|prize1","window":30|60|120,"weight":-3..3}
+Exclusion term:    {"draws":1|2|3,"weight":-3..3}
+
+How it scores: every one of the 1000 possible 3-digit tails gets a score, and the top k are the tickets.
+- positions[p] adds weight * feature(digit at position p)
+- joints adds weight * P(pair of digits) across two positions — this is the ONLY way to express coupling
+- sums adds weight * P(digit sum a+b+c)
+- exclude subtracts weight from tails that appeared in the pool of the last `draws` draws
+- freq = digit frequency at that position; gap = draws since it last appeared;
+  markov = P(digit | previous draw's digit); weekday = freq on the target's weekday only
+- pool = all ~62 prize 1-4 tails of a draw; prize1 = the first prize only
+- features come from PRIOR draws only; there is no way to see the target, do not try
+- at most 3 joints, 2 sums, 2 exclude terms per hypothesis; leaving a list out means "none"
 """
 
 ROUND_PROMPTS = [
-    ("purist", "Give 40 SINGLE-FEATURE hypotheses: each position uses ONE term (optionally the same "
-               "term at all three positions, or one term per position). Vary op/source/window/weight."),
-    ("blend", "Give 40 BLENDED hypotheses: 2-4 terms per position mixing freq and gap, or freq and "
-              "markov, with explicit weights. Some should use window 30, some 60, some 120."),
-    ("contrarian", "Give 40 CONTRARIAN hypotheses: negative weights (pick the cold/rare digit), "
-                   "weekday-scoped features, and markov on prize1 tails. Include a few that mix a "
-                   "positive freq term with a negative gap term."),
+    ("joint", "Give 40 hypotheses that use JOINT structure: `joints` terms alone, or one joint term plus "
+              "one per-position term. Explore pair01 (digits 1-2), pair02 (digits 1-3) and pair12 "
+              "(digits 2-3), and both negative and positive weights."),
+    ("sum", "Give 40 hypotheses built around DIGIT SUM plus one other signal: a `sums` term weighted "
+            "positively or negatively, optionally combined with a single freq/gap term or a joint term. "
+            "Vary the window and the sign."),
+    ("exclude", "Give 40 hypotheses that use EXCLUSION (`exclude` with draws 1-3, negative weight) "
+                "combined with a per-position or joint term, plus a few pure-exclusion controls "
+                "(exclude alone, nothing else) and pure-joint controls."),
 ]
 
 
@@ -108,9 +116,12 @@ def validate(items):
     for item in items:
         try:
             name = str(item['name']).strip()[:60]
-            positions = item['positions']
-            if not name or len(positions) != 3:
+            positions = item.get('positions') or []
+            if not name or (positions and len(positions) != 3):
                 raise ValueError('shape')
+            if not positions:
+                # a pure joint / sum / exclude hypothesis legitimately has no per-position terms
+                positions = [[], [], []]
             clean = []
             for terms in positions:
                 kept = []
@@ -128,26 +139,65 @@ def validate(items):
                     kept.append({'op': term['op'], 'source': term['source'],
                                  'window': window, 'weight': round(weight, 3)})
                 clean.append(kept)
-            if not any(clean):
+            joints = []
+            for term in (item.get('joints') or [])[:3]:
+                if term.get('op') not in ('pair01', 'pair02', 'pair12'):
+                    continue
+                if term.get('source') not in ('pool', 'prize1'):
+                    continue
+                weight = float(term.get('weight', 0))
+                if weight == 0 or abs(weight) > 3:
+                    continue
+                window = int(term.get('window', 60))
+                joints.append({'op': term['op'], 'source': term['source'],
+                               'window': window if window in (30, 60, 120) else 60,
+                               'weight': round(weight, 3)})
+            sums = []
+            for term in (item.get('sums') or [])[:2]:
+                if term.get('source') not in ('pool', 'prize1'):
+                    continue
+                weight = float(term.get('weight', 0))
+                if weight == 0 or abs(weight) > 3:
+                    continue
+                window = int(term.get('window', 60))
+                sums.append({'source': term['source'], 'window': window if window in (30, 60, 120) else 60,
+                             'weight': round(weight, 3)})
+            exclude = []
+            for term in (item.get('exclude') or [])[:2]:
+                draws = int(term.get('draws', 1))
+                if draws not in (1, 2, 3):
+                    draws = 1
+                weight = float(term.get('weight', 0))
+                if weight == 0 or abs(weight) > 3:
+                    continue
+                exclude.append({'draws': draws, 'weight': round(weight, 3)})
+            if not any(clean) and not joints and not sums and not exclude:
                 raise ValueError('all weights zero')
             good.append({'name': name, 'k': 10, 'claim': str(item.get('claim', ''))[:220],
-                         'positions': clean})
+                         'positions': clean, 'joints': joints, 'sums': sums, 'exclude': exclude})
         except (KeyError, TypeError, ValueError) as exc:
             dropped.append({'reason': str(exc), 'item': str(item)[:120]})
     return good, dropped
 
 
+def spec_key(hyp):
+    return json.dumps({k: hyp.get(k) for k in ('positions', 'joints', 'sums', 'exclude')},
+                      sort_keys=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--per-round', type=int, default=40)
+    ap.add_argument('--out', default=str(OUT))
     args = ap.parse_args()
+    out = Path(args.out)
     hypotheses, runs = [], []
     seen = set()
-    if OUT.exists():
+    if out.exists():
         try:
-            prior = json.loads(OUT.read_text(encoding='utf-8'))
+            prior = json.loads(out.read_text(encoding='utf-8'))
             hypotheses = prior.get('hypotheses', [])
-            seen = {json.dumps(h['positions'], sort_keys=True) for h in hypotheses}
+            seen = {spec_key(h) for h in hypotheses}
             runs = prior.get('runs', [])
             print(f'merged {len(hypotheses)} hypotheses from the previous run')
         except (OSError, json.JSONDecodeError):
@@ -175,7 +225,7 @@ def main():
         good, dropped = validate(items)
         fresh = []
         for hyp in good:
-            key = json.dumps(hyp['positions'], sort_keys=True)
+            key = spec_key(hyp)
             if key in seen:
                 continue
             seen.add(key)
@@ -186,11 +236,12 @@ def main():
                      'usage': usage, 'raw_sha256': hashlib.sha256(raw.encode()).hexdigest()})
         print(f'{slug}: returned={len(items)} valid={len(good)} new={len(fresh)} '
               f'tokens={(usage or {}).get("total_tokens")}')
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps({'generated_at': datetime.now().isoformat(timespec='seconds'),
-                               'model': MODEL, 'runs': runs, 'hypotheses': hypotheses},
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({'generated_at': datetime.now().isoformat(timespec='seconds'),
+                               'model': MODEL, 'protocol': 'hs-v2',
+                               'runs': runs, 'hypotheses': hypotheses},
                               ensure_ascii=False, indent=1), encoding='utf-8')
-    print(f'hypotheses={len(hypotheses)} -> {OUT}')
+    print(f'hypotheses={len(hypotheses)} -> {out}')
 
 
 if __name__ == '__main__':

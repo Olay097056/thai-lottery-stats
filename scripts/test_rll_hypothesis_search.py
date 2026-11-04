@@ -14,7 +14,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
 
 from rll_hypothesis_search import (  # noqa: E402
-    Corpus, candidates, evaluate, load_rows, permutation_test, search, split_bounds, WARMUP,
+    Corpus, candidates, evaluate, load_rows, permutation_test, search, signature, split_bounds,
+    score_grid, WARMUP,
 )
 from generate_rll_hypotheses import salvage_objects, validate  # noqa: E402
 
@@ -37,7 +38,7 @@ class CorpusTest(unittest.TestCase):
     def test_features_never_change_when_the_target_row_is_in_the_corpus(self):
         index = self.corpus.usable[200]
         with_target = Corpus(self.rows[:index + 1]).features(index)
-        self.assertEqual(with_target, self.corpus.features(index))
+        self.assertEqual(signature(with_target), signature(self.corpus.features(index)))
 
     def test_candidates_are_ten_distinct_three_digit_strings(self):
         picks = candidates(FLAT, self.corpus.features(self.corpus.usable[100]))
@@ -80,6 +81,54 @@ class PermutationTest(unittest.TestCase):
         self.assertEqual(corpus.tails, before)
         self.assertEqual(control['shuffles'], 3)
         self.assertEqual(len(control['maxes']), 3)
+
+
+class JointTermTest(unittest.TestCase):
+    """v2 terms must actually couple positions — otherwise the wider family is a fiction."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.corpus = Corpus(load_rows())
+        cls.index = cls.corpus.usable[220]
+        cls.feats = cls.corpus.features(cls.index)
+
+    def test_joint_term_changes_the_candidate_set(self):
+        plain = candidates(FLAT, self.feats)
+        joint = {'name': 'j', 'k': 10, 'positions': [[], [], []],
+                 'joints': [{'op': 'pair12', 'source': 'pool', 'window': 60, 'weight': 40.0}]}
+        self.assertNotEqual(plain, candidates(joint, self.feats))
+
+    def test_joint_term_is_position_coupled_not_additive(self):
+        grid = score_grid({'name': 'j', 'k': 10, 'positions': [[], [], []],
+                           'joints': [{'op': 'pair01', 'source': 'pool', 'window': 60, 'weight': 1.0}]},
+                          self.feats)
+        # a pure pair01 term cannot be written as f(a) + g(b): the 2x2 minors of the slice must be non-zero
+        slice_ = grid[:, :, 0]
+        minor = (slice_[0, 0] + slice_[1, 1]) - (slice_[1, 0] + slice_[0, 1])
+        self.assertAlmostEqual(abs(minor) > 1e-9, True)
+
+    def test_exclude_term_removes_the_last_draw(self):
+        hyp = {'name': 'x', 'k': 10, 'positions': [[], [], []],
+               'exclude': [{'draws': 1, 'weight': -99.0}]}
+        picks = set(candidates(hyp, self.feats))
+        self.assertFalse(picks & self.corpus.tails[self.index - 1])
+
+    def test_sum_term_groups_candidates_by_digit_sum(self):
+        hyp = {'name': 's', 'k': 10, 'positions': [[], [], []],
+               'sums': [{'source': 'pool', 'window': 60, 'weight': 5.0}]}
+        sums = [sum(int(ch) for ch in p) for p in candidates(hyp, self.feats)]
+        self.assertLessEqual(max(sums) - min(sums), 4)
+
+    def test_exclusion_masks_use_only_prior_draws(self):
+        masks = [k for k in self.feats if k[0] == 'exclmask']
+        self.assertEqual(sorted(m[2] for m in masks), [1, 2, 3])
+        recent = set()
+        for j in range(self.index - 1, self.index):
+            recent |= self.corpus.tails[j]
+        mask = self.feats[('exclmask', 'pool', 1)]
+        for tail in recent:
+            self.assertEqual(mask[int(tail[0]), int(tail[1]), int(tail[2])], 1.0)
+        self.assertEqual(mask.sum() > 0, True)
 
 
 class GeneratorTest(unittest.TestCase):
