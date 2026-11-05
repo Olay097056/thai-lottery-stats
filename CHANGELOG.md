@@ -2,6 +2,25 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-11-04 — Empty state ของแผงผลสูตร — ดีไซน์โดย OpenDesign (แก้แผงว่างเปล่า)
+
+- **แก้ข้อผิดพลาดที่รายงานไว้ก่อนหน้า**: ปุ่ม `pred-main-btn-formula` ไม่ได้พัง — มันเปิดแท็บได้และผลขึ้นในแท็บกลุ่ม
+  ตามปกติ ที่ว่างเพราะผมไปสลับ `.active` เองระหว่างตรวจ (บันทึกไว้ตรง ๆ ว่าเป็นการรายงานผิด)
+- ของจริงที่เจอ: เปิดแท็บ "สูตรคำนวณ" **ก่อนเคยกดคำนวณ** → แผงว่าง 0 ตัวอักษร 0 ปุ่ม ไม่มีข้อความ
+  (`{hasRun:false, len:0, buttons:0, ariaLive:null}`) ผู้ใช้ใหม่ไม่รู้ว่าต้องกดอะไร
+- ดีไซน์โดย **OpenDesign** (project `lottery-stats-od-redesign`, run `f71f576e…`, `hermes` /
+  `commandcode:deepseek/deepseek-v4.1-flash`) จาก `FIX-BRIEF.md` → ส่งมอบ `10-empty-state.html`,
+  CSS block `/* FORMULA EMPTY STATE */`, `10-empty-state.md` (วัด 360/390/1440 + contrast)
+- port เข้าแอป: `_formulaEmptyPanelHtml()` ใน `formula-engine.js` + CSS ใน `app.css` (เปลี่ยนแค่ชื่อ token,
+  ตัด `:focus-visible` override ออกเพื่อให้ outline ของแอปทำงาน) · 2 สถานะ: `no-run` (มีปุ่ม
+  "คำนวณทุกสูตร" → เรียก `#f-run-formulas`) และ `no-match` (ไม่มีปุ่ม) · `role="status"`, ธีมไทยล้วน
+- วัดในแอปจริง: กว้าง 560 px (1440) / 330 px (390) · ปุ่มสูง 44 px · overflow 0 · ระยะจาก bottom bar 64 px
+  · กดปุ่มในสถานะว่างแล้วคำนวณจริงใน 3 วินาที แล้วสถานะหายไปเอง
+- **บทเรียนที่ฝังเป็นเทสต์**: คอมเมนต์ CSS ที่มี `*/` อยู่ข้างใน (`--space-*/--radius`) ปิดคอมเมนต์ก่อนเวลา
+  ทำให้เบราว์เซอร์ทิ้ง rule `.formula-empty` ทั้งก้อนแบบเงียบ ๆ → `test_formula_empty_state_contract.js`
+  นับ `/*` กับ `*/` ต้องเท่ากัน (วันนี้ 47/47)
+- เทสต์: `test_formula_empty_state_contract.js` 19 checks · cache token → `empty3-20261105`
+
 ## 2026-11-04 — Evidence strip ในแผง RLL + endpoint `/api/rll/research` (ADR-0010)
 
 - ผลการค้นหาสมมติฐานขึ้นมาเป็น **แถบหลักฐานใต้การ์ด RLL** (ไม่ใช่ตัวเลขลอยในเอกสาร): 5 บรรทัด —

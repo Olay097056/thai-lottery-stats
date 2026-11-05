@@ -1479,3 +1479,21 @@ tbody tr{transition:background .12s}
 .rll-evidence[data-state="unavailable"] .rll-evidence-head::before{flex:none;width:6px;height:6px;
   border-radius:999px;box-shadow:inset 0 0 0 1px var(--border-strong);content:""}
 @media (max-width:639px){.rll-evidence{padding:var(--sp-3)}}
+
+/* FORMULA EMPTY STATE — ported from the OpenDesign block of the same name.
+   Token bridge only: the DS space/radius/surface/on-accent names are replaced by this file's
+   equivalents, and the focus-visible override is dropped so the app's global outline rule keeps
+   drawing the ring. */
+.formula-empty{display:grid;grid-column:1/-1;justify-items:start;align-content:start;gap:var(--sp-2);
+  width:100%;max-width:560px;min-width:0;padding:var(--sp-4);border:1px dashed var(--border);
+  border-radius:var(--radius);background:var(--surface2);color:var(--fg-2)}
+.formula-empty-head{margin:0;color:var(--fg-2);font-family:var(--font-body);font-size:1rem;font-weight:600;
+  line-height:1.4;overflow-wrap:anywhere}
+.formula-empty-body{max-width:52ch;margin:0;color:var(--muted);font-size:.875rem;line-height:1.5;
+  overflow-wrap:anywhere}
+.formula-empty-action{display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);
+  min-height:44px;margin-block-start:var(--sp-1);padding:0 var(--sp-4);border:1px solid var(--accent);
+  border-radius:var(--radius);background:var(--accent);color:var(--primary-text);font-size:.875rem;
+  font-weight:600;line-height:1.2;text-align:center}
+.formula-empty-action:hover{border-color:var(--accent-hover);background:var(--accent-hover);color:var(--primary-text)}
+.formula-empty-action:active{border-color:var(--accent-hover);background:var(--accent-hover)}

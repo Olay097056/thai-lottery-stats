@@ -428,6 +428,35 @@ function showFormulaManualInput(){
   if(details)details.open=true;
 }
 
+// Empty state for a results panel with nothing to show. Two cases only: nothing has been calculated
+// yet, or the selected group has no cards for this draw. Neither is an error — the copy says so.
+function _formulaEmptyPanelHtml(kind){
+  const noRun=kind==='no-run';
+  const head=noRun?'ยังไม่มีผลคำนวณ':'กลุ่มนี้ไม่มีผลในงวดนี้';
+  const body=noRun?'กดปุ่มคำนวณเพื่อให้สูตรทั้งหมดทำงานในงวดที่เลือก'
+                  :'เลือกกลุ่มอื่น หรือกดคำนวณใหม่เพื่อให้สูตรทำงานอีกครั้ง';
+  const action=noRun?'<button type="button" class="formula-empty-action" data-action="run-formulas">คำนวณทุกสูตร</button>':'';
+  return `<div class="formula-empty" data-formula-empty="${noRun?'no-run':'no-match'}" role="status">`
+    +`<p class="formula-empty-head">${head}</p>`
+    +`<p class="formula-empty-body">${body}</p>`
+    +action
+    +'</div>';
+}
+
+let _formulaEmptyBound=false;
+function _bindFormulaEmptyActions(){
+  if(_formulaEmptyBound)return;
+  _formulaEmptyBound=true;
+  document.addEventListener('click',event=>{
+    const trigger=event.target instanceof Element?event.target.closest('[data-action="run-formulas"]'):null;
+    if(!trigger)return;
+    const run=document.getElementById('f-run-formulas');
+    if(!run)return;
+    event.preventDefault();
+    run.click();
+  });
+}
+
 function switchFormulaTab(tab){
   const mainPanel=document.getElementById('pred-main-tab-formula');
   if(mainPanel)mainPanel.classList.toggle('astra-selected',tab==='ASTRA');
@@ -454,10 +483,10 @@ function switchFormulaTab(tab){
   document.querySelectorAll('.formula-results-panel').forEach(el=>el.classList.remove('active'));
   const panel=document.getElementById('formula-results-'+tab);
   if(panel){
-    if(tab!=='BT'&&!panel.innerHTML.trim()){
-      panel.innerHTML=LotteryUiState.formula.hasRun
-        ?`<div class="formula-tab-empty" style="display:block;grid-column:1/-1">ไม่มีผลสูตรในหมวดนี้</div>`
-        :'';
+    _bindFormulaEmptyActions();
+    const replaced=panel.querySelector('[data-formula-empty]');
+    if(tab!=='BT'&&(!panel.innerHTML.trim()||replaced)){
+      panel.innerHTML=_formulaEmptyPanelHtml(LotteryUiState.formula.hasRun?'no-match':'no-run');
     }
     panel.classList.add('active');
   }
