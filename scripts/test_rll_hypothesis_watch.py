@@ -62,6 +62,27 @@ class RecordTest(unittest.TestCase):
         record['alert'] = False
         self.assertIn('no signal', summarise(record))
 
+    def test_write_summary_updates_numbers_and_keeps_static_context(self):
+        import tempfile
+        from rll_hypothesis_watch import write_summary
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'summary.json'
+            path.write_text(json.dumps({'protocol': 'hs-v3', 'train': {'draws': 206}, 'tokens': 152182}),
+                            encoding='utf-8')
+            record = {'protocol': 'hs-v3', 'hypotheses': 600, 'usable_draws': 470, 'draws': 767,
+                      'data_as_of': '2026-11-16', 'passed_screen': 1, 'alert': True,
+                      'best': {'name': 'x', 'z': 4.2, 'rate': 0.6, 'baseline': 0.48},
+                      'gate': 3.986, 'ran_at': '2026-11-16T10:00:00',
+                      'permutation': {'p_value': 0.004}}
+            write_summary(record, path)
+            payload = json.loads(path.read_text(encoding='utf-8'))
+            self.assertEqual(payload['hypotheses'], 600)
+            self.assertEqual(payload['p_value'], 0.004)
+            self.assertTrue(payload['alert'])
+            self.assertAlmostEqual(payload['gate'], 3.986)
+            self.assertEqual(payload['train'], {'draws': 206}, 'static context must survive')
+            self.assertEqual(payload['tokens'], 152182)
+
 
 class CliTest(unittest.TestCase):
     def test_second_run_refuses_when_the_data_has_not_changed(self):
@@ -70,7 +91,8 @@ class CliTest(unittest.TestCase):
             hypotheses.write_text(json.dumps({'hypotheses': SAMPLE}), encoding='utf-8')
             log = Path(tmp) / 'log.jsonl'
             cmd = [sys.executable, str(ROOT / 'scripts' / 'rll_hypothesis_watch.py'),
-                   '--hypotheses', str(hypotheses), '--log', str(log)]
+                   '--hypotheses', str(hypotheses), '--log', str(log),
+                   '--summary', str(Path(tmp) / 'summary.json')]
             first = subprocess.run(cmd, capture_output=True, text=True, cwd=str(ROOT))
             self.assertEqual(first.returncode, 0, first.stderr)
             self.assertIn('logged to', first.stdout)

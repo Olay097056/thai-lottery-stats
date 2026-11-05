@@ -106,12 +106,42 @@ def summarise(record):
     return '\n'.join(lines)
 
 
+def write_summary(record, path):
+    """Keep the file the UI reads in step with the last real run.
+
+    Static context (split windows, model, token spend) is preserved; every number that the strip
+    renders comes from the run that just happened.
+    """
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        payload = {}
+    payload.update({
+        'protocol': record['protocol'],
+        'hypotheses': record['hypotheses'],
+        'usable_draws': record['usable_draws'],
+        'draws': record['draws'],
+        'data_as_of': record['data_as_of'],
+        'best': {k: record['best'][k] for k in ('name', 'z', 'rate', 'baseline') if k in record['best']},
+        'gate': round(record['gate'], 3),
+        'passed_screen': record['passed_screen'],
+        'alert': record['alert'],
+        'generated_at': record['ran_at'],
+    })
+    if record.get('permutation'):
+        payload['p_value'] = record['permutation']['p_value']
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--hypotheses', default=str(DEFAULT_HYPOTHESES))
     ap.add_argument('--log', default=str(DEFAULT_LOG))
     ap.add_argument('--null-shuffles', type=int, default=0)
     ap.add_argument('--force', action='store_true', help='re-run even when the data has not changed')
+    ap.add_argument('--summary', default=str(ROOT / 'data' / 'rll_research_summary.json'),
+                    help='file the UI reads; rewritten from this run (empty string to skip)')
     ap.add_argument('--quiet', action='store_true')
     args = ap.parse_args()
 
@@ -137,6 +167,8 @@ def main():
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open('a', encoding='utf-8') as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + '\n')
+    if args.summary:
+        write_summary(record, Path(args.summary))
     if not args.quiet:
         print(summarise(record))
         if previous:

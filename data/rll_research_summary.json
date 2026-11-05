@@ -1,0 +1,38 @@
+{
+ "protocol": "hs-v3",
+ "field": "tail3 ของ pool รางวัล 1-4",
+ "hypotheses": 587,
+ "usable_draws": 464,
+ "draws": 761,
+ "data_as_of": "2026-11-01",
+ "first_usable_draw": "2006-12-30",
+ "train": {
+  "from": "2012-04-16",
+  "to": "2021-02-01",
+  "draws": 206
+ },
+ "validation": {
+  "from": "2021-02-16",
+  "to": "2023-12-16",
+  "draws": 69
+ },
+ "holdout": {
+  "from": "2023-12-30",
+  "to": "2026-11-01",
+  "draws": 69
+ },
+ "best": {
+  "name": "gap120-sum-prize1-120-excl2",
+  "z": 3.0045,
+  "rate": 0.5874,
+  "baseline": 0.4828
+ },
+ "gate": 3.99,
+ "p_value": 0.567,
+ "passed_screen": 0,
+ "alert": false,
+ "model": "deepseek/deepseek-v4.1-flash",
+ "tokens": 152182,
+ "report": "docs/research/2026-11-rll-hypothesis-search.md",
+ "generated_at": "2026-11-05T10:54:59"
+}

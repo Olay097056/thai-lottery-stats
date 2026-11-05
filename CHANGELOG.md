@@ -2,6 +2,25 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-11-04 — Evidence strip ในแผง RLL + endpoint `/api/rll/research` (ADR-0010)
+
+- ผลการค้นหาสมมติฐานขึ้นมาเป็น **แถบหลักฐานใต้การ์ด RLL** (ไม่ใช่ตัวเลขลอยในเอกสาร): 5 บรรทัด —
+  สมมติฐานที่ทดสอบ 587 · งวดที่ใช้ตัดสิน 464 · ผลดีที่สุด (z) +3.00 · เกณฑ์ตรวจจับ (z) 3.99 · p-value 0.567
+  พร้อมบรรทัดสรุป `ไม่พบอะไรเหนือความบังเอิญ · holdout ไม่ถูกแตะ`
+- ดีไซน์โดย **OpenDesign** (project `lottery-stats-od-redesign`, run `cb51abe4…`, agent `hermes` /
+  `commandcode:deepseek/deepseek-v4.1-flash`) จาก `EVIDENCE-BRIEF.md` ที่ล็อกสัญญา markup ไว้ล่วงหน้า —
+  ส่งมอบ `08-rll.html` (3 สถานะ), CSS block `HYPOTHESIS EVIDENCE STRIP (hs-v3)` และ `09-hs-evidence.md`
+  · port เข้า `static/app.css` โดยเปลี่ยนเฉพาะชื่อ token ไม่แตะโครงสร้าง
+- `GET /api/rll/research` อ่านจาก `data/rll_research_summary.json` (ไฟล์ที่ commit ไว้) ไม่คำนวณสด —
+  ถ้าไฟล์หายตอบ `{available:false}` แล้วแถบไม่เรนเดอร์เลย (ไม่โชว์เลขปลอม)
+- `scripts/rll_hypothesis_watch.py --summary` เขียนไฟล์นั้นใหม่ทุกครั้งที่รันจริง → UI กับหลักฐานตรงกันเสมอ
+- สถานะ 3 แบบ: `null` (ปกติ, เงียบ), `alert` (มีอะไรผ่านเกณฑ์, accent), `unavailable` (ยังไม่มีผล)
+- วัดจริงในเบราว์เซอร์: กว้าง 520px ที่ 1440 (cap), 330px ที่ 390, overflow 0px ทั้งสองขนาด,
+  คอนทราสต์ต่ำสุด 5.20:1 (ผ่าน AA ทั้ง light/dark), ตัวเลข mono + tabular-nums ชิดขวา
+- เทสต์: `scripts/test_rll_evidence_contract.js` (28 checks), `scripts/test_rll_research_api.py` (4),
+  `test_rll_hypothesis_watch.py` (6) · cache token → `evidence1-20261105`
+- deploy: รีสตาร์ท uvicorn :8509 ด้วยโค้ดใหม่, ตรวจ `/api/rll/research` = 200 และแผงเรนเดอร์แถบจริง
+
 ## 2026-11-03/04 — Offline hypothesis search: 587 สมมติฐานจาก LLM, ไม่มีตัวไหนผ่าน (ADR-0010)
 
 - เครื่องมือวิจัย `scripts/rll_hypothesis_search.py` — ให้ LLM คิด "สมมติฐาน" เป็น **data spec** (JSON)

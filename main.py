@@ -11,6 +11,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 import asyncio
 import csv
+import json
 import logging
 import threading
 import re
@@ -108,6 +109,21 @@ def api_rll_formula(date: str = Query(...)):
 def api_rll_state():
     import rll
     return rll.state()
+
+
+@app.get('/api/rll/research')
+def api_rll_research():
+    """Frozen outcome of the offline hypothesis search (ADR-0010).
+
+    Served from a committed JSON file, never computed on request: the number is evidence, not a live
+    measurement, and it must not drift because someone restarted the server.
+    """
+    path = Path(__file__).resolve().parent / 'data' / 'rll_research_summary.json'
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {'ok': True, 'available': False}
+    return {'ok': True, 'available': True, **payload}
 
 
 @app.post('/api/rll/resolve')

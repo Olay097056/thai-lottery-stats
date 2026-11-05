@@ -852,6 +852,48 @@ function _hermesCards(prevRow){
 // ─── RLL. Reinforcement Learn LLM — หนึ่งการเรียก LLM ต่องวด ──────────────────
 // ticket 05/06: reward = จำนวนหลักที่ตรงของชุดที่ใกล้ที่สุด ไม่ใช่เงินรางวัล; การ์ดห้าขั้นตามดีไซน์
 // (arm → prompt/โมเดล → เลข → ผลเทียบค่าสุ่ม → ข้อจำกัด) และไม่พิมพ์ edge ใด ๆ
+// Evidence strip for the offline hypothesis search (ADR-0010). The numbers are a frozen research
+// result served by /api/rll/research, not a live measurement: they never change between draws, and
+// an unreachable endpoint must degrade to nothing rather than to a blank card.
+let _rllEvidenceCache='';
+let _rllEvidenceLoaded=false;
+async function _rllEvidenceHtml(){
+  if(_rllEvidenceLoaded)return _rllEvidenceCache;
+  _rllEvidenceLoaded=true;
+  try{
+    const res=await api('rll/research',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
+    if(!res?.ok||!res.available)return _rllEvidenceCache='';
+    // Number(null) is 0, so an absent field would render as a real measurement — reject it first.
+    const num=v=>(v===null||v===undefined||v===''||typeof v==='boolean')?NaN:Number(v);
+    const z=num(res.best?.z);
+    const gate=num(res.gate);
+    const p=num(res.p_value);
+    if(!Number.isFinite(z)||!Number.isFinite(gate)||!Number.isFinite(p))return _rllEvidenceCache='';
+    const protocol=/^[a-z0-9.\-]+$/i.test(String(res.protocol||''))?String(res.protocol):'';
+    const state=res.alert?'alert':'null';
+    const note=state==='alert'
+      ?'มีสมมติฐานผ่านเกณฑ์ — ต้องตรวจสอบก่อนใช้'
+      :'ไม่พบอะไรเหนือความบังเอิญ · holdout ไม่ถูกแตะ';
+    const facts=[
+      ['สมมติฐานที่ทดสอบ',String(Number(res.hypotheses)||0)],
+      ['งวดที่ใช้ตัดสิน',String(Number(res.usable_draws)||0)],
+      ['ผลดีที่สุด (z)',(z>=0?'+':'')+z.toFixed(2)],
+      ['เกณฑ์ตรวจจับ (z)',gate.toFixed(2)],
+      ['p-value',p.toFixed(3)]
+    ];
+    return _rllEvidenceCache=
+      `<div class="rll-evidence" data-rll-evidence="${protocol}" data-state="${state}">`
+      +'<p class="rll-evidence-head">หลักฐานจากการค้นหาสมมติฐาน</p>'
+      +'<ul class="rll-evidence-facts">'
+      +facts.map(([k,v])=>`<li><span class="rll-k">${k}</span><span class="rll-v">${v}</span></li>`).join('')
+      +'</ul>'
+      +`<p class="rll-evidence-note">${note}</p>`
+      +'</div>';
+  }catch(e){
+    return _rllEvidenceCache='';
+  }
+}
+
 function _rllCards(response){
   const row=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(244,114,182,.10);border:1px solid #f472b666;color:var(--text);padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
   const state=(response.arm_state_before||{})[response.arm]||{n:0,sum_r:0};
@@ -1317,6 +1359,7 @@ async function _runAllFormulas({userInitiated=false}={}){
     }else{
       const card=_rllCards(response);
       if(card){rllHtml+=card;rllCards++;}
+      rllHtml+=await _rllEvidenceHtml();
     }
   }catch(e){
     rllHtml+=_formulaEmptyStateHtml('คำนวณ RLL ไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองใหม่');

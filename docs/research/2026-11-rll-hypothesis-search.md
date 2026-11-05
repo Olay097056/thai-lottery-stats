@@ -193,6 +193,18 @@ python scripts/rll_hypothesis_watch.py --force --null-shuffles 200
 
 Baseline recorded 2026-11-04: data as of 2026-11-01, 464 usable draws, best z +3.00, gate 3.99, p 0.567.
 
+## 9c. Where the result surfaces
+
+The RLL card in the app carries a compact evidence strip under its ticket row, fed by
+`GET /api/rll/research` from the committed `data/rll_research_summary.json`. The strip is the OpenDesign
+deliverable from project `lottery-stats-od-redesign` (run `cb51abe4…`, brief `EVIDENCE-BRIEF.md`), ported
+to `static/app.css` with this file's tokens only. It has three states — `null` (today), `alert` (something
+cleared the gate) and `unavailable` (no summary file) — and the watcher rewrites the summary on every real
+run, so the number on screen is always the last run's number, never a hand-copied one.
+
+Measured in the running app: 520 px wide at 1440 (its cap), 330 px at 390, 0 px horizontal overflow at both,
+lowest text contrast 5.20:1, numbers in IBM Plex Mono with tabular figures right-aligned against their labels.
+
 ## 10. What would change the answer
 
 1. **A field with more information per draw** — tail3 already hits 48 % of the time; the limit is n = 206
