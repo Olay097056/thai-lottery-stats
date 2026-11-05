@@ -173,6 +173,26 @@ python scripts/test_rll_hypothesis_search.py        # 21 tests, no network
 The 587-hypothesis set is archived at `docs/research/rll-hypotheses-2026-11.json`, so the run reproduces
 without the key or the model.
 
+## 9b. Keeping the result fresh
+
+The sweep is only as current as the data, so `scripts/rll_hypothesis_watch.py` re-runs the **frozen**
+hypothesis set on the **same protocol** whenever a new draw lands:
+
+```bash
+python scripts/rll_hypothesis_watch.py                     # refuses when the data has not changed
+python scripts/rll_hypothesis_watch.py --force --null-shuffles 200
+```
+
+- one JSONL record per run (`.scratch/rll-hypothesis-watch/log.jsonl`), so "run it again until it looks
+  good" is visible in the log rather than hidden;
+- the alert gate is the run's own null 95th percentile when `--null-shuffles` is used (3.99 today), else
+  the frozen 4.0;
+- exit code 2 means something cleared the gate — the only outcome that would justify promoting a hypothesis
+  to a candidate formula, and it would need its own ADR;
+- a repeat run on unchanged data prints `no new draw since …` and appends nothing.
+
+Baseline recorded 2026-11-04: data as of 2026-11-01, 464 usable draws, best z +3.00, gate 3.99, p 0.567.
+
 ## 10. What would change the answer
 
 1. **A field with more information per draw** — tail3 already hits 48 % of the time; the limit is n = 206

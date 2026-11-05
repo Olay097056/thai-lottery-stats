@@ -26,6 +26,10 @@
   joint coupling (2×2 minor), shape/struct/lag wiring, exclusion mask, sum clustering, null centring
 - report: `docs/research/2026-11-rll-hypothesis-search.md` · ชุด 587 ข้อ: `docs/research/rll-hypotheses-2026-11.json`
   · ไม่แตะ `rll.sqlite3` และไม่มีอะไรขึ้น UI
+- `scripts/rll_hypothesis_watch.py` — รัน sweep เดิมซ้ำ **เฉพาะเมื่อมีงวดใหม่** (ไม่ยอมรันซ้ำบนข้อมูลเดิม),
+  append JSONL log ทุกรอบ, gate = p95 ของ null ของรอบนั้น (วันนี้ 3.99), exit 2 เมื่อมีอะไรผ่าน gate
+  → baseline 2026-11-04: data as of 2026-11-01, best z +3.00, p 0.567
+  (เทสต์ `scripts/test_rll_hypothesis_watch.py` 5 ตัว รวม end-to-end refusal)
 
 ## 2026-11-03 — Reinforcement Learn LLM (RLL) · สูตร bandit ที่ใช้ LLM สด (ADR-0009)
 
