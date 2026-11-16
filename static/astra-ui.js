@@ -299,13 +299,17 @@ async function loadAstra({recompute=false,statusOnly=false}={}){
       });
       if(!isCurrent())return;
       if(isAstraApiFailure(state)){
-        const message=astraApiFailureMessage(state,'อ่านสถานะอัตโนมัติของ Astra ไม่สำเร็จ');
-        setAstraAutomationState('error',message);
-        setAstraState('error',date,message);
+        // Every automation error line states two things: the read failed, and nothing is confirmed. A bare
+        // "cannot reach the server" leaves a reader unsure whether the last good snapshot still stands.
+        const reason=astraApiFailureMessage(state,'ข้อมูลจาก server ไม่ครบ');
+        setAstraAutomationState('error',`อ่านสถานะอัตโนมัติไม่สำเร็จ · ${reason} · จึงไม่ยืนยันผล`);
+        setAstraState('error',date,reason);
         return;
       }
       if(!validateAstraAutomation(state,date)){
-        setAstraAutomationState('error','server ส่งสถานะอัตโนมัติไม่ครบหรือไม่ตรงรูปแบบ');
+        // The error line must say the read failed AND that the state is unconfirmed: "the server sent
+        // something incomplete" leaves a reader unsure whether the last good snapshot still stands.
+        setAstraAutomationState('error','อ่านสถานะอัตโนมัติไม่สำเร็จ · server ส่งข้อมูลไม่ครบหรือไม่ตรงรูปแบบ จึงไม่ยืนยันผล');
         setAstraState('error',date,'อ่านสถานะอัตโนมัติของ Astra ไม่สำเร็จ · server ส่งข้อมูลไม่ครบ');
         return;
       }

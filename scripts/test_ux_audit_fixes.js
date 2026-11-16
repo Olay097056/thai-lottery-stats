@@ -80,7 +80,10 @@ check(!index.includes('id="shared-workflow"') && !index.includes('onclick="loadP
 const predMainButtons = [...index.matchAll(/<button[^>]*id="pred-main-btn-[^"]+"[^>]*>/g)].map(match => match[0]);
 check(index.includes('class="pred-page-tabs" role="group"') && predMainButtons.length === 4 && !index.includes('id="pred-main-btn-astra"') && /<option value="ASTRA">Astra · ทดลอง<\/option>/.test(index) && !index.includes('id="ftab-btn-ASTRA"') && functionBody(app, 'switchPredTab').includes("setAttribute('aria-pressed'"), 'Predict exposes four synchronized subviews and Astra is a standard Formula group option');
 check(functionBody(app, 'syncPrimaryRunAction').includes("button.hidden=tab==='formula'") && functionBody(formula, '_runAllFormulas').includes("LotteryUiState.formula.activeTab==='ASTRA'") && !index.includes('id="astra-run"') && !index.includes('id="astra-sigma-run"') && index.includes('id="f-run-formulas"'), 'Astra uses the standard Formula calculate action without a separate run button');
-check(!rule('.bp-mode-btn').includes('cursor:default') && rule('.bp-mode-btn').includes('cursor:pointer') && css.includes('.bp-mode-btn:focus-visible'), 'Buy Plan mode choices look and behave like interactive buttons');
+// `rule()` returns the LAST block for a selector, but a later refinement block here only sets min-height and
+// colour — it does not override the cursor. So assert across every block: something declares pointer, nothing
+// declares default.
+check(!/\.bp-mode-btn\s*\{[^}]*cursor:\s*default/.test(css) && /\.bp-mode-btn\s*\{[^}]*cursor:\s*pointer/.test(css) && css.includes('.bp-mode-btn:focus-visible'), 'Buy Plan mode choices look and behave like interactive buttons');
 check(css.includes('min-height:44px') && css.includes('.nav-scroll-control'), 'touch controls meet the mobile target size and have clear navigation affordance');
 check(!rule('.first-prize-overview').includes('border-left:3px') && rule('.first-prize-overview').includes('border:1px solid var(--border2)'), 'the Predict experiment overview uses the shared restrained panel border');
 check(!rule('#first-prize-status').includes('border-left:3px') && rule('#first-prize-status').includes('color:var(--text2)'), 'the Predict experiment status avoids the thick side stripe and keeps readable secondary text');

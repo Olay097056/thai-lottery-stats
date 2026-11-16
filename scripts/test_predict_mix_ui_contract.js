@@ -373,7 +373,8 @@ function makeFormulaCalculationHarness(api) {
     toast: (...args) => calls.push(`toast:${args.join('|')}`),
     setFormulaLoading: message => {
       calls.push(`loading:${message}`);
-      if (message.startsWith('ขั้น 1/5')) {
+      // The pipeline reports four stages now, so match any stage-1 label rather than pinning 1/5.
+      if (/^ขั้น 1\//.test(message)) {
         calls.push('calculation:started');
         resultNodes.push({ textContent: String(elements['f-prize1']?.value || '123456') });
         throw new Error('calculation-started');

@@ -57,7 +57,10 @@ assert.equal(query.read('predict/all').data,null);
 async function transportContracts(){
   const calls=[];
   let destroyed=0;
+  // The registry reads `window.Chart`, as it must — in a page window IS the global object. The stub has to
+  // put it there too, or mkChart takes the "library missing" branch and every assertion after this is void.
   sandbox.Chart=function(){this.destroy=()=>{destroyed++;};};
+  sandbox.window.Chart=sandbox.Chart;
   sandbox.document={getElementById:()=>({getContext:()=>({}),classList:{add(){},remove(){}},setAttribute(){},removeAttribute(){}})};
   sandbox.LotteryCharts.mkChart('fixture',{});
   sandbox.LotteryCharts.mkChart('fixture',{});

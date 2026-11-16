@@ -49,6 +49,7 @@ function element(id) {
     getAttribute: name => attrs.get(name) ?? null, removeAttribute: name => attrs.delete(name),
     add(option) { this.options.push(option); }, appendChild(child) { this.children.push(child); },
     addEventListener() {}, remove() {}, querySelectorAll: () => [],
+    querySelector: () => null,
   };
 }
 function harness() {

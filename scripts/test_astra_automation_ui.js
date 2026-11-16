@@ -438,7 +438,7 @@ test('explicit official shifted target is readable without changing shared dates
   assert.deepEqual(h.requests, ['/api/astra/automation?date=2027-01-16', '/api/astra/automation?date=2027-01-17']);
   assert.match(h.elements['astra-meta'].innerHTML, /2027-01-17/);
   assert.match(h.elements['astra-target-label'].textContent, /2027-01-17/);
-  assert.match(h.elements['astra-target-label'].textContent, /เฉพาะ astra/);
+  assert.match(h.elements['astra-target-label'].textContent, /เฉพาะ Astra/);
   assert.equal(shared.value, '2027-01-16');
   assert.equal(JSON.stringify(shared.options), originalOptions);
   assert.equal(JSON.stringify(h.sandbox.clientDraws()), calendarBefore);
@@ -455,11 +455,11 @@ test('automatic target stays astra-only for manual use and resets on shared sele
   installFetch(h, automation('2027-01-17'), report('2027-01-17'));
   await h.sandbox.loadAstra({ recompute: true });
   assert.equal(h.requests.at(-1), '/api/predict/astra?date=2027-01-17');
-  assert.match(h.elements['astra-target-label'].textContent, /เฉพาะ astra/);
+  assert.match(h.elements['astra-target-label'].textContent, /เฉพาะ Astra/);
   h.sandbox.syncSharedDrawDate('2026-11-01', false);
   assert.equal(h.elements['astra-auto-target'].hidden, true);
   assert.match(h.elements['astra-target-label'].textContent, /2026-11-01/);
-  assert.doesNotMatch(h.elements['astra-target-label'].textContent, /เฉพาะ astra/);
+  assert.doesNotMatch(h.elements['astra-target-label'].textContent, /เฉพาะ Astra/);
   installFetch(h, automation('2026-11-01'));
   await h.sandbox.loadAstra({ statusOnly: true });
   assert.equal(h.requests.at(-1), '/api/astra/automation?date=2026-11-01');

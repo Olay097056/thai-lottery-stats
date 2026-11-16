@@ -107,7 +107,7 @@ async function loadDashboard(){
     ?hotStatus+positiveHot.map((item,i)=>{
       const num=escHtml(dashNum(item.row));
       const cnt=item.count;
-      return '<button type="button" class="dash-hot-row" onclick="showPage(&quot;frequency&quot;)" aria-label="เปิดตารางความถี่: เลข '+num+' ออก '+cnt+' ครั้งใน 12 เดือนล่าสุด"><span class="rank-badge '+(i<3?'rank-'+(i+1):'')+'">'+(i+1)+'</span><span class="hc-num">'+num+'</span><span class="hc-val">'+cnt+' ครั้ง</span><span aria-hidden="true" class="hc-bar-wrap"><span class="hc-bar-fill hot-fill" style="width:'+(cnt/maxHotBar*100).toFixed(0)+'%"></span></span></button>';
+      return `<button type="button" class="dash-hot-row" onclick="showPage('frequency')" aria-label="เปิดตารางความถี่: เลข ${num} ออก ${cnt} ครั้งใน 12 เดือนล่าสุด"><span class="rank-badge ${i<3?'rank-'+(i+1):''}">${i+1}</span><span class="hc-num">${num}</span><span class="hc-val">${cnt} ครั้ง</span><span aria-hidden="true" class="hc-bar-wrap"><span class="hc-bar-fill hot-fill" style="width:${(cnt/maxHotBar*100).toFixed(0)}%"></span></span></button>`;
     }).join('')
     :hotStatus;
   const recentRows=d.recent_draws||[];

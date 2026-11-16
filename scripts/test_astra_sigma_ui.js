@@ -44,7 +44,7 @@ function element(id) {
   return {id,value:'',innerHTML:'',textContent:'',hidden:false,disabled:false,style:{},dataset:{},
     options:[],children:[],classList:{add:n=>classes.add(n),remove:n=>classes.delete(n),contains:n=>classes.has(n),toggle(n,on){on?classes.add(n):classes.delete(n);}},
     setAttribute:(k,v)=>attrs.set(k,String(v)),getAttribute:k=>attrs.get(k)??null,removeAttribute:k=>attrs.delete(k),
-    add(){},appendChild(){},addEventListener(){},remove(){},querySelectorAll:()=>[]};
+    add(){},appendChild(){},addEventListener(){},remove(){},querySelectorAll:()=>[],querySelector:()=>null};
 }
 function harness(fetchImpl) {
   const FixedDate=class extends Date{static now(){return Date.parse('2026-10-08T12:00:00+07:00');}};
