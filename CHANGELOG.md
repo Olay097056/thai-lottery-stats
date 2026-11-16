@@ -2,6 +2,38 @@
 
 ประวัติ implementation แบบละเอียด อ้างอิงเมื่อไม่แน่ใจว่า decision เก่าตัดสินใจทำไม สำหรับสถานะปัจจุบันดู [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)
 
+## 2026-11-16 (ต่อ) — LLM GOD: สูตร 5 ชุดบน pool 1-5 ที่วัดกำลังก่อนออกแบบ แล้วพบว่าพิสูจน์ไม่ได้
+
+- **วัดกำลังก่อนวาดดีไซน์**: pool 1-5 = 168 เลข (1 + ข้างเคียง 2 + prize2 5 + prize3 10 + prize4 50 +
+  prize5 100) · 462 จาก 761 งวดมีข้อมูลครบ · 5 บัตรคาดหวังถูก **0.388 ครั้งทั้งประวัติ** ≈ 1 ครั้ง/1,191 งวด
+  (~50 ปี) · พิสูจน์ edge +50% ต้อง 37,371 งวด (~1,557 ปี) → สูตรนี้ ship เป็น **ทดลองถาวร** และการ์ด
+  ต้องพกตัวเลขนี้ ไม่ใช่เชิงอรรถ
+- **ตัด "นับแยกตามชั้นรางวัล" ออกด้วยตัวเลข**: E[คะแนน] เท่ากันเป๊ะทุกชุด 5 ใบ — 59.000000 (ถ่วงตามเงินรางวัล),
+  0.000830 (เท่ากัน), 0.063130 (1/จำนวนใบในชั้น) เพราะบัตรทุกใบมีโอกาสเท่ากันในทุกชั้น และ P(ถูก >1 ใบ/งวด)
+  ≈ 7e-9 · เป็นการแสดงผล ไม่ใช่การวัด
+- เพิ่ม `llm_god.py` — protocol `llm-god-v1`, DB แยก `astra_runtime/llm_god.sqlite3` · pipeline 4 ขั้น
+  (`analyse` → `propose` → `critique` → `select`) บน `deepseek/deepseek-v4.1-flash`, temperature 0 ·
+  ขั้น `analyse` ได้ประวัติทั้งเล่ม (~133k tokens จาก context 1M) · retry 1 ครั้งด้วย budget ×3 ·
+  ขั้นที่ล้มทั้งสองครั้งหยุด pipeline และบันทึกว่าหยุดที่ขั้นไหน (ไม่เติมเลขสำรอง)
+- **8 arm = 4 การวิเคราะห์ × 2 ขนาดชุด** และแต่ละ arm ได้ **factsheet ที่คำนวณต่างกันจริง** (มี test บังคับ
+  ว่าทั้งสี่แบบไม่ซ้ำ) เพราะประวัติอยู่ใน prompt เดียวแล้ว การ slice ข้อมูลแบบ RLL จึงไม่ทำให้ arm ต่างกัน
+- **bandit ให้คะแนนด้วย prize-1 proxy** (mean 1.495846) และเก็บ pool-168 (mean 3.7103, sd 0.5487 จาก
+  การจำลอง 3,000 ซ้ำ) ไว้ในคอลัมน์ `r_pool` เป็นตัวอ่านประกอบ — pool ให้สัญญาณแน่นกว่า (34 งวด/arm
+  สำหรับ +10% เทียบกับ 360) แต่อิ่มตัว `P(r≥3)=1.0`
+- **หน้าจอไม่รอ**: 4 calls = 36-104 วินาที จึงเพิ่ม `ensure_precomputed()` — `GET /api/llm-god/formula`
+  ตอบ `pending`/`running` แล้ว thread เดียวเขียน record · ทุกสถานะ (pending/running/unavailable พร้อมชื่อขั้น/
+  ปกติ/งวดปิด/protocol เก่า) มีข้อความของตัวเอง ไม่มีสถานะใดถูกแสดงเป็น "การ์ดว่าง"
+- **wiring ครบ 15 จุด**: `_formulaGroupKey` (ต้องมาก่อน branch ตัวอักษรเดี่ยว ไม่งั้น card ตกไปกลุ่ม A),
+  `isGroup`, `counts.LLMGOD`, `_GRP`, `BP_GROUP_MAP` + `bpGroupsForSources`, panel + option ใน index.html,
+  Picks allowlist, prospective row และ `?v=` bump ครั้งเดียวทั้งไฟล์
+- **ไม่ทำซ้ำบั๊กของ RLL**: แถว prospective push ด้วย **group key** `'LLMGOD'` ไม่ใช่ label (ของ RLL ใช้ label
+  ทำให้ `_GRP` lookup พลาดและแถวออกมาเป็น `var(--text3)`) และ reward sweep ต่อไว้ที่ **ทั้งสอง**
+  cache-write path
+- แก้ pre-existing red 2 ตัวที่ค้างจากงาน RLL: `let _rllEvidenceCache` และ `let _formulaEmptyBound`
+  ที่ top level ทำให้ `test_frontend_architecture` แดง (กฎ "no loose global UI state") → เปลี่ยนเป็น
+  `Object.seal({...})`
+- tests: `test_llm_god.py` 26, `test_llm_god_loop_hook.py` 7, `test_llm_god_frontend_contract.js` 33
+
 ## 2026-11-16 (ต่อ) — ปิด loop ของ reward และทำให้ ban list ที่บังคับ = ที่พิมพ์ให้โมเดลเห็น
 
 - **loop ไม่เคยปิด**: `POST /api/rll/resolve` เป็นทางเดียวที่ reward จะเข้าระบบ และไม่มีใครเรียกมันเลย

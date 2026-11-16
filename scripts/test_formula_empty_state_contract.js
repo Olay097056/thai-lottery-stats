@@ -52,7 +52,7 @@ check('no english prose', !/(no results|nothing yet|run formulas)/i.test(noRun +
 // 5. the panel uses it, and the action is delegated once
 check('switchFormulaTab renders the state', src.includes("_formulaEmptyPanelHtml(LotteryUiState.formula.hasRun?'no-match':'no-run')"));
 check('switchFormulaTab replaces a stale state after a run', src.includes("panel.querySelector('[data-formula-empty]')"));
-check('delegated click wired once', /_formulaEmptyBound\s*=\s*false/.test(src) && src.includes('_bindFormulaEmptyActions();'));
+check('delegated click wired once', /_formulaEmpty=Object\.seal\(\{bound:false\}\)/.test(src) && src.includes('_bindFormulaEmptyActions();'));
 check('the action targets the real run button', /getElementById\('f-run-formulas'\)/.test(src));
 
 // 6. app.css must have balanced comment markers. A stray `*/` inside a comment closes it early,

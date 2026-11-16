@@ -143,6 +143,53 @@ def api_rll_resolve(date: str = Query(...), prize1: str = Query(...)):
         raise HTTPException(422, detail=str(exc))
 
 
+@app.get('/api/llm-god/formula')
+def api_llm_god_formula(date: str = Query(...)):
+    """Serve the stored five tickets, or start the four-stage pipeline and return `pending`.
+
+    Deliberately never blocks: four model calls take 36-104 seconds, which is longer than a page will wait.
+    The pipeline writes its record in the background and the next read serves it.
+    """
+    import astra
+    import llm_god
+    try:
+        return llm_god.ensure_precomputed(date)
+    except llm_god.ClosedTarget:
+        # Three failure causes, three messages. Bundling them made a date bug read as missing history for
+        # weeks in RLL, so a closed draw never borrows the "not enough data" sentence.
+        raise HTTPException(422, detail='งวดนี้ผ่านเวลาออกผลแล้ว — สูตร LLM GOD บันทึกคำทำนายได้ถึง 16:00 '
+                                        'ของวันออกผล และจะไม่คำนวณย้อนหลังให้งวดที่ออกผลแล้ว')
+    except astra.AstraInputError as exc:
+        raise HTTPException(422, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc))
+    except astra.AstraCacheError:
+        raise HTTPException(503, detail='อ่านประวัติรางวัลจากแคชเดิมไม่ได้')
+
+
+@app.get('/api/llm-god/state')
+def api_llm_god_state():
+    import llm_god
+    return llm_god.state()
+
+
+@app.get('/api/llm-god/stages')
+def api_llm_god_stages(date: str = Query(...)):
+    """The stage log for one draw — what ran, and where a failed run stopped."""
+    import llm_god
+    return {'ok': True, 'protocol': llm_god.PROTOCOL, 'target_date': date,
+            'stages': llm_god.stages_for(date)}
+
+
+@app.post('/api/llm-god/resolve')
+def api_llm_god_resolve(date: str = Query(...), prize1: str = Query(...)):
+    import llm_god
+    try:
+        return llm_god.resolve(date, prize1)
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc))
+
+
 @app.get('/api/first-prize')
 def api_first_prize_board():
     import first_prize
@@ -510,6 +557,7 @@ def _invalidate_dataframe():
         _df_cache = None
         _df_signature = None
     _resolve_rll_after_cache_change()
+    _resolve_llm_god_after_cache_change()
 
 
 def _resolve_rll_after_cache_change():
@@ -528,6 +576,25 @@ def _resolve_rll_after_cache_change():
             print('rll: resolved ' + ', '.join(f'{r["target_date"]} r={r["r"]}' for r in resolved), flush=True)
     except Exception as exc:                      # pragma: no cover - defensive by design
         print(f'rll: reward sweep skipped ({exc})', flush=True)
+
+
+def _resolve_llm_god_after_cache_change():
+    """Score any stored LLM GOD forecast whose draw just landed. Never raises into the caller.
+
+    Same shape and same reason as the RLL sweep: `resolve` is the only path a reward takes into the bandit,
+    so without a caller the posterior sits at n = 0 forever. A hook on only one of the two cache-write paths
+    is dead, which is why both `_invalidate_dataframe()` and the refresh route call this.
+    """
+    try:
+        import llm_god
+        rows = llm_god.resolve_pending()
+        resolved = [r for r in rows if r.get('status') == 'resolved']
+        if resolved:
+            print('llm-god: resolved ' +
+                  ', '.join(f'{r["target_date"]} r={r["r"]} pool={r["r_pool"]}' for r in resolved),
+                  flush=True)
+    except Exception as exc:                      # pragma: no cover - defensive by design
+        print(f'llm-god: reward sweep skipped ({exc})', flush=True)
 
 
 @app.get("/api/astra/automation")
@@ -838,6 +905,7 @@ def api_refresh():
         # Outside the lock: /api/refresh is the second cache-write path (the automation hook is the
         # other), and a draw that lands through the button must close the reward loop too.
         _resolve_rll_after_cache_change()
+        _resolve_llm_god_after_cache_change()
         return {"status": "ok", "rows": rows}
     except StorageError:
         raise HTTPException(status_code=503, detail='result cache writer is unavailable') from None

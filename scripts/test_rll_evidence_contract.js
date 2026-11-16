@@ -16,7 +16,7 @@ function check(label, cond) {
   passed++;
 }
 
-const start = src.indexOf("let _rllEvidenceCache=''");
+const start = src.indexOf("const _rllEvidence=Object.seal");
 const end = src.indexOf('function _rllCards(response)');
 if (start < 0 || end < 0) throw new Error('evidence block not found in formula-calculators.js');
 const block = src.slice(start, end);
@@ -32,7 +32,7 @@ function makeRunner(payload) {
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(block + '\nthis.evidence = _rllEvidenceHtml; this.reset = () => { _rllEvidenceLoaded=false; _rllEvidenceCache=""; };', sandbox);
+  vm.runInContext(block + '\nthis.evidence = _rllEvidenceHtml; this.reset = () => { _rllEvidence.loaded=false; _rllEvidence.cache=""; };', sandbox);
   return { sandbox, calls };
 }
 

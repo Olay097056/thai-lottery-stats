@@ -443,10 +443,10 @@ function _formulaEmptyPanelHtml(kind){
     +'</div>';
 }
 
-let _formulaEmptyBound=false;
+const _formulaEmpty=Object.seal({bound:false});
 function _bindFormulaEmptyActions(){
-  if(_formulaEmptyBound)return;
-  _formulaEmptyBound=true;
+  if(_formulaEmpty.bound)return;
+  _formulaEmpty.bound=true;
   document.addEventListener('click',event=>{
     const trigger=event.target instanceof Element?event.target.closest('[data-action="run-formulas"]'):null;
     if(!trigger)return;
@@ -471,7 +471,7 @@ function switchFormulaTab(tab){
   const astraVersionControl=document.getElementById('astra-version-control');
   if(astraVersionControl)astraVersionControl.hidden=tab!=='ASTRA';
   if(groupSel){
-    const isGroup=['A','B','C','D','F','G','H','E','I','J','HM','ASTRA','FANO','RLL'].includes(tab);
+    const isGroup=['A','B','C','D','F','G','H','E','I','J','HM','ASTRA','FANO','RLL','LLMGOD'].includes(tab);
     groupSel.value=isGroup?tab:'';
     groupSel.classList.toggle('ftab-select-active',isGroup);
     if(isGroup)groupSel.setAttribute('aria-controls','formula-results-'+tab);
@@ -837,6 +837,7 @@ function _formulaGroupKey(source,title=''){
   const s=String(source||title||'').trim();
   if(s.startsWith('FANO.'))return 'FANO';
   if(s.startsWith('RLL'))return 'RLL';
+  if(s.startsWith('LLM GOD'))return 'LLMGOD';
   if(s.startsWith('A.'))return 'A';
   if(s.startsWith('B.'))return 'B';
   if(s.startsWith('C.'))return 'C';
@@ -852,6 +853,7 @@ function _formulaGroupKey(source,title=''){
 
 function _formulaTargetLabel(title,source,highlights=[]){
   if(title.startsWith('RLL'))return 'Target: รางวัลที่ 1 ตรง 6 หลัก';
+  if(title.startsWith('LLM GOD'))return 'Target: Pool 1-5 (168 เลข)';
   if(title.startsWith('D2')||title.startsWith('X2'))return 'Target: front 3';
   if(title.startsWith('D3')||title.startsWith('X3')||title.startsWith('C3'))return 'Target: back 3';
   if(title.startsWith('D4')||title.startsWith('X4')||title.includes('2530'))return 'Target: prize1 tail';
@@ -878,7 +880,7 @@ function _groupFormulaCards(cards){
   return groups;
 }
 
-function _renderFormulaSummary({grouped,codexCards,patternCards=[],eCards,imperialCards,tycoonCards,hermesCards,fanoCards=0,rllCards=0,targetDate}){
+function _renderFormulaSummary({grouped,codexCards,patternCards=[],eCards,imperialCards,tycoonCards,hermesCards,fanoCards=0,rllCards=0,llmGodCards=0,targetDate}){
   const el=document.getElementById('formula-summary');
   if(!el)return;
   const counts={
@@ -895,6 +897,7 @@ function _renderFormulaSummary({grouped,codexCards,patternCards=[],eCards,imperi
     HM:(hermesCards||[]).length,
     FANO:fanoCards,
     RLL:rllCards,
+    LLMGOD:llmGodCards,
   };
   const total=Object.values(counts).reduce((a,b)=>a+b,0);
   const targetLabel=targetDate?(()=>{
@@ -910,6 +913,7 @@ function _renderFormulaSummary({grouped,codexCards,patternCards=[],eCards,imperi
     ['สูตร Hermes (pool 1-4)',counts.HM,'Hermes · ทดลอง'],
     ['รางวัลที่ 1 · สมมติฐาน',counts.FANO,'ระนาบฟาโน v4 + v5 · แยกจาก Picks · เลือก 2 เลขจากโมเดลย้อนหลัง'],
     ['RLL · LLM สด',counts.RLL,'เรียนจากจำนวนหลักที่ตรง ไม่ใช่เงินรางวัล · ยังไม่มีหลักฐาน'],
+    ['LLM GOD · 5 ชุด pool 1-5',counts.LLMGOD,'4 ขั้นตอน · 8 arm · คาดหวังถูก 0.388 ครั้งใน 462 งวด · ยังไม่มีหลักฐาน'],
   ].map(([label,value,sub])=>`<div class="formula-summary-item"><div class="formula-summary-label">${label}</div><div class="formula-summary-value">${value}</div><div class="formula-summary-sub">${sub}</div></div>`).join('');
   el.classList.add('active');
 }

@@ -855,20 +855,19 @@ function _hermesCards(prevRow){
 // Evidence strip for the offline hypothesis search (ADR-0010). The numbers are a frozen research
 // result served by /api/rll/research, not a live measurement: they never change between draws, and
 // an unreachable endpoint must degrade to nothing rather than to a blank card.
-let _rllEvidenceCache='';
-let _rllEvidenceLoaded=false;
+const _rllEvidence=Object.seal({cache:'',loaded:false});
 async function _rllEvidenceHtml(){
-  if(_rllEvidenceLoaded)return _rllEvidenceCache;
-  _rllEvidenceLoaded=true;
+  if(_rllEvidence.loaded)return _rllEvidence.cache;
+  _rllEvidence.loaded=true;
   try{
     const res=await api('rll/research',{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
-    if(!res?.ok||!res.available)return _rllEvidenceCache='';
+    if(!res?.ok||!res.available)return _rllEvidence.cache='';
     // Number(null) is 0, so an absent field would render as a real measurement — reject it first.
     const num=v=>(v===null||v===undefined||v===''||typeof v==='boolean')?NaN:Number(v);
     const z=num(res.best?.z);
     const gate=num(res.gate);
     const p=num(res.p_value);
-    if(!Number.isFinite(z)||!Number.isFinite(gate)||!Number.isFinite(p))return _rllEvidenceCache='';
+    if(!Number.isFinite(z)||!Number.isFinite(gate)||!Number.isFinite(p))return _rllEvidence.cache='';
     const protocol=/^[a-z0-9.\-]+$/i.test(String(res.protocol||''))?String(res.protocol):'';
     const state=res.alert?'alert':'null';
     const note=state==='alert'
@@ -881,7 +880,7 @@ async function _rllEvidenceHtml(){
       ['เกณฑ์ตรวจจับ (z)',gate.toFixed(2)],
       ['p-value',p.toFixed(3)]
     ];
-    return _rllEvidenceCache=
+    return _rllEvidence.cache=
       `<div class="rll-evidence" data-rll-evidence="${protocol}" data-state="${state}">`
       +'<p class="rll-evidence-head">หลักฐานจากการค้นหาสมมติฐาน</p>'
       +'<ul class="rll-evidence-facts">'
@@ -890,7 +889,7 @@ async function _rllEvidenceHtml(){
       +`<p class="rll-evidence-note">${note}</p>`
       +'</div>';
   }catch(e){
-    return _rllEvidenceCache='';
+    return _rllEvidence.cache='';
   }
 }
 
@@ -970,6 +969,54 @@ function _rllCards(response){
      'ยังไม่มีหลักฐานว่าสูตรนี้ดีกว่าการสุ่ม · แม้แต่ lift เต็มเพดาน (+5.3%) ยังต้องใช้ราว 7,500 งวด (~310 ปี) · +25%/+50% ของ 1.496 สูงกว่าเพดาน จึงเป็นไปไม่ได้',
      'ทุกใบมี EV เท่ากัน (ประมาณ −40% ต่อใบ) — สูตรไม่เปลี่ยน EV',
      'หนึ่งการเรียกต่องวด · บันทึกผลครั้งแรกแล้วไม่คำนวณซ้ำ (ไม่มีปุ่มสุ่มใหม่)'],
+    [], row(response.numbers||[]),
+    'ทดลอง'
+  );
+}
+
+// ─── LLM GOD. 5 ชุด ครอบคลุม pool 1-5 · 4 ขั้นตอนต่องวด ───────────────────────
+// The field is pool6: a ticket wins something when it matches ANY of the 168 numbers across prizes 1-5.
+// The honest ceiling is brutal and belongs on the card, not only in the docs: five tickets expect 0.388
+// hits across the 462 draws that carry a complete pool — one hit per ~1,191 draws, about fifty years.
+const LLMGOD_POOL_SIZE=168;
+const LLMGOD_EXPECTED_HITS=0.388;
+// Expected hits quoted against the corpus they were measured on.
+const LLMGOD_USABLE_DRAWS=462;
+function _llmGodChance(numbers){
+  const set=(numbers||[]).map(String).filter(n=>/^[0-9]{6}$/.test(n));
+  if(!set.length)return null;
+  // Every ticket has the same per-draw chance against the pool, so the set's only real parameter is how
+  // many distinct tickets survive the parser. Computed from the set that is on screen, never a constant.
+  const p=1-Math.pow(1-LLMGOD_POOL_SIZE/1e6,new Set(set).size);
+  return {pPerDraw:p,pct:p*100,perHit:1/p,k:new Set(set).size};
+}
+function _llmGodCards(response){
+  const row=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(167,139,250,.10);border:1px solid #a78bfa66;color:var(--text);padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
+  const live=(response.arm_state_now||{})[response.arm];
+  const state=live||(response.arm_state_before||{})[response.arm]||{n:0,sum_r:0};
+  const n=Number(state.n)||0;
+  const observed=n?Number(state.sum_r)/n:null;
+  const reward=response.reward&&Number.isFinite(Number(response.reward.r))?response.reward:null;
+  const rewardLine=reward
+    ?`ผลของงวดนี้: ตรงรางวัลที่ 1 สูงสุด ${reward.r} หลัก${Number.isFinite(Number(reward.r_pool))?` · เทียบกับ pool 1-5 (168 เลข) ตรงสูงสุด ${reward.r_pool} หลัก`:''}${reward.payout?' · ถูกเงินรางวัล':' · ไม่ถูกรางวัล'}`
+    :'ผลของงวดนี้: ยังไม่ออกผล — ระบบให้คะแนนเองเมื่อผลเข้ามาในแคช (ไม่มีการเดาผล)';
+  const chance=_llmGodChance(response.numbers);
+  const chanceLine=chance
+    ?`โอกาสต่องวดของชุดนี้ ${chance.pct.toFixed(4)}% — ${chance.k} ใบ distinct เทียบ pool ${LLMGOD_POOL_SIZE} เลข · เฉลี่ยถูก 1 ครั้งต่อ ${chance.perHit.toLocaleString('en-US',{maximumFractionDigits:0})} งวด`
+    :'โอกาสต่องวดคำนวณไม่ได้ (ไม่มีเลขครบห้าใบในคำตอบนี้)';
+  const stages=(response.stages||[]).map(s=>`${s.stage}:${s.status}${Number.isFinite(s.latency_ms)?` ${(s.latency_ms/1000).toFixed(1)}s`:''}`).join(' · ');
+  return _mkFormulaCard(
+    'LLM GOD · 5 ชุด Pool 1-5','LLM GOD · 5 ชุด Pool 1-5',
+    [`arm ที่ถูกเลือก: ${response.arm} · เล่นมาแล้ว ${n} งวด · reward = จำนวนหลักที่ตรงของชุดที่ใกล้รางวัลที่ 1 ที่สุด (0–6)`,
+     `4 ขั้นตอน: ${stages||'—'} · รวม ${response.usage_total_tokens?Number(response.usage_total_tokens).toLocaleString('en-US'):'—'} tokens`,
+     `ประวัติที่ป้อนให้โมเดล ${response.pool_draws||0} งวด (pool 1-5 ครบ) จาก ${response.history_draws||0} งวด · ${response.model||'—'} · อุณหภูมิ 0`,
+     chanceLine,
+     `ความคาดหวังที่ต้องบอกตรง ๆ: ${LLMGOD_EXPECTED_HITS} ครั้ง ใน ${LLMGOD_USABLE_DRAWS} งวดที่มี pool ครบ — ประมาณ 1 ครั้งต่อ 50 ปี`,
+     rewardLine,
+     `ค่าเฉลี่ยของ arm นี้ ${observed==null?'—':observed.toFixed(3)} เทียบกับค่าสุ่ม ${Number(response.chance?.mean||0).toFixed(3)} · ตัวเลข pool 1-5 ของชุดนี้เป็นเพียงตัวอ่านประกอบ ไม่ใช่คะแนนที่ bandit ใช้`,
+     'ยังไม่มีหลักฐานว่าสูตรนี้ดีกว่าการสุ่ม และพิสูจน์ไม่ได้ในชั่วอายุคน: บัตร 6 หลักทุกใบมีโอกาสเท่ากันในทุกชั้นรางวัล สิ่งที่ได้คือ 5 ใบที่เอาไปซื้อได้จริง ไม่ใช่โอกาสที่ดีกว่า',
+     'ทุกใบมี EV เท่ากัน (ประมาณ −40% ต่อใบ) — สูตรไม่เปลี่ยน EV',
+     'บันทึกผลครั้งแรกแล้วไม่คำนวณซ้ำ (ไม่มีปุ่มสุ่มใหม่) · หนึ่ง pipeline ต่องวด'],
     [], row(response.numbers||[]),
     'ทดลอง'
   );
@@ -1427,6 +1474,36 @@ async function _runAllFormulas({userInitiated=false}={}){
   }catch(e){
     rllHtml+=_formulaEmptyStateHtml('คำนวณ RLL ไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองใหม่');
   }
+  // LLM GOD: four stages per draw, computed ahead of the page. A read that finds no record yet answers
+  // `pending` (or `running`) instead of blocking for 36-104 seconds, so every state has its own message
+  // and none of them may be rendered as an empty card.
+  let llmGodCards=0;
+  let llmGodHtml='';
+  try{
+    const response=await api(`llm-god/formula?date=${encodeURIComponent(predDateStr)}`,{suppressNetworkToast:true,suppressSpinnerAnnouncement:true});
+    if(calculationId!==window._formulaCalculationRequestId)return false;
+    const targetMatches=_formulaResponseTargetMatches(response,predDateStr);
+    const numbersOk=Array.isArray(response?.numbers)&&response.numbers.length===5&&response.numbers.every(n=>/^[0-9]{6}$/.test(String(n)));
+    const stage=String(response?.status||'');
+    if(stage==='pending'||stage==='running'){
+      llmGodHtml=_formulaEmptyStateHtml(stage==='running'
+        ?'LLM GOD กำลังคำนวณ 4 ขั้นตอนอยู่เบื้องหลัง — หน้านี้ไม่ต้องรอ กดอีกครั้งอีกสักครู่ผลจะขึ้นเอง'
+        :'LLM GOD เริ่มคำนวณ 4 ขั้นตอนเบื้องหลังแล้ว (36-104 วินาที) — ยังไม่มีผลของงวดนี้');
+    }else if(!response?.ok||stage==='unavailable'||!numbersOk||!targetMatches){
+      const detail=String(response?.detail||'');
+      const thaiDetail=/[฀-๿]/.test(detail)?detail:'';
+      const message=stage==='unavailable'
+        ?`งวดนี้ pipeline หยุดกลางทาง (${String(response?.reason||'unknown')}) — ไม่มีการเติมเลขสำรอง บันทึกไว้แล้วว่าไปถึงขั้นไหน`
+        :response?.ok&&!targetMatches?'ผล LLM GOD ไม่ตรงกับงวดที่เลือก กรุณาคำนวณงวดนี้ใหม่'
+        :thaiDetail||'เชื่อมต่อ endpoint LLM GOD ไม่ได้ — ถ้าเพิ่งอัปเดตโค้ด ให้รีสตาร์ทเซิร์ฟเวอร์แล้วลองใหม่';
+      llmGodHtml=_formulaEmptyStateHtml(message);
+    }else{
+      const card=_llmGodCards(response);
+      if(card){llmGodHtml+=card;llmGodCards++;}
+    }
+  }catch(e){
+    llmGodHtml+=_formulaEmptyStateHtml('คำนวณ LLM GOD ไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองใหม่');
+  }
 
 
   // กระจายการ์ดเข้า container ตามกลุ่ม
@@ -1441,9 +1518,9 @@ async function _runAllFormulas({userInitiated=false}={}){
   const groupI=imperialCards.join('');
   const groupJ=tycoonCards.join('');
   const groupHM=hermesCards.join('');
-  const groupAll=cards.concat(codexCards,patternCards,thepCards,misterCCards,eCards,imperialCards,tycoonCards,hermesCards,fanoHtml,rllHtml).join('');
+  const groupAll=cards.concat(codexCards,patternCards,thepCards,misterCCards,eCards,imperialCards,tycoonCards,hermesCards,fanoHtml,rllHtml,llmGodHtml).join('');
   setFormulaLoading('ขั้น 4/4 · คำนวณส่วนหลักแล้ว กำลังจัดทำผลรวมและข้อมูลอ้างอิง...');
-  _renderFormulaSummary({grouped,codexCards,patternCards,eCards,imperialCards,tycoonCards,hermesCards,fanoCards,rllCards,targetDate:predDateStr});
+  _renderFormulaSummary({grouped,codexCards,patternCards,eCards,imperialCards,tycoonCards,hermesCards,fanoCards,rllCards,llmGodCards,targetDate:predDateStr});
 
   document.getElementById('formula-results-A').innerHTML=_formulaPanelHtml(groupA,'A');
   document.getElementById('formula-results-B').innerHTML=_formulaPanelHtml(groupB,'B');
@@ -1458,6 +1535,7 @@ async function _runAllFormulas({userInitiated=false}={}){
   document.getElementById('formula-results-HM').innerHTML=_formulaPanelHtml(groupHM,'Hermes Pool 1-4');
   document.getElementById('formula-results-FANO').innerHTML=_formulaPanelHtml(fanoHtml,'ระนาบฟาโน');
   document.getElementById('formula-results-RLL').innerHTML=_formulaPanelHtml(rllHtml,'RLL');
+  document.getElementById('formula-results-LLMGOD').innerHTML=_formulaPanelHtml(llmGodHtml,'LLM GOD');
   document.getElementById('formula-results-ALL').innerHTML=_formulaPanelHtml(groupAll,'สูตรคำนวณรวม');
   document.getElementById('formula-empty').style.display='none';
   if(typeof buildReportProvenance==='function'){

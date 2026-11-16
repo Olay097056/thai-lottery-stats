@@ -260,6 +260,7 @@ const BP_GROUP_MAP = {
   J: ['J · เจ้าสัว', '#10b981'], HM: ['HM · Hermes Pool 1-4', '#2dd4bf'],
   FANO: ['ระนาบฟาโน · รางวัลที่ 1', '#67e8f9'],
   RLL: ['RLL · Reinforcement Learn LLM', '#f472b6'],
+  LLMGOD: ['LLM GOD · 5 ชุด Pool 1-5', '#a78bfa'],
 };
 // Distinct top-level formula groups backing a number, derived from its source labels (name[0],
 // Codex X→F; HM/Fano names map to their full group keys). Non-formula sources
@@ -271,6 +272,7 @@ function bpGroupsForSources(sources){
     const upper=t.toUpperCase();
     const letter=upper.startsWith('HM')?'HM':
       (upper.startsWith('FANO')||t.startsWith('ระนาบฟาโน'))?'FANO':
+      (upper.startsWith('LLM GOD')||upper.startsWith('LLMGOD'))?'LLMGOD':
       (upper.startsWith('RLL')||t.startsWith('Reinforcement'))?'RLL':t[0];
     if (!letter || !BP_GROUP_MAP[letter] || seen.has(letter)) return;
     seen.set(letter, { letter, label: BP_GROUP_MAP[letter][0], color: BP_GROUP_MAP[letter][1] });

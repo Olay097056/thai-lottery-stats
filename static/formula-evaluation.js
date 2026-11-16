@@ -642,7 +642,7 @@ async function runFormulaBacktest(){
       const wpct=ws.total?ws.hits/ws.total*100:null;
       rolling[w]={hits:ws.hits,total:ws.total,pct:wpct,edge:wpct==null||rollingBaselineP==null?null:wpct-rollingBaselineP};
     });
-    const _GRP={'A':['A · กูชอบ','var(--gold)'],'B':['B · ลอตโตพลัส','#4d9de0'],'C':['C · พิชิตโชค','#a855f7'],'D':['D · Claude','#22d3ee'],'X':['F · Codex','#a3e635'],'G':['G · แม่นขั้นเทพ','#f05454'],'H':['H · มิสเตอร์ซี','#f59e0b'],'E':['E · สายมู','#ec4899'],'I':['I · จักรพรรดิ','#c084fc'],'J':['J · เจ้าสัว','#10b981'],'HM':['HM · Hermes Pool 1-4','#2dd4bf'],'FANO':['ระนาบฟาโน · รางวัลที่ 1','#67e8f9'],'RLL':['RLL · Reinforcement Learn LLM','#f472b6']};
+    const _GRP={'A':['A · กูชอบ','var(--gold)'],'B':['B · ลอตโตพลัส','#4d9de0'],'C':['C · พิชิตโชค','#a855f7'],'D':['D · Claude','#22d3ee'],'X':['F · Codex','#a3e635'],'G':['G · แม่นขั้นเทพ','#f05454'],'H':['H · มิสเตอร์ซี','#f59e0b'],'E':['E · สายมู','#ec4899'],'I':['I · จักรพรรดิ','#c084fc'],'J':['J · เจ้าสัว','#10b981'],'HM':['HM · Hermes Pool 1-4','#2dd4bf'],'FANO':['ระนาบฟาโน · รางวัลที่ 1','#67e8f9'],'RLL':['RLL · Reinforcement Learn LLM','#f472b6'],'LLMGOD':['LLM GOD · 5 ชุด Pool 1-5','#a78bfa']};
     const gKey=s.group||name[0];
     const [group,groupColor]=s.mix?['MIX · รวมทุกสูตร','#f2ca73']:(_GRP[gKey]||[gKey,'var(--text3)']);
     const subPct=s.subTotal>0?s.subHits/s.subTotal*100:null;
@@ -666,6 +666,24 @@ async function runFormulaBacktest(){
     subHits:0,subTotal:0,subPct:null,rolling:{},edge50:null,edge100:null,edge200:null,degraded:false,
     trust:'ทดลอง',preds_n:5,pool14Hits:0,pool14Total:0,
     prospective:{since:RLL_SHIP_DATE,draws:rllDraws,expectedHits:rllDraws*5/1e6}});
+  // LLM GOD has the same construction: one live four-stage call per draw, no reproducible historical row.
+  // Its field is pool6, so the expected-hit figure is five tickets against 168 numbers — 0.388 over the
+  // 462 draws that carry a complete pool. The group is pushed as the KEY, not the label: _GRP is keyed
+  // 'LLMGOD', and RLL's own row passes its label here, which makes the colour lookup miss.
+  const LLMGOD_SHIP_DATE='2026-11-16';
+  const llmGodDraws=(rows||[]).filter(r=>{
+    const [d,m,y]=String(r.date||'').split('/').map(Number);
+    if(!d||!m||!y)return false;
+    const iso=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    return iso>LLMGOD_SHIP_DATE&&/^[0-9]{6}$/.test(String(r.prize1||''));
+  }).length;
+  if(selectedTested>0)LotteryServerData.formula.backtestRows.push({
+    name:'LLM GOD · 5 ชุด Pool 1-5',group:'LLMGOD',groupColor:'#a78bfa',
+    field:'pool6',typeLabel:'Pool 6หลัก',board:'Pool 1-5',
+    total:0,hits:0,pct:null,baseP:null,baseLabel:'—',edge:null,ciLow:null,ciHigh:null,
+    subHits:0,subTotal:0,subPct:null,rolling:{},edge50:null,edge100:null,edge200:null,degraded:false,
+    trust:'ทดลอง',preds_n:5,pool14Hits:0,pool14Total:0,
+    prospective:{since:LLMGOD_SHIP_DATE,draws:llmGodDraws,expectedHits:llmGodDraws*5*168/1e6}});
   LotteryUiState.formula.sortKey='edge';LotteryUiState.formula.sortAsc=false;
   _renderBtTable();
   const partial=failedStages.length>0;

@@ -33,10 +33,10 @@ assert.equal(sandbox._formulaResponseHasValidCandidates({ numbers: ['000001', '0
 assert.equal(sandbox._formulaResponseHasValidCandidates({ numbers: ['000001', '000002', '000003', '000004', 5] }), false);
 assert.equal(sandbox._formulaResponseHasValidCandidates({ numbers: ['000001', '000002', '000003', '000004'] }), false);
 
-// Three server forecasts now validate the target: Fano v4, Fano v5, and the live-LLM RLL call.
-assert.equal((source.match(/const targetMatches=_formulaResponseTargetMatches\(response,predDateStr\);/g) || []).length, 3,
-  'Fano v4, Fano v5 and RLL must all validate the selected target');
-assert.equal((source.match(/\|\|!targetMatches\)/g) || []).length, 3,
+// Four server forecasts now validate the target: Fano v4, Fano v5, the live-LLM RLL call, and LLM GOD.
+assert.equal((source.match(/const targetMatches=_formulaResponseTargetMatches\(response,predDateStr\);/g) || []).length, 4,
+  'Fano v4, Fano v5, RLL and LLM GOD must all validate the selected target');
+assert.equal((source.match(/\|\|!targetMatches\)/g) || []).length, 4,
   'every server-forecast branch must reject mismatched targets');
 assert.equal((source.match(/!_formulaResponseHasValidCandidates\(response\)/g) || []).length, 2,
   'both formula result branches must reject malformed and duplicate candidates');
