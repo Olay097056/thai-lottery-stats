@@ -56,10 +56,23 @@ record that anyone can re-derive.
 - `rll_rewards(target_date, protocol, r, payout, matched, resolved_at)` — append-only.
 - `rll_arms(protocol, arm_id, n, sum_r)` — the posterior.
 
+The loop closes itself: `rll.resolve_pending()` scores every stored forecast whose draw has a first prize
+in the cache, is idempotent (`resolve` is append-only on `(target_date, protocol)`), and reports a draw with
+no result as `pending` rather than guessing. It runs after both cache-write paths — the automation's
+`on_cache_change` hook and `POST /api/refresh` — outside the writer lock, with failures swallowed so a broken
+sweep cannot break the cache update. `scripts/rll_resolve_pending.py [--dry-run] [--json]` is the manual path.
+
+The prompt's no-reuse list and the parser's ban set are the same list (`BANNED_LIMIT = 400`).
+`pool-weighted` collects ~1.3k numbers from eight draws; enforcing the 928 the prompt never printed rejected
+answers for reusing numbers the model was never told about.
+
 ## UI
 
-- **สูตรคำนวณ → RLL** panel: a five-step card (arm → prompt hash + model → five numbers → reward vs chance →
-  limits), the ทดลอง badge and a "ไม่มีหลักฐาน" chip.
+- **สูตรคำนวณ → RLL** panel: a card (arm → prompt hash + model → this set's chance mean → the draw's reward →
+  arm vs its own chance → ceiling → limits), the ทดลอง badge and a "ไม่มีหลักฐาน" chip. The reward line reads
+  "ยังไม่ออกผล — ระบบให้คะแนนเองเมื่อผลเข้ามาในแคช (ไม่มีการเดาผล)" until the draw resolves, then quotes
+  `r`, the matched ticket and whether it was a payout. `arm_state_now` and `reward` are added at read time;
+  the stored payload keeps the `arm_state_before` snapshot so the record stays auditable.
 - **Picks / เลขแนะนำ**: the row enters Picks at `edge = 0`, `weight = 1.0`, with the badge and the no-evidence
   marker. เลขแนะนำ cannot fire for RLL alone (it needs ≥2 groups on the same field, ADR-0001) and the UI says so.
 - **Backtest**: one prospective-only row — "—" for rate and edge, `draws-since × 5/10⁶` expected hits.

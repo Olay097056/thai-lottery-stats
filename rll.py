@@ -32,6 +32,7 @@ PROTOCOL = 'rll-v1'
 MODEL = os.environ.get('RLL_MODEL', 'deepseek/deepseek-v4.1-flash')
 BASE_URL = os.environ.get('RLL_BASE_URL', 'https://api.commandcode.ai/provider/v1')
 MIN_VALID_DRAWS = 20
+BANNED_LIMIT = 400        # how many no-reuse numbers a prompt may carry, and what the parser enforces
 DRAW_CUTOFF_HOUR = 16    # nextDrawInfo() on the page rolls its target over at 16:00 Thai time
 CANDIDATES = 5
 N0 = 48.0                 # pseudo-draws of prior per arm (ticket 05)
@@ -252,6 +253,11 @@ def _build_prompt(arm, draws, context, outcomes, retry_note=None):
 
     history_sha = hashlib.sha256('\n'.join(slice_lines).encode()).hexdigest()
     outcome_lines = [f'{d} r={r} matched={m}' for d, r, m in outcomes[-8:]]
+    # The parser enforces exactly what the model was shown. pool-weighted bans ~1.3k numbers from
+    # eight draws while the prompt can carry 400, and enforcing the invisible remainder rejected
+    # answers for reusing a number the model never saw — one wasted call and, after the retry, a
+    # permanently `unavailable` draw.
+    shown_banned = sorted(set(banned))[:BANNED_LIMIT]
     parts = [
         f'protocol={PROTOCOL} target={target_date.isoformat()} arm={arm}',
         f'arm policy: {ARMS[arm]}',
@@ -259,7 +265,7 @@ def _build_prompt(arm, draws, context, outcomes, retry_note=None):
         *slice_lines,
         'your recent outcomes with this arm:',
         *(outcome_lines or ['(none yet)']),
-        'do not reuse any number from the input list: ' + ', '.join(sorted(set(banned))[:400]),
+        'do not reuse any number from the input list: ' + ', '.join(shown_banned),
     ]
     if retry_note:
         parts.append(retry_note)
@@ -269,7 +275,7 @@ def _build_prompt(arm, draws, context, outcomes, retry_note=None):
         'five distinct six-digit strings that look like real lottery draws:',
         'no counting runs, no repeated-digit numbers, and every pair must differ in at least three positions.',
     ]
-    return '\n'.join(parts), history_sha, set(banned)
+    return '\n'.join(parts), history_sha, set(shown_banned)
 
 
 # ─── model call and parsing ───────────────────────────────────────────────────
@@ -404,6 +410,21 @@ def _load_record(db, target_date):
     return json.loads(row[0]) if row else None
 
 
+def _live_context(db, payload):
+    """Current arm state plus this draw's reward, added to a served record without rewriting it.
+
+    The stored payload keeps `arm_state_before` — the posterior as it stood when the forecast was
+    made, which is what makes the record auditable. These fields are derived at read time instead:
+    the arm's posterior now, and the reward if the draw has been scored.
+    """
+    payload['arm_state_now'] = {arm: dict(state) for arm, state in _arm_rows(db).items()}
+    row = db.execute('SELECT r, payout, matched, resolved_at FROM rll_rewards'
+                     ' WHERE target_date=? AND protocol=?', (payload.get('target_date'), PROTOCOL)).fetchone()
+    payload['reward'] = (None if row is None else
+                         {'r': int(row[0]), 'payout': bool(row[1]), 'matched': row[2], 'resolved_at': row[3]})
+    return payload
+
+
 def _store_record(db, target_date, payload):
     db.execute('INSERT OR IGNORE INTO rll_forecasts VALUES (?,?,?)',
                (_target_key(target_date), PROTOCOL, json.dumps(payload, ensure_ascii=False)))
@@ -425,7 +446,7 @@ def formula_forecast(target_date, *, call_model=None, now=None):
         stored = _load_record(db, target)
         if stored is not None:
             stored['cached'] = True
-            return stored
+            return _live_context(db, stored)
 
         if not _target_is_open(target, now):
             raise ClosedTarget('target draw already happened')
@@ -533,6 +554,66 @@ def resolve(target_date, prize1):
                    (PROTOCOL, row['arm'], n + 1, sum_r + best))
         return {'ok': True, 'target_date': day, 'r': best, 'payout': bool(payout), 'matched': matched,
                 'created': True}
+
+
+def _results_by_date(history):
+    """{draw date: prize1} for every cache row that carries a usable first prize."""
+    results = {}
+    for row in history:
+        if not isinstance(row, dict):
+            continue
+        values = astra._category_values(row, 'prize1', 6)
+        if values is None:
+            continue
+        try:
+            day = astra._history_date(row.get('date'))
+        except astra.AstraInputError:
+            continue
+        results[day] = values[0]
+    return results
+
+
+def resolve_pending(history=None, *, dry_run=False):
+    """Score every stored forecast whose draw now has a first prize; append-only and idempotent.
+
+    `resolve` is the only way a reward enters the loop, and for the whole first release nothing called
+    it: `rll_rewards` stayed empty and every arm sat at n = 0. This is that caller — main.py runs it
+    after both cache-write paths, and scripts/rll_resolve_pending.py is the manual one. A target
+    with no prize in the cache is reported as `pending` and never guessed; a draw already scored is
+    left alone, because `resolve` is append-only on (target_date, protocol).
+
+    Returns one row per stored forecast, so a caller can print what actually happened.
+    """
+    history = astra.load_existing_astra_history() if history is None else history
+    results = _results_by_date(history)
+
+    stored = []
+    with connection() as db:
+        for day, payload in db.execute('SELECT target_date, payload FROM rll_forecasts'
+                                       ' WHERE protocol=? ORDER BY target_date', (PROTOCOL,)):
+            stored.append((day, json.loads(payload)))
+
+    out = []
+    for day, payload in stored:
+        if payload.get('status') != 'ok':
+            out.append({'target_date': day, 'status': 'skipped', 'reason': payload.get('status')})
+            continue
+        prize1 = results.get(date.fromisoformat(day))
+        if prize1 is None:
+            out.append({'target_date': day, 'status': 'pending'})
+            continue
+        if dry_run:
+            scores = [sum(1 for a, b in zip(number, prize1) if a == b)
+                      for number in payload.get('numbers') or []]
+            out.append({'target_date': day, 'status': 'would_resolve', 'r': max(scores) if scores else None,
+                        'payout': bool(scores) and payload['numbers'][scores.index(max(scores))] == prize1,
+                        'prize1': prize1})
+            continue
+        resolved = resolve(day, prize1)
+        out.append({'target_date': day, 'status': 'resolved' if resolved['created'] else 'already_resolved',
+                    'r': resolved['r'], 'payout': resolved['payout'], 'matched': resolved['matched'],
+                    'prize1': prize1})
+    return out
 
 
 def state():

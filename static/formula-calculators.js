@@ -942,9 +942,16 @@ function _rllChanceForSet(numbers){
 
 function _rllCards(response){
   const row=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(244,114,182,.10);border:1px solid #f472b666;color:var(--text);padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
-  const state=(response.arm_state_before||{})[response.arm]||{n:0,sum_r:0};
+  // arm_state_now is derived at read time (the stored payload keeps arm_state_before, the snapshot from
+  // forecast time, so the record stays auditable). Without it a resolved draw would still read "played 0".
+  const live=(response.arm_state_now||{})[response.arm];
+  const state=live||(response.arm_state_before||{})[response.arm]||{n:0,sum_r:0};
   const n=Number(state.n)||0;
   const observed=n?Number(state.sum_r)/n:null;
+  const reward=response.reward&&Number.isFinite(Number(response.reward.r))?response.reward:null;
+  const rewardLine=reward
+    ?`ผลของงวดนี้: r = ${reward.r} (เทียบชุดที่เก็บไว้กับรางวัลที่ 1 จริง)${reward.payout?' · ถูกเงินรางวัล':' · ไม่ถูกรางวัล'}`
+    :'ผลของงวดนี้: ยังไม่ออกผล — ระบบให้คะแนนเองเมื่อผลเข้ามาในแคช (ไม่มีการเดาผล)';
   // Compare the arm against the chance mean of the tickets it actually returned, and say which
   // number is which. A null here means the payload carried no usable tickets, so the line vanishes
   // rather than printing a 0 that would read as a measured chance.
@@ -957,6 +964,7 @@ function _rllCards(response){
     [`arm ที่ถูกเลือก: ${response.arm} · เล่นมาแล้ว ${n} งวด · reward = จำนวนหลักที่ตรงของชุดที่ใกล้ที่สุด (0–6)`,
      `prompt hash ${String(response.prompt_sha256||'').slice(0,16)}… · โมเดล ${response.model||'—'} · อุณหภูมิ 0 และไม่ใช้ seed (ผู้ให้บริการไม่รับประกันซ้ำ)`,
      chanceLine,
+     rewardLine,
      `ค่าเฉลี่ยของ arm นี้ ${observed==null?'—':observed.toFixed(3)} เทียบกับค่าสุ่มของชุดตัวเอง${chance?` (${chance.mean.toFixed(3)})`:''} · ช่วงปกติ 1–3 หลัก`,
      'reward นี้มีเพดาน 1.5746 ต่องวด (+5.3% จาก 1.496) เพราะชุดที่แต่ละหลักไม่มีเลขซ้ำกันได้เปรียบจากรูปทรง ไม่ใช่จากการทำนาย — โอกาสถูกเงินรางวัลยังเป็น 5 ในล้านเท่าเดิม',
      'ยังไม่มีหลักฐานว่าสูตรนี้ดีกว่าการสุ่ม · แม้แต่ lift เต็มเพดาน (+5.3%) ยังต้องใช้ราว 7,500 งวด (~310 ปี) · +25%/+50% ของ 1.496 สูงกว่าเพดาน จึงเป็นไปไม่ได้',

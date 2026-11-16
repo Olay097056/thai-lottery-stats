@@ -509,6 +509,25 @@ def _invalidate_dataframe():
     with _df_mutex:
         _df_cache = None
         _df_signature = None
+    _resolve_rll_after_cache_change()
+
+
+def _resolve_rll_after_cache_change():
+    """Score any stored RLL forecast whose draw just landed. Never raises into the caller.
+
+    `resolve` is the only way a reward reaches the bandit, so a draw that lands while nobody posts to
+    /api/rll/resolve leaves the arms at n = 0 and the "learning" claim untested. The automation's
+    cache-write hook is the one place that knows a result arrived, so the sweep runs here; a failure
+    must never break the cache update, hence the blanket guard.
+    """
+    try:
+        import rll
+        rows = rll.resolve_pending()
+        resolved = [r for r in rows if r.get('status') == 'resolved']
+        if resolved:
+            print('rll: resolved ' + ', '.join(f'{r["target_date"]} r={r["r"]}' for r in resolved), flush=True)
+    except Exception as exc:                      # pragma: no cover - defensive by design
+        print(f'rll: reward sweep skipped ({exc})', flush=True)
 
 
 @app.get("/api/astra/automation")
@@ -815,7 +834,11 @@ def api_refresh():
                 raise HTTPException(status_code=409, detail='result cache update is already running')
             _df_cache = incremental_update()
             _df_signature = _cache_signature()
-            return {"status": "ok", "rows": int(len(_df_cache))}
+            rows = int(len(_df_cache))
+        # Outside the lock: /api/refresh is the second cache-write path (the automation hook is the
+        # other), and a draw that lands through the button must close the reward loop too.
+        _resolve_rll_after_cache_change()
+        return {"status": "ok", "rows": rows}
     except StorageError:
         raise HTTPException(status_code=503, detail='result cache writer is unavailable') from None
 

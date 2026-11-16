@@ -223,6 +223,58 @@ class RLLProtocolTest(unittest.TestCase):
             rll.formula_forecast('16/11/2026', call_model=self.fake())
         self.assertIn('YYYY-MM-DD', str(caught.exception))
 
+    # ── the loop actually closes, and the ban list is the one the model saw ──
+    def test_printed_ban_list_is_the_enforced_ban_list(self):
+        """The parser must reject exactly the numbers the prompt listed.
+
+        pool-weighted collects ~1.3k banned numbers from eight draws while a prompt carries 400, so
+        enforcing the invisible remainder rejected answers for reusing numbers the model never saw —
+        a wasted call, and after the retry a permanently `unavailable` draw.
+        """
+        now = datetime.now(astra.THAILAND_TZ)
+        target = astra.validate_astra_target_date(TARGET, generated_at=now)
+        window = astra._history_window(astra.load_existing_astra_history(), target, now.date(), max_draws=None)
+        draws = rll._valid_draws(window)
+        for arm in rll.ARM_ORDER:
+            prompt, _, banned = rll._build_prompt(arm, draws, (target, window), [])
+            listed = prompt.split('do not reuse any number from the input list: ')[1].split('\n')[0]
+            printed = {value for value in listed.split(', ') if value.strip()}
+            self.assertEqual(banned, printed, f'{arm}: the parser must enforce exactly what it printed')
+            self.assertLessEqual(len(banned), rll.BANNED_LIMIT)
+
+    def test_resolve_pending_refuses_to_guess_a_missing_result(self):
+        rll.formula_forecast(TARGET, call_model=self.fake())
+        rows = rll.resolve_pending(history=[{'date': '2026-01-01', 'prize1': '111111'}])
+        self.assertEqual([r['status'] for r in rows], ['pending'])
+        self.assertEqual(rll.state()['resolved'], 0, 'a draw with no result must not be scored')
+
+    def test_resolve_pending_scores_a_landed_draw_once(self):
+        payload = rll.formula_forecast(TARGET, call_model=self.fake())
+        landed = [{'date': TARGET, 'prize1': payload['numbers'][0]}]
+        first = rll.resolve_pending(history=landed)
+        self.assertEqual(first[0]['status'], 'resolved')
+        self.assertEqual(first[0]['r'], 6)
+        self.assertTrue(first[0]['payout'])
+        again = rll.resolve_pending(history=landed)
+        self.assertEqual(again[0]['status'], 'already_resolved')
+        state = rll.state()
+        self.assertEqual(state['resolved'], 1, 're-running the sweep must not double-count')
+        arm = next(a for a in state['arms'] if a['arm'] == payload['arm'])
+        self.assertEqual(arm['n'], 1)
+
+    def test_resolve_pending_dry_run_writes_nothing(self):
+        payload = rll.formula_forecast(TARGET, call_model=self.fake())
+        rows = rll.resolve_pending(history=[{'date': TARGET, 'prize1': payload['numbers'][0]}], dry_run=True)
+        self.assertEqual(rows[0]['status'], 'would_resolve')
+        self.assertEqual(rows[0]['r'], 6)
+        self.assertEqual(rll.state()['resolved'], 0, 'a dry run must not append a reward')
+
+    def test_resolve_pending_skips_an_unavailable_record(self):
+        rll.formula_forecast(TARGET, call_model=self.fake('no numbers here'))
+        rows = rll.resolve_pending(history=[{'date': TARGET, 'prize1': '123456'}])
+        self.assertEqual(rows[0]['status'], 'skipped')
+        self.assertEqual(rows[0]['reason'], 'unavailable')
+
     def test_state_starts_at_the_prior(self):
         state = rll.state()
         self.assertEqual(len(state['arms']), 6)

@@ -69,6 +69,29 @@ contextual bandit — and the LLM is the policy that maps an arm to five tickets
 The honest reading: this ships a working, auditable learning loop whose correct answer on an i.i.d. draw is
 "no arm is better", and the app says exactly that instead of implying an edge.
 
+## Amendment 2026-11-16 — the loop closes itself, and the ban list is one list
+
+The Decision above says a reward enters through `POST /api/rll/resolve`. Nothing ever called it, so
+`rll_rewards` and `rll_arms` stayed empty from ship date until this amendment and every arm sat at
+`n = 0`: the "learning" half of the design had never run once. Two changes:
+
+- **`rll.resolve_pending()`** scores every stored forecast whose draw has a first prize in the cache.
+  A target with no result is reported `pending` and never guessed; a draw already scored returns
+  `created=False`, so the sweep is idempotent on `(target_date, protocol)`. It is called from both
+  cache-write paths — the automation's `on_cache_change` hook and `POST /api/refresh` — after the
+  writer lock is released, with the exception swallowed so a broken sweep cannot break a cache
+  update. `scripts/rll_resolve_pending.py [--dry-run] [--json]` is the manual path. The API endpoint
+  remains; it is no longer the only way in.
+- **`BANNED_LIMIT = 400` makes the printed and enforced no-reuse lists the same list.** `pool-weighted`
+  collects ~1,328 numbers from eight draws while a prompt carries 400, so the other 928 were enforced
+  but invisible: an answer reusing one was rejected, the retry was spent, and the draw was then stored
+  as `unavailable` permanently. Measured after the fix, printed = enforced on every arm
+  (60/60, 60/60, 60/60, 400/400, 40/40, 0/0).
+
+Still true: the reward's ceiling is +5.26 % over 1.495846, so 480 draws cannot demonstrate a +50 %
+lift — see the Correction below. Closing the loop makes the arms move; it does not make an i.i.d.
+draw predictable.
+
 ## Correction 2026-11-16 — the reward's null is a property of the candidate layout
 
 The 1.495846 figure above is the null for five **independent** tickets. The prompt asks for tickets that differ
