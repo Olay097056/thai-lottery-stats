@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 import unittest
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -76,11 +76,19 @@ class PoolTest(Base):
         broken.pop('near1_2')
         self.assertIsNone(llm_god._pool_numbers(broken))
 
-    def test_expected_hits_figure_matches_its_own_arithmetic(self):
-        # 5 tickets x 168 numbers, over the corpus the card quotes.
-        p = 5 * 168 / 1e6
-        self.assertAlmostEqual(p * 462, 0.38808, places=4)
-        self.assertAlmostEqual(llm_god.EXPECTED_HITS, 0.388, places=3)
+    def test_expected_hits_is_measured_not_typed(self):
+        """This is the defect the arena found: 0.388 over 462 draws was a literal no code reproduced."""
+        self.assertFalse(hasattr(llm_god, 'EXPECTED_HITS'),
+                         'the expected-hits figure must not exist as a module constant')
+        history = astra.load_existing_astra_history()
+        window = astra._history_window(history, date(2100, 1, 1), date.today(), max_draws=None)
+        draws, mean_size, expected = llm_god._corpus_stats(llm_god._pool_draws(window))
+        self.assertGreater(draws, 400)
+        self.assertAlmostEqual(mean_size, 167.98, places=2)
+        self.assertAlmostEqual(expected, 5 * mean_size / 1e6 * draws, places=6)
+        # Whole-cache basis: 452 complete-pool draws x 5 tickets x 167.98/1e6. A per-draw payload carries the
+        # count strictly before its own target (451 for a future draw), so the card reads it from the response.
+        self.assertAlmostEqual(expected, 0.3796, places=3)
 
 
 class ParserTest(Base):
@@ -302,7 +310,9 @@ class ResolveTest(Base):
         self.assertEqual(state['field'], 'pool6')
         self.assertEqual(state['board'], 'Pool 1-5')
         self.assertEqual(state['pool_size'], 168)
-        self.assertEqual(state['expected_hits'], 0.388)
+        self.assertGreater(state['corpus_draws'], 400)
+        self.assertAlmostEqual(state['pool_mean_size'], 167.98, places=2)
+        self.assertAlmostEqual(state['expected_hits'], 0.3796, places=3)
         self.assertEqual(len(state['arms']), 8)
         self.assertIn('no demonstrated edge', state['evidence'])
 

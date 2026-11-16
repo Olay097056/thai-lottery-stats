@@ -39,7 +39,12 @@ const chanceBlock = block(calc, '_llmGodChance');
 check('chance is computed from the set', /new Set\(set\)\.size/.test(chanceBlock));
 check('chance uses the 168-number pool constant', /LLMGOD_POOL_SIZE/.test(chanceBlock));
 check('pool constant is 168', /const LLMGOD_POOL_SIZE=168;/.test(calc));
-check('expected-hits constant is 0.388', /const LLMGOD_EXPECTED_HITS=0\.388;/.test(calc));
+check('expected-hits fallback is 0.3796', /const LLMGOD_EXPECTED_HITS=0\.3796;/.test(calc));
+check('corpus fallback is 452 draws', /const LLMGOD_USABLE_DRAWS=452;/.test(calc));
+// The figure must come from the response, not the literal: that literal is exactly what shipped wrong.
+check('card reads expected_hits from the response', /response\.expected_hits\?\?LLMGOD_EXPECTED_HITS/.test(calc));
+check('card reads corpus_draws from the response', /response\.corpus_draws\?\?LLMGOD_USABLE_DRAWS/.test(calc));
+check('chance uses the measured pool size', /_llmGodChance\(response\.numbers,response\.pool_mean_size\)/.test(calc));
 
 // 2. the card carries the honesty lines
 const cardBlock = block(calc, '_llmGodCards');

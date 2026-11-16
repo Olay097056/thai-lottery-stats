@@ -55,7 +55,10 @@ POOL_CHANCE_MEAN = 3.7103      # simulated, 3,000 fixed-pool replicates of the s
 POOL_CHANCE_SD = 0.5487
 
 POOL_SIZE = 168                # 1 prize1 + 2 near-first + 5 prize2 + 10 prize3 + 50 prize4 + 100 prize5
-EXPECTED_HITS = 0.388          # five tickets against the 462 draws that carry a complete pool
+# The expectation is NOT a constant. It is CANDIDATES x mean_pool_size / 1e6 x corpus_draws, computed from
+# the draws the pipeline actually loaded. A hand-typed figure here shipped as "0.388 over 462 draws" while
+# `_pool_numbers` yields 451 on the same cache — a number the code could not reproduce, quoted on a card, in
+# the PRD, in the ADR and in a commit message. Measure it, never type it.
 
 TEMPERATURE = 0
 TIMEOUT = httpx.Timeout(300.0, connect=10.0)
@@ -276,6 +279,19 @@ def _analysis_factsheet(analysis, pool_draws):
     else:
         raise ValueError(f'unknown analysis: {analysis}')
     return facts
+
+
+def _corpus_stats(pool_draws):
+    """(draws, mean distinct pool size, expected hits for CANDIDATES tickets) over the loaded corpus.
+
+    Computed, never typed: the shipped card once quoted a hand-written 0.388 over 462 draws while the
+    module's own `_pool_numbers` yields 451 on the same cache, so no line of code could reproduce it.
+    """
+    if not pool_draws:
+        return 0, 0.0, 0.0
+    sizes = [len(set(pool)) for _, pool in pool_draws]
+    mean_size = sum(sizes) / len(sizes)
+    return len(pool_draws), mean_size, CANDIDATES * mean_size / 1e6 * len(pool_draws)
 
 
 def _fingerprint(draws, pool_draws):
@@ -659,6 +675,7 @@ def formula_forecast(target_date, *, call_model=None, now=None, db_path=None):
             call_model=call_model, on_stage=lambda record: _store_stage(db, target, record))
 
         usage_total = sum((r.get('usage') or {}).get('total_tokens') or 0 for r in records)
+        corpus_draws, pool_mean_size, expected_hits = _corpus_stats(pool_draws)
         base = {
             'ok': True, 'protocol': PROTOCOL, 'target_date': target.isoformat(),
             'arm': arm, 'arm_samples': samples, 'arm_state_before': {a: rows[a] for a in ARM_ORDER},
@@ -667,9 +684,11 @@ def formula_forecast(target_date, *, call_model=None, now=None, db_path=None):
             'usage_total_tokens': usage_total,
             'history_sha256': history_sha, 'history_draws': len(draws),
             'pool_draws': len(pool_draws), 'pool_size': POOL_SIZE,
+            # measured from the corpus the pipeline actually loaded, so the card can never disagree with it
+            'corpus_draws': corpus_draws, 'pool_mean_size': round(pool_mean_size, 4),
+            'expected_hits': round(expected_hits, 4),
             'chance': {'mean': CHANCE_MEAN, 'sd': CHANCE_SD,
                        'pool_mean': POOL_CHANCE_MEAN, 'pool_sd': POOL_CHANCE_SD},
-            'expected_hits': EXPECTED_HITS,
             'computed_at': now.isoformat(), 'cached': False,
         }
 
@@ -799,7 +818,17 @@ def resolve_pending(history=None, *, dry_run=False):
 
 
 def state():
-    """Per-arm posterior, the chance reference, and the resolved history."""
+    """Per-arm posterior, the chance reference, and the resolved history.
+
+    The corpus figures come from a real pass over the cache, never from typed constants: the endpoint and
+    the card must be able to disagree with nothing.
+    """
+    try:
+        history = astra.load_existing_astra_history()
+        window = astra._history_window(history, date(2100, 1, 1), date.today(), max_draws=None)
+        corpus_draws, pool_mean_size, expected_hits = _corpus_stats(_pool_draws(window))
+    except (astra.AstraCacheError, ValueError):
+        corpus_draws, pool_mean_size, expected_hits = 0, 0.0, 0.0
     with connection() as db:
         rows = _arm_rows(db)
         rewards = db.execute('SELECT COUNT(*), COALESCE(SUM(r),0), COALESCE(SUM(payout),0)'
@@ -815,7 +844,9 @@ def state():
                 'chance': {'mean': CHANCE_MEAN, 'sd': CHANCE_SD,
                            'pool_mean': POOL_CHANCE_MEAN, 'pool_sd': POOL_CHANCE_SD},
                 'field': 'pool6', 'board': 'Pool 1-5', 'pool_size': POOL_SIZE,
-                'expected_hits': EXPECTED_HITS,
+                'corpus_draws': corpus_draws,
+                'pool_mean_size': round(pool_mean_size, 4),
+                'expected_hits': round(expected_hits, 4),
                 'arms': arms, 'resolved': int(rewards[0] or 0),
                 'mean_r': round((rewards[1] or 0) / rewards[0], 6) if rewards[0] else None,
                 'payouts': int(rewards[2] or 0),

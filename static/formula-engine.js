@@ -913,7 +913,7 @@ function _renderFormulaSummary({grouped,codexCards,patternCards=[],eCards,imperi
     ['สูตร Hermes (pool 1-4)',counts.HM,'Hermes · ทดลอง'],
     ['รางวัลที่ 1 · สมมติฐาน',counts.FANO,'ระนาบฟาโน v4 + v5 · แยกจาก Picks · เลือก 2 เลขจากโมเดลย้อนหลัง'],
     ['RLL · LLM สด',counts.RLL,'เรียนจากจำนวนหลักที่ตรง ไม่ใช่เงินรางวัล · ยังไม่มีหลักฐาน'],
-    ['LLM GOD · 5 ชุด pool 1-5',counts.LLMGOD,'4 ขั้นตอน · 8 arm · คาดหวังถูก 0.388 ครั้งใน 462 งวด · ยังไม่มีหลักฐาน'],
+    ['LLM GOD · 5 ชุด pool 1-5',counts.LLMGOD,'4 ขั้นตอน · 8 arm · คาดหวังถูกเป็นเศษของ 1 ครั้งต่อ 451 งวด · ยังไม่มีหลักฐาน'],
   ].map(([label,value,sub])=>`<div class="formula-summary-item"><div class="formula-summary-label">${label}</div><div class="formula-summary-value">${value}</div><div class="formula-summary-sub">${sub}</div></div>`).join('');
   el.classList.add('active');
 }

@@ -976,19 +976,24 @@ function _rllCards(response){
 
 // ─── LLM GOD. 5 ชุด ครอบคลุม pool 1-5 · 4 ขั้นตอนต่องวด ───────────────────────
 // The field is pool6: a ticket wins something when it matches ANY of the 168 numbers across prizes 1-5.
-// The honest ceiling is brutal and belongs on the card, not only in the docs: five tickets expect 0.388
-// hits across the 462 draws that carry a complete pool — one hit per ~1,191 draws, about fifty years.
+// The honest ceiling is brutal and belongs on the card, not only in the docs: five tickets expect a fraction
+// of one hit across the draws that carry a complete pool — the server measures the exact figure and the card
+// prints it, because the previously shipped 0.388/462 came from a hand-typed constant no code reproduced.
 const LLMGOD_POOL_SIZE=168;
-const LLMGOD_EXPECTED_HITS=0.388;
-// Expected hits quoted against the corpus they were measured on.
-const LLMGOD_USABLE_DRAWS=462;
-function _llmGodChance(numbers){
+// Fallbacks only. The card reads corpus_draws / pool_mean_size / expected_hits from the response, because the
+// server measures them from the draws it actually loaded. These literals cover a response that predates those
+// fields and use the whole-cache basis (452 complete-pool draws) that /api/llm-god/state reports. The shipped
+// 0.388/462 was a hand-typed number no line of code could regenerate; never reintroduce one.
+const LLMGOD_EXPECTED_HITS=0.3796;
+const LLMGOD_USABLE_DRAWS=452;
+function _llmGodChance(numbers,poolSize){
   const set=(numbers||[]).map(String).filter(n=>/^[0-9]{6}$/.test(n));
   if(!set.length)return null;
   // Every ticket has the same per-draw chance against the pool, so the set's only real parameter is how
   // many distinct tickets survive the parser. Computed from the set that is on screen, never a constant.
-  const p=1-Math.pow(1-LLMGOD_POOL_SIZE/1e6,new Set(set).size);
-  return {pPerDraw:p,pct:p*100,perHit:1/p,k:new Set(set).size};
+  const size=Number(poolSize)>0?Number(poolSize):LLMGOD_POOL_SIZE;
+  const p=1-Math.pow(1-size/1e6,new Set(set).size);
+  return {pPerDraw:p,pct:p*100,perHit:1/p,k:new Set(set).size,poolSize:size};
 }
 function _llmGodCards(response){
   const row=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(167,139,250,.10);border:1px solid #a78bfa66;color:var(--text);padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
@@ -1000,9 +1005,9 @@ function _llmGodCards(response){
   const rewardLine=reward
     ?`ผลของงวดนี้: ตรงรางวัลที่ 1 สูงสุด ${reward.r} หลัก${Number.isFinite(Number(reward.r_pool))?` · เทียบกับ pool 1-5 (168 เลข) ตรงสูงสุด ${reward.r_pool} หลัก`:''}${reward.payout?' · ถูกเงินรางวัล':' · ไม่ถูกรางวัล'}`
     :'ผลของงวดนี้: ยังไม่ออกผล — ระบบให้คะแนนเองเมื่อผลเข้ามาในแคช (ไม่มีการเดาผล)';
-  const chance=_llmGodChance(response.numbers);
+  const chance=_llmGodChance(response.numbers,response.pool_mean_size);
   const chanceLine=chance
-    ?`โอกาสต่องวดของชุดนี้ ${chance.pct.toFixed(4)}% — ${chance.k} ใบ distinct เทียบ pool ${LLMGOD_POOL_SIZE} เลข · เฉลี่ยถูก 1 ครั้งต่อ ${chance.perHit.toLocaleString('en-US',{maximumFractionDigits:0})} งวด`
+    ?`โอกาสต่องวดของชุดนี้ ${chance.pct.toFixed(4)}% — ${chance.k} ใบ distinct เทียบ pool ${chance.poolSize.toLocaleString('en-US',{maximumFractionDigits:2})} เลข · เฉลี่ยถูก 1 ครั้งต่อ ${chance.perHit.toLocaleString('en-US',{maximumFractionDigits:0})} งวด`
     :'โอกาสต่องวดคำนวณไม่ได้ (ไม่มีเลขครบห้าใบในคำตอบนี้)';
   const stages=(response.stages||[]).map(s=>`${s.stage}:${s.status}${Number.isFinite(s.latency_ms)?` ${(s.latency_ms/1000).toFixed(1)}s`:''}`).join(' · ');
   return _mkFormulaCard(
@@ -1011,7 +1016,7 @@ function _llmGodCards(response){
      `4 ขั้นตอน: ${stages||'—'} · รวม ${response.usage_total_tokens?Number(response.usage_total_tokens).toLocaleString('en-US'):'—'} tokens`,
      `ประวัติที่ป้อนให้โมเดล ${response.pool_draws||0} งวด (pool 1-5 ครบ) จาก ${response.history_draws||0} งวด · ${response.model||'—'} · อุณหภูมิ 0`,
      chanceLine,
-     `ความคาดหวังที่ต้องบอกตรง ๆ: ${LLMGOD_EXPECTED_HITS} ครั้ง ใน ${LLMGOD_USABLE_DRAWS} งวดที่มี pool ครบ — ประมาณ 1 ครั้งต่อ 50 ปี`,
+     `ความคาดหวังที่ต้องบอกตรง ๆ: ${Number(response.expected_hits??LLMGOD_EXPECTED_HITS).toFixed(4)} ครั้ง ใน ${Number(response.corpus_draws??LLMGOD_USABLE_DRAWS).toLocaleString('en-US')} งวดที่มี pool ครบ (จากข้อมูลจริงที่ระบบโหลด) — ประมาณ 1 ครั้งต่อ 50 ปี`,
      rewardLine,
      `ค่าเฉลี่ยของ arm นี้ ${observed==null?'—':observed.toFixed(3)} เทียบกับค่าสุ่ม ${Number(response.chance?.mean||0).toFixed(3)} · ตัวเลข pool 1-5 ของชุดนี้เป็นเพียงตัวอ่านประกอบ ไม่ใช่คะแนนที่ bandit ใช้`,
      'ยังไม่มีหลักฐานว่าสูตรนี้ดีกว่าการสุ่ม และพิสูจน์ไม่ได้ในชั่วอายุคน: บัตร 6 หลักทุกใบมีโอกาสเท่ากันในทุกชั้นรางวัล สิ่งที่ได้คือ 5 ใบที่เอาไปซื้อได้จริง ไม่ใช่โอกาสที่ดีกว่า',
