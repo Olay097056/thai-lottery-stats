@@ -73,6 +73,40 @@ const calculators = read('static/formula-calculators.js');
 check('the formula run awaits /api/rll/formula', calculators.includes('rll/formula?date='));
 check('the RLL card prints no edge', !/RLL[\s\S]{0,600}edge\s*[:=]/i.test(calculators));
 
+// The card must quote the chance mean of the tickets it actually returned. The 1.495846 figure the
+// docs carry is the null for five INDEPENDENT tickets; a set whose tickets never share a digit in a
+// position sits at 1.574580, so printing 1.496 beside it credited the formula with ~+5% of layout.
+// Pull one function declaration out of the source by brace matching (no regex escaping games).
+function extractFunction(src, name) {
+  const at = src.indexOf('function ' + name + '(');
+  if (at < 0) throw new Error('missing function ' + name);
+  const open = src.indexOf('{', at);
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') { depth--; if (!depth) return src.slice(at, i + 1); }
+  }
+  throw new Error('unterminated function ' + name);
+}
+const chanceSandbox = {};
+vm.createContext(chanceSandbox);
+vm.runInContext(extractFunction(calculators, '_rllChanceForSet'), chanceSandbox);
+const chance = chanceSandbox._rllChanceForSet;
+const stored = chance(['128406', '359172', '470285', '682913', '915734']);
+check('the chance mean of a maximally spread set is the 1.57458 ceiling',
+  Math.abs(stored.mean - 1.57458) < 1e-5);
+check('its pmf sums to one (the DP loses no mass)', Math.abs(stored.mean - 1.57458) < 1e-5 && stored.pZero > 0.0156 && stored.pZero < 0.0157);
+check('five identical tickets score 0.6, not the 1.496 baseline',
+  Math.abs(chance(['123456', '123456', '123456', '123456', '123456']).mean - 0.6) < 1e-9);
+check("the card compares the arm against the set's own chance mean",
+  calculators.includes('ค่าสุ่มของชุดนี้') && calculators.includes('_rllChanceForSet(response.numbers)'));
+check('the card no longer prints the independent-ticket baseline as the comparison',
+  !calculators.includes('เทียบค่าสุ่ม 1.496'));
+check('the card states the ceiling and that +25/+50% of 1.496 cannot happen',
+  calculators.includes('1.5746') && calculators.includes('สูงกว่าเพดาน จึงเป็นไปไม่ได้'));
+check('the index.html description no longer promises 1.496 as the chance of every set',
+  html.includes('1.496 ต่องวด') && html.includes('สูงสุด 1.575'));
+
 const css = read('static/app.css');
 check('the no-evidence chip is styled in both themes',
   css.includes('.rll-noevidence') && css.includes('[data-theme="dark"] .rll-noevidence'));

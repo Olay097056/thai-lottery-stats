@@ -894,17 +894,72 @@ async function _rllEvidenceHtml(){
   }
 }
 
+// Exact chance distribution of the shaped reward for ONE candidate set.
+// r = max matched positions, so its mean is a property of the five tickets' digit layout, not of a
+// prediction: five tickets holding five distinct digits in a position can gain at most one hit there
+// (and gain it with p = 0.5), which is exactly what maximises E[r]. Per-candidate match counts live
+// in a mixed-radix index (base 7, saturating at 6), so the DP is 6 positions x 7^k states.
+// The 1.495846 figure the docs quote is the null for five INDEPENDENT tickets; comparing a set whose
+// tickets never share a digit against it credited the formula with ~+5% that came from the layout.
+function _rllChanceForSet(numbers){
+  const set=(numbers||[]).map(String).filter(n=>/^[0-9]{6}$/.test(n));
+  const k=set.length;
+  if(k<1||k>6)return null;
+  const RADIX=7,size=Math.pow(RADIX,k);
+  const stride=Array.from({length:k},(_,i)=>Math.pow(RADIX,i));
+  let cur=new Float64Array(size),nxt=new Float64Array(size);
+  cur[0]=1;
+  for(let pos=0;pos<6;pos++){
+    nxt.fill(0);
+    const digits=set.map(n=>n[pos]);
+    for(let d=0;d<10;d++){
+      const hit=digits.map(x=>x===String(d));
+      for(let s=0;s<size;s++){
+        const p=cur[s];
+        if(p===0)continue;
+        let ns=s;
+        for(let j=0;j<k;j++){
+          if(!hit[j])continue;
+          if(Math.floor(ns/stride[j])%RADIX<RADIX-1)ns+=stride[j];
+        }
+        nxt[ns]+=p*0.1;
+      }
+    }
+    const t=cur;cur=nxt;nxt=t;
+  }
+  const pmf=new Array(7).fill(0);
+  for(let s=0;s<size;s++){
+    const p=cur[s];
+    if(p===0)continue;
+    let m=0;
+    for(let j=0;j<k;j++)m=Math.max(m,Math.floor(s/stride[j])%RADIX);
+    pmf[m]+=p;
+  }
+  const mean=pmf.reduce((a,p,i)=>a+i*p,0);
+  const sd=Math.sqrt(pmf.reduce((a,p,i)=>a+p*(i-mean)**2,0));
+  return {mean,sd,pZero:pmf[0]};
+}
+
 function _rllCards(response){
   const row=nums=>`<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">${nums.map(n=>`<span style="font-family:'IBM Plex Mono',monospace;font-size:.92rem;background:rgba(244,114,182,.10);border:1px solid #f472b666;color:var(--text);padding:3px 9px;border-radius:6px;font-weight:700">${n}</span>`).join('')}</div>`;
   const state=(response.arm_state_before||{})[response.arm]||{n:0,sum_r:0};
   const n=Number(state.n)||0;
   const observed=n?Number(state.sum_r)/n:null;
+  // Compare the arm against the chance mean of the tickets it actually returned, and say which
+  // number is which. A null here means the payload carried no usable tickets, so the line vanishes
+  // rather than printing a 0 that would read as a measured chance.
+  const chance=_rllChanceForSet(response.numbers);
+  const chanceLine=chance
+    ?`ค่าสุ่มของชุดนี้ ${chance.mean.toFixed(4)} ต่องวด — คำนวณจากห้าชุดที่ได้จริง (ไม่ใช่ 1.496 ของห้าชุดอิสระ) · ไม่ตรงหลักเลย ${(chance.pZero*100).toFixed(2)}%`
+    :'ค่าสุ่มของชุดนี้คำนวณไม่ได้ (ไม่มีเลขครบห้าชุดในคำตอบนี้)';
   return _mkFormulaCard(
     'RLL · Reinforcement Learn LLM','RLL · Reinforcement Learn LLM',
     [`arm ที่ถูกเลือก: ${response.arm} · เล่นมาแล้ว ${n} งวด · reward = จำนวนหลักที่ตรงของชุดที่ใกล้ที่สุด (0–6)`,
      `prompt hash ${String(response.prompt_sha256||'').slice(0,16)}… · โมเดล ${response.model||'—'} · อุณหภูมิ 0 และไม่ใช้ seed (ผู้ให้บริการไม่รับประกันซ้ำ)`,
-     `ค่าเฉลี่ยของ arm นี้ ${observed==null?'—':observed.toFixed(3)} เทียบค่าสุ่ม 1.496 ต่องวด · ช่วงปกติ 1–3 หลัก`,
-     'ยังไม่มีหลักฐานว่าสูตรนี้ดีกว่าการสุ่ม · การเห็นผลต่าง +50% ต้องใช้ประมาณ 480 งวด (~20 ปี)',
+     chanceLine,
+     `ค่าเฉลี่ยของ arm นี้ ${observed==null?'—':observed.toFixed(3)} เทียบกับค่าสุ่มของชุดตัวเอง${chance?` (${chance.mean.toFixed(3)})`:''} · ช่วงปกติ 1–3 หลัก`,
+     'reward นี้มีเพดาน 1.5746 ต่องวด (+5.3% จาก 1.496) เพราะชุดที่แต่ละหลักไม่มีเลขซ้ำกันได้เปรียบจากรูปทรง ไม่ใช่จากการทำนาย — โอกาสถูกเงินรางวัลยังเป็น 5 ในล้านเท่าเดิม',
+     'ยังไม่มีหลักฐานว่าสูตรนี้ดีกว่าการสุ่ม · แม้แต่ lift เต็มเพดาน (+5.3%) ยังต้องใช้ราว 7,500 งวด (~310 ปี) · +25%/+50% ของ 1.496 สูงกว่าเพดาน จึงเป็นไปไม่ได้',
      'ทุกใบมี EV เท่ากัน (ประมาณ −40% ต่อใบ) — สูตรไม่เปลี่ยน EV',
      'หนึ่งการเรียกต่องวด · บันทึกผลครั้งแรกแล้วไม่คำนวณซ้ำ (ไม่มีปุ่มสุ่มใหม่)'],
     [], row(response.numbers||[]),

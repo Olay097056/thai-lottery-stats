@@ -99,7 +99,15 @@ def api_rll_formula(date: str = Query(...)):
     import rll
     try:
         return rll.formula_forecast(date)
-    except (ValueError, astra.AstraInputError):
+    except rll.ClosedTarget:
+        # A closed draw is not a data problem. Saying "needs 20 prior draws" for it sent the owner
+        # looking for history that was never missing, so the two answers stay separate.
+        raise HTTPException(422, detail='งวดนี้ผ่านเวลาออกผลแล้ว — สูตร RLL บันทึกคำทำนายได้ถึง 16:00 ของวันออกผล')
+    except astra.AstraInputError as exc:
+        # astra's own messages are Thai and specific (date format, duplicate rows); pass them through
+        # rather than replacing a format error with a story about missing history.
+        raise HTTPException(422, detail=str(exc))
+    except ValueError:
         raise HTTPException(422, detail='สูตร RLL ต้องมีข้อมูลรางวัลที่ 1 ก่อนวันเป้าหมายอย่างน้อย 20 งวด')
     except astra.AstraCacheError:
         raise HTTPException(503, detail='อ่านประวัติรางวัลจากแคชเดิมไม่ได้')

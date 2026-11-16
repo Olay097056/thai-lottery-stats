@@ -7,14 +7,30 @@ import json
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import astra  # noqa: E402
 import rll  # noqa: E402
 
-TARGET = '2026-11-16'
+
+def _next_draw(after):
+    """The first scheduled draw date strictly after `after`.
+
+    Hard-coding this date rotted the whole file: once the calendar reached it, astra's
+    "target must be in the future" rule failed seven tests for a reason that had nothing to do
+    with the protocol. A relative target cannot go stale.
+    """
+    day = after + timedelta(days=1)
+    while day.day not in (1, 16):
+        day += timedelta(days=1)
+    return day
+
+
+TARGET = _next_draw(datetime.now(astra.THAILAND_TZ).date()).isoformat()
 FIVE = '{"numbers":["900001","900002","900003","900004","900005"]}'
 
 
@@ -144,18 +160,68 @@ class RLLProtocolTest(unittest.TestCase):
         self.assertFalse(result['payout'])
 
     def test_prompt_is_deterministic(self):
-        payload = rll.formula_forecast(TARGET, call_model=self.fake())
-        draws = rll._valid_draws(rll.astra._history_window(
-            rll.astra.load_existing_astra_history(),
-            rll.astra.validate_astra_target_date(TARGET),
-            rll.datetime.now(rll.astra.THAILAND_TZ).date(), max_draws=None))
-        window = rll.astra._history_window(rll.astra.load_existing_astra_history(),
-                                           rll.astra.validate_astra_target_date(TARGET),
-                                           rll.datetime.now(rll.astra.THAILAND_TZ).date(), max_draws=None)
-        one = rll._build_prompt(payload['arm'], draws, (rll.astra.validate_astra_target_date(TARGET), window), [])
-        two = rll._build_prompt(payload['arm'], draws, (rll.astra.validate_astra_target_date(TARGET), window), [])
+        now = datetime.now(astra.THAILAND_TZ)
+        payload = rll.formula_forecast(TARGET, call_model=self.fake(), now=now)
+        window = astra._history_window(astra.load_existing_astra_history(),
+                                       astra.validate_astra_target_date(TARGET, generated_at=now),
+                                       now.date(), max_draws=None)
+        draws = rll._valid_draws(window)
+        one = rll._build_prompt(payload['arm'], draws, (astra.validate_astra_target_date(TARGET, generated_at=now), window), [])
+        two = rll._build_prompt(payload['arm'], draws, (astra.validate_astra_target_date(TARGET, generated_at=now), window), [])
         self.assertEqual(one[0], two[0])
         self.assertEqual(one[1], two[1])
+
+    # ── the read path vs the calendar (the 2026-11-16 outage) ────────────────
+    def test_a_stored_record_stays_readable_after_its_draw(self):
+        """A forecast is evidence for the draw it describes, so it must outlive that draw.
+
+        The original code validated the date before reading the store, so every stored record
+        became unreachable the day it was needed — the page asked for the current draw and got a
+        422 that blamed missing history.
+        """
+        payload = rll.formula_forecast(TARGET, call_model=self.fake())
+        self.assertEqual(payload['status'], 'ok')
+        drawn = datetime.fromisoformat(TARGET).replace(tzinfo=astra.THAILAND_TZ) + timedelta(days=3)
+        again = rll.formula_forecast(TARGET, call_model=self.fake(), now=drawn)
+        self.assertTrue(again['cached'])
+        self.assertEqual(again['numbers'], payload['numbers'])
+        self.assertEqual(len(self.calls), 1, 'reading a stored record must never call the model')
+
+    def test_a_closed_draw_without_a_record_is_refused_as_closed(self):
+        drawn = datetime.fromisoformat(TARGET).replace(tzinfo=astra.THAILAND_TZ) + timedelta(days=3)
+        with self.assertRaises(rll.ClosedTarget):
+            rll.formula_forecast(TARGET, call_model=self.fake(), now=drawn)
+        self.assertEqual(self.calls, [], 'a closed draw must be refused before any provider call')
+
+    def test_a_past_non_draw_date_is_closed_too(self):
+        now = datetime.now(astra.THAILAND_TZ)
+        past = (now.date() - timedelta(days=1)).isoformat()
+        with self.assertRaises(rll.ClosedTarget):
+            rll.formula_forecast(past, call_model=self.fake(), now=now)
+        self.assertEqual(self.calls, [])
+
+    def test_draw_day_is_open_only_before_the_cutoff(self):
+        day = datetime(2026, 12, 16, tzinfo=astra.THAILAND_TZ)
+        morning = day.replace(hour=9)
+        evening = day.replace(hour=16, minute=1)
+        # morning: the draw has not happened, so the page's own target must be accepted
+        payload = rll.formula_forecast('2026-12-16', call_model=self.fake(), now=morning)
+        self.assertEqual(payload['status'], 'ok')
+        self.assertEqual(payload['target_date'], '2026-12-16')
+        # after the cutoff the same date is closed, and it says so instead of blaming history
+        rll.DB = Path(self.tmp.name) / 'fresh.sqlite3'
+        with self.assertRaises(rll.ClosedTarget):
+            rll.formula_forecast('2026-12-16', call_model=self.fake(), now=evening)
+
+    def test_a_non_draw_day_today_is_not_open(self):
+        now = datetime(2026, 11, 10, 9, tzinfo=astra.THAILAND_TZ)   # the 10th is not a draw day
+        with self.assertRaises(rll.ClosedTarget):
+            rll.formula_forecast('2026-11-10', call_model=self.fake(), now=now)
+
+    def test_a_malformed_target_keeps_the_format_error(self):
+        with self.assertRaises(astra.AstraInputError) as caught:
+            rll.formula_forecast('16/11/2026', call_model=self.fake())
+        self.assertIn('YYYY-MM-DD', str(caught.exception))
 
     def test_state_starts_at_the_prior(self):
         state = rll.state()

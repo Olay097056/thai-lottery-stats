@@ -61,12 +61,36 @@ contextual bandit — and the LLM is the policy that maps an arm to five tickets
 | measure | value |
 | :--- | ---: |
 | chance mean / sd of the reward | 1.495846 / 0.717875 |
-| draws for 80 % power, +100 % / +50 % / +25 % lift (simulated, 1,200 reps) | 120 / 480 / 960 |
 | expected payout hits, 761 draws × 5 candidates | 0.004 |
 | live calls made while verifying | 4 (all HTTP 200, 17.4–23.9 s) |
 | stored-record audit | `response_raw` 5,321 B, sha256 matches `response_sha256` |
-| tests | 11 Python protocol tests, 14 JS contract checks, suites at baseline |
 | measured outcome so far | 0 hits, 0.000 … expected — **no evidence**, permanently ทดลอง |
 
 The honest reading: this ships a working, auditable learning loop whose correct answer on an i.i.d. draw is
 "no arm is better", and the app says exactly that instead of implying an edge.
+
+## Correction 2026-11-16 — the reward's null is a property of the candidate layout
+
+The 1.495846 figure above is the null for five **independent** tickets. The prompt asks for tickets that differ
+in at least three positions and the model returns sets that differ in all six, which changes the null:
+
+| candidate set | E[r] | sd | P(r=0) | payout chance |
+| :--- | ---: | ---: | ---: | ---: |
+| five independent tickets (the figure in this ADR) | 1.495846 | 0.717875 | 4.2391 % | 5/10⁶ |
+| five tickets sharing a digit in every position | 0.600000 | 0.734847 | 53.1441 % | 5/10⁶ |
+| **five tickets, no shared digit in any position (the ceiling)** | **1.574580** | 0.678880 | 1.5625 % | 5/10⁶ |
+
+1.574580 is the maximum over any five-candidate set, computed by DP over per-candidate match counts
+(6 positions × 7⁵ states) and confirmed bit-for-bit against an exhaustive 10⁶-target scan of the stored set.
+Consequences that this ADR got wrong:
+
+- **The reward is mostly layout, not prediction.** The whole attainable range is 0.600–1.5746 while the payout
+  probability is fixed at 5/10⁶, so an arm can gain +5.26 % over the stated baseline with no predictive content
+  at all. The card now computes and prints E[r] for the five numbers it actually returned.
+- **The +25 / +50 / +100 % power rows above are unreachable.** Those lifts need r̄ = 1.87 / 2.24 / 2.99, all
+  above the 1.5746 ceiling. The largest lift that exists is +5.26 %, and 80 % power for it needs ≈1,249 draws
+  per arm (≈7,494 draws, ≈312 years at 24 draws/year; exact pmf, Welch t, bisected). Copy that quotes
+  "480 draws for +50 %" is quoting a number that cannot occur.
+
+Reading the loop honestly therefore means: it optimises a shaped reward whose ceiling is 5 % and whose signal is
+dominated by ticket layout. That is a reason to keep it permanently ทดลอง, not a reason to promote it.

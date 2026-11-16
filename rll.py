@@ -21,7 +21,7 @@ import re
 import sqlite3
 import threading
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import httpx
@@ -32,6 +32,7 @@ PROTOCOL = 'rll-v1'
 MODEL = os.environ.get('RLL_MODEL', 'deepseek/deepseek-v4.1-flash')
 BASE_URL = os.environ.get('RLL_BASE_URL', 'https://api.commandcode.ai/provider/v1')
 MIN_VALID_DRAWS = 20
+DRAW_CUTOFF_HOUR = 16    # nextDrawInfo() on the page rolls its target over at 16:00 Thai time
 CANDIDATES = 5
 N0 = 48.0                 # pseudo-draws of prior per arm (ticket 05)
 CHANCE_MEAN = 1.495846    # exact chance mean of max matched positions over 5 candidates
@@ -75,6 +76,15 @@ class ParseError(RuntimeError):
     """The response was not five distinct, unused, six-digit strings."""
 
 
+class ClosedTarget(ValueError):
+    """The target draw has already happened, so no new forecast may be registered for it.
+
+    Kept apart from AstraInputError and from the "not enough history" ValueError because the API's
+    copy is the deliverable: reporting a closed draw as "needs 20 prior draws" sent the owner looking
+    for missing data that was never missing.
+    """
+
+
 @contextmanager
 def connection():
     DB.parent.mkdir(parents=True, exist_ok=True)
@@ -90,6 +100,33 @@ def connection():
             yield db
     finally:
         db.close()
+
+
+# ─── target date ─────────────────────────────────────────────────────────────
+
+def _canonical_target(target_date):
+    """Parse the target without the 'strictly future' rule; format errors keep astra's own copy."""
+    if not isinstance(target_date, str) or not astra._DATE.fullmatch(target_date):
+        raise astra.AstraInputError('วันที่เป้าหมายต้องอยู่ในรูป YYYY-MM-DD')
+    try:
+        return date.fromisoformat(target_date)
+    except ValueError:
+        raise astra.AstraInputError('วันที่เป้าหมายไม่ถูกต้อง') from None
+
+
+def _target_is_open(target, now):
+    """True while a new forecast may still be registered for this draw.
+
+    astra.validate_astra_target_date demands a target strictly after today, but the page's own
+    nextDrawInfo() offers *today* until 16:00 on a draw day. Rejecting that answered 422 for the
+    target the UI had just selected, so the cutoff — not the calendar day — is the boundary here.
+    """
+    today = now.date()
+    if target > today:
+        return True
+    if target < today:
+        return False
+    return target.day in (1, 16) and now.hour < DRAW_CUTOFF_HOUR
 
 
 # ─── history and slices ───────────────────────────────────────────────────────
@@ -372,24 +409,34 @@ def _store_record(db, target_date, payload):
                (_target_key(target_date), PROTOCOL, json.dumps(payload, ensure_ascii=False)))
 
 
-def formula_forecast(target_date, *, call_model=None):
-    """Read or compute the five RLL candidates for one target draw."""
+def formula_forecast(target_date, *, call_model=None, now=None):
+    """Read or compute the five RLL candidates for one target draw.
+
+    The stored record is served BEFORE any date rule runs. A forecast is the evidence for the draw it
+    describes, so it has to stay readable after that draw has been drawn; gating the read on the
+    calendar made the one stored record unreachable the moment its date arrived, which is exactly
+    when the page asks for it. `_target_is_open` therefore gates new registrations only.
+    """
     call_model = call_model or _call_model
-    now = datetime.now(astra.THAILAND_TZ)
-    target = astra.validate_astra_target_date(target_date, generated_at=now)
-    history = astra.load_existing_astra_history()
-    window = astra._history_window(history, target, now.date(), max_draws=None)
-    draws = _valid_draws(window)
-    if len(draws) < MIN_VALID_DRAWS:
-        raise ValueError('at least 20 valid prior draws required')
-    history_sha = hashlib.sha256(json.dumps([[d.isoformat(), v] for d, v in draws],
-                                            separators=(',', ':')).encode()).hexdigest()
+    now = now or datetime.now(astra.THAILAND_TZ)
+    target = _canonical_target(target_date)
 
     with _lock, connection() as db:
         stored = _load_record(db, target)
         if stored is not None:
             stored['cached'] = True
             return stored
+
+        if not _target_is_open(target, now):
+            raise ClosedTarget('target draw already happened')
+
+        history = astra.load_existing_astra_history()
+        window = astra._history_window(history, target, now.date(), max_draws=None)
+        draws = _valid_draws(window)
+        if len(draws) < MIN_VALID_DRAWS:
+            raise ValueError('at least 20 valid prior draws required')
+        history_sha = hashlib.sha256(json.dumps([[d.isoformat(), v] for d, v in draws],
+                                                separators=(',', ':')).encode()).hexdigest()
 
         rows = _arm_rows(db)
         arm, samples = _choose_arm(target, rows)

@@ -14,7 +14,7 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/app.css?v=empty3-20261105">
+<link rel="stylesheet" href="/static/app.css?v=rllhonest-20261116">
 </head>
 <body>
 
@@ -534,7 +534,8 @@
   </div>
   <div id="ftab-desc-RLL" class="ftab-info hidden" data-color="pink">
     Reinforcement Learn LLM — สูตรทดลองที่เรียก LLM หนึ่งครั้งต่องวด เลือก arm จาก 6 แบบด้วย Thompson sampling
-    และเรียนจากจำนวนหลักที่ตรงของชุดที่ใกล้ที่สุด (ไม่ใช่เงินรางวัล) · ค่าสุ่มคาดหวัง 1.496 ต่องวด ·
+    และเรียนจากจำนวนหลักที่ตรงของชุดที่ใกล้ที่สุด (ไม่ใช่เงินรางวัล) · ค่าสุ่มขึ้นกับชุดเลขที่ได้: 1.496 ต่องวด
+    สำหรับห้าชุดอิสระ และสูงสุด 1.575 เมื่อแต่ละหลักไม่มีเลขซ้ำกัน (การ์ดแสดงค่าของชุดจริง) ·
     ยังไม่มีหลักฐานว่าดีกว่าการสุ่ม · หลักฐานเป็นแบบ prospective เท่านั้น (ไม่มี backtest ย้อนหลัง)
   </div>
   <!-- Results per tab -->
@@ -837,30 +838,30 @@
 <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="api-spinner" role="status" aria-live="polite" aria-label="กำลังโหลดข้อมูล" aria-hidden="true"><div class="spinner-dot"></div><div class="spinner-dot"></div><div class="spinner-dot"></div><span>กำลังโหลด</span></div>
 
-<script defer src="/static/formula-engine.js?v=empty3-20261105"></script>
-<script defer src="/static/formula-calculators.js?v=empty3-20261105"></script>
-<script defer src="/static/formula-evaluation.js?v=empty3-20261105"></script>
-<script defer src="/static/shared/server-data.js?v=empty3-20261105"></script>
-<script defer src="/static/shared/ui-state.js?v=empty3-20261105"></script>
-<script defer src="/static/shared/queries.js?v=empty3-20261105"></script>
-<script defer src="/static/shared/api-client.js?v=empty3-20261105"></script>
-<script defer src="/static/shared/charts.js?v=empty3-20261105"></script>
-<script defer src="/static/shared/reports.js?v=empty3-20261105"></script>
-<script defer src="/static/report-core.js?v=empty3-20261105"></script>
-<script defer src="/static/app.js?v=empty3-20261105"></script>
-<script defer src="/static/astra-ui.js?v=empty3-20261105"></script>
-<script defer src="/static/app-shell.js?v=empty3-20261105"></script>
-<script defer src="/static/modules/decision-center/index.js?v=empty3-20261105"></script>
-<script defer src="/static/decision-center.js?v=empty3-20261105"></script>
-<script defer src="/static/decision-legacy.js?v=empty3-20261105"></script>
-<script defer src="/static/dashboard-ui.js?v=empty3-20261105"></script>
-<script defer src="/static/prediction-ui.js?v=empty3-20261105"></script>
-<script defer src="/static/mix-support.js?v=empty3-20261105"></script>
-<script defer src="/static/buyplan-ui.js?v=empty3-20261105"></script>
-<script defer src="/static/mix-ui.js?v=empty3-20261105"></script>
-<script defer src="/static/history-ui.js?v=empty3-20261105"></script>
-<script defer src="/static/first-prize-ui.js?v=empty3-20261105"></script>
-<script defer src="/static/app-boot.js?v=empty3-20261105"></script>
+<script defer src="/static/formula-engine.js?v=rllhonest-20261116"></script>
+<script defer src="/static/formula-calculators.js?v=rllhonest-20261116"></script>
+<script defer src="/static/formula-evaluation.js?v=rllhonest-20261116"></script>
+<script defer src="/static/shared/server-data.js?v=rllhonest-20261116"></script>
+<script defer src="/static/shared/ui-state.js?v=rllhonest-20261116"></script>
+<script defer src="/static/shared/queries.js?v=rllhonest-20261116"></script>
+<script defer src="/static/shared/api-client.js?v=rllhonest-20261116"></script>
+<script defer src="/static/shared/charts.js?v=rllhonest-20261116"></script>
+<script defer src="/static/shared/reports.js?v=rllhonest-20261116"></script>
+<script defer src="/static/report-core.js?v=rllhonest-20261116"></script>
+<script defer src="/static/app.js?v=rllhonest-20261116"></script>
+<script defer src="/static/astra-ui.js?v=rllhonest-20261116"></script>
+<script defer src="/static/app-shell.js?v=rllhonest-20261116"></script>
+<script defer src="/static/modules/decision-center/index.js?v=rllhonest-20261116"></script>
+<script defer src="/static/decision-center.js?v=rllhonest-20261116"></script>
+<script defer src="/static/decision-legacy.js?v=rllhonest-20261116"></script>
+<script defer src="/static/dashboard-ui.js?v=rllhonest-20261116"></script>
+<script defer src="/static/prediction-ui.js?v=rllhonest-20261116"></script>
+<script defer src="/static/mix-support.js?v=rllhonest-20261116"></script>
+<script defer src="/static/buyplan-ui.js?v=rllhonest-20261116"></script>
+<script defer src="/static/mix-ui.js?v=rllhonest-20261116"></script>
+<script defer src="/static/history-ui.js?v=rllhonest-20261116"></script>
+<script defer src="/static/first-prize-ui.js?v=rllhonest-20261116"></script>
+<script defer src="/static/app-boot.js?v=rllhonest-20261116"></script>
 
 </body>
 </html>

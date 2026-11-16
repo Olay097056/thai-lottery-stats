@@ -14,8 +14,16 @@ record that anyone can re-derive.
 
 `r = max` over the five candidates of matching digit positions (0–6), computed after the draw resolves.
 
-- Exact null: mean **1.495846**, sd **0.717875**, pmf `[.042391, .502763, .378069, .070443, .006059, .00027,
-  .000005]`.
+- Exact null **for five independent tickets**: mean **1.495846**, sd **0.717875**, pmf `[.042391, .502763,
+  .378069, .070443, .006059, .00027, .000005]`.
+- **The null moves with the candidate layout, and the prompt fixes the layout.** `r = max` over tickets is
+  maximised by tickets that never share a digit in a position: that set has E[r] = **1.574580**, sd
+  **0.678880**, P(r=0) = 1/64. Five identical tickets score **0.600000**. All three have the same 5/10⁶
+  payout chance, so the card must compare an arm against the chance mean of *its own five numbers*, never
+  against 1.495846. `_rllChanceForSet()` (JS, base-7 DP over per-candidate match counts) does this in the card;
+  the Python equivalent agreed bit-for-bit on 2026-11-16's stored set.
+- **Ceiling:** 1.574580 is the maximum over any five-candidate set, so the largest reward lift that can exist
+  is **+5.26%** over 1.495846. Any "+25%/+50%/+100%" target is above the ceiling and unreachable.
 - The payout hit is recorded separately (`rll_rewards.payout`) and is **never optimised**.
 - The reward and the prize are different numbers with different labels; the UI must never present `r` as money.
 
@@ -60,8 +68,18 @@ record that anyone can re-derive.
 ## Fixed copy
 
 - "สูตรนี้เรียนจากจำนวนหลักที่ตรง ไม่ใช่เงินรางวัล — ค่าสุ่มคาดหวัง 1.496 ต่องวด"
-- "ยังไม่มีหลักฐานว่าสูตรนี้ดีกว่าการสุ่ม · การเห็นผลต่าง +50% ต้องใช้ประมาณ 480 งวด (~20 ปี)"
+- "ยังไม่มีหลักฐานว่าสูตรนี้ดีกว่าการสุ่ม · แม้แต่ lift เต็มเพดาน (+5.3%) ยังต้องใช้ราว 7,500 งวด (~310 ปี)"
+- "reward นี้มีเพดาน 1.5746 ต่องวด (+5.3% จาก 1.496) … โอกาสถูกเงินรางวัลยังเป็น 5 ในล้านเท่าเดิม"
+- "ค่าสุ่มของชุดนี้ 1.5746 ต่องวด — คำนวณจากห้าชุดที่ได้จริง (ไม่ใช่ 1.496 ของห้าชุดอิสระ)"
 - "ทุกใบมี EV เท่ากัน (ประมาณ −40% ต่อใบ) — สูตรไม่เปลี่ยน EV"
+
+## Availability
+
+A stored record is served **before** any date rule runs: evidence has to outlive its draw. New registrations
+close at **16:00 Thailand time on the draw day** (`DRAW_CUTOFF_HOUR`), matching the page's own
+`nextDrawInfo()`; a past date or a closed draw raises `rll.ClosedTarget`, which the API answers with its own
+message instead of the "needs 20 prior draws" copy. Before 2026-11-16 the validator ran first, so the record
+for a draw became unreadable on the day it was needed and the page reported a data shortage for 761-draw history.
 
 ## Cost
 
